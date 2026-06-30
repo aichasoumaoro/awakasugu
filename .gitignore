@@ -1,0 +1,45 @@
+# ============================================
+# FICHIERS À EXCLURE DE GITHUB
+# ============================================
+
+# Dossiers sensibles
+uploads/
+assets/images/
+tmp/
+logs/
+sessions/
+
+# Fichiers de configuration sensibles
+includes/config.php
+includes/panier_fonctions.php
+includes/envoi_email.php
+admin/session_config.php
+admin/config.php
+
+# Fichiers de base de données
+*.sql
+*.db
+*.sqlite
+*.sqlite3
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Fichiers de log
+*.log
+error_log
+access_log
+
+# Fichiers temporaires
+*.tmp
+*.cache
+*.bak
+*.swp
+*.swo
+
+# Fichiers d'IDE
+.vscode/
+.idea/
+*.sublime-*
