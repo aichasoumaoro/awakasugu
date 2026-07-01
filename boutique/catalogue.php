@@ -103,102 +103,222 @@ if ($sous_categorie_id > 0) {
     }
 }
 
+// ============================================
+// RÉCUPÉRATION DES PRODUITS DEPUIS produits_abayas
+// ============================================
+
 $produits = [];
 $total_products = 0;
 $total_pages = 0;
 
-$sql = "SELECT * FROM produits WHERE est_visible = 1";
-$params = [];
+// Vérifier si la table produits_abayas existe
+try {
+    $test = $pdo->query("SELECT 1 FROM produits_abayas LIMIT 1");
+    $table_exists = true;
+} catch(PDOException $e) {
+    $table_exists = false;
+}
 
-if ($categorie_id > 0) {
-    if ($sous_categorie_id > 0) {
-        $sql .= " AND categorie_id = ?";
-        $params[] = $sous_categorie_id;
-    } else {
-        $sub_ids = [];
-        if (isset($subcategories_data[$categorie_id])) {
-            foreach ($subcategories_data[$categorie_id] as $sub) {
-                $sub_ids[] = $sub['id'];
-            }
-        }
-        if (!empty($sub_ids)) {
-            $placeholders = implode(',', array_fill(0, count($sub_ids), '?'));
-            $sql .= " AND (categorie_id = ? OR categorie_id IN ($placeholders))";
-            $params[] = $categorie_id;
-            foreach ($sub_ids as $sub_id) {
-                $params[] = $sub_id;
-            }
+if ($table_exists) {
+    // Utiliser la table produits_abayas
+    $sql = "SELECT * FROM produits_abayas WHERE est_visible = 1";
+    $params = [];
+
+    if ($categorie_id > 0) {
+        if ($sous_categorie_id > 0) {
+            $sql .= " AND sous_categorie_id = ?";
+            $params[] = $sous_categorie_id;
         } else {
             $sql .= " AND categorie_id = ?";
             $params[] = $categorie_id;
         }
     }
-}
 
-if (!empty($search)) {
-    $sql .= " AND (nom LIKE ? OR description LIKE ?)";
-    $params[] = "%$search%";
-    $params[] = "%$search%";
-}
+    if (!empty($search)) {
+        $sql .= " AND (nom LIKE ? OR description LIKE ?)";
+        $params[] = "%$search%";
+        $params[] = "%$search%";
+    }
 
-switch ($tri) {
-    case 'price_asc':
-        $sql .= " ORDER BY prix ASC";
-        break;
-    case 'price_desc':
-        $sql .= " ORDER BY prix DESC";
-        break;
-    default:
-        $sql .= " ORDER BY created_at DESC";
-}
+    switch ($tri) {
+        case 'price_asc':
+            $sql .= " ORDER BY prix ASC";
+            break;
+        case 'price_desc':
+            $sql .= " ORDER BY prix DESC";
+            break;
+        default:
+            $sql .= " ORDER BY created_at DESC";
+    }
 
-$count_sql = "SELECT COUNT(*) FROM produits WHERE est_visible = 1";
-$count_params = [];
+    // Comptage
+    $count_sql = "SELECT COUNT(*) FROM produits_abayas WHERE est_visible = 1";
+    $count_params = [];
 
-if ($categorie_id > 0) {
-    if ($sous_categorie_id > 0) {
-        $count_sql .= " AND categorie_id = ?";
-        $count_params[] = $sous_categorie_id;
-    } else {
-        $sub_ids = [];
-        if (isset($subcategories_data[$categorie_id])) {
-            foreach ($subcategories_data[$categorie_id] as $sub) {
-                $sub_ids[] = $sub['id'];
-            }
-        }
-        if (!empty($sub_ids)) {
-            $placeholders = implode(',', array_fill(0, count($sub_ids), '?'));
-            $count_sql .= " AND (categorie_id = ? OR categorie_id IN ($placeholders))";
-            $count_params[] = $categorie_id;
-            foreach ($sub_ids as $sub_id) {
-                $count_params[] = $sub_id;
-            }
+    if ($categorie_id > 0) {
+        if ($sous_categorie_id > 0) {
+            $count_sql .= " AND sous_categorie_id = ?";
+            $count_params[] = $sous_categorie_id;
         } else {
             $count_sql .= " AND categorie_id = ?";
             $count_params[] = $categorie_id;
         }
     }
+
+    if (!empty($search)) {
+        $count_sql .= " AND (nom LIKE ? OR description LIKE ?)";
+        $count_params[] = "%$search%";
+        $count_params[] = "%$search%";
+    }
+
+    $stmt_count = $pdo->prepare($count_sql);
+    $stmt_count->execute($count_params);
+    $total_products = $stmt_count->fetchColumn();
+    $total_pages = ceil($total_products / $per_page);
+
+    $offset = ($page - 1) * $per_page;
+    $sql .= " LIMIT " . (int)$per_page . " OFFSET " . (int)$offset;
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $produits = $stmt->fetchAll();
+    
+} else {
+    // Fallback sur la table produits
+    $sql = "SELECT * FROM produits WHERE est_visible = 1";
+    $params = [];
+
+    if ($categorie_id > 0) {
+        if ($sous_categorie_id > 0) {
+            $sql .= " AND categorie_id = ?";
+            $params[] = $sous_categorie_id;
+        } else {
+            $sub_ids = [];
+            if (isset($subcategories_data[$categorie_id])) {
+                foreach ($subcategories_data[$categorie_id] as $sub) {
+                    $sub_ids[] = $sub['id'];
+                }
+            }
+            if (!empty($sub_ids)) {
+                $placeholders = implode(',', array_fill(0, count($sub_ids), '?'));
+                $sql .= " AND (categorie_id = ? OR categorie_id IN ($placeholders))";
+                $params[] = $categorie_id;
+                foreach ($sub_ids as $sub_id) {
+                    $params[] = $sub_id;
+                }
+            } else {
+                $sql .= " AND categorie_id = ?";
+                $params[] = $categorie_id;
+            }
+        }
+    }
+
+    if (!empty($search)) {
+        $sql .= " AND (nom LIKE ? OR description LIKE ?)";
+        $params[] = "%$search%";
+        $params[] = "%$search%";
+    }
+
+    switch ($tri) {
+        case 'price_asc':
+            $sql .= " ORDER BY prix ASC";
+            break;
+        case 'price_desc':
+            $sql .= " ORDER BY prix DESC";
+            break;
+        default:
+            $sql .= " ORDER BY created_at DESC";
+    }
+
+    $count_sql = "SELECT COUNT(*) FROM produits WHERE est_visible = 1";
+    $count_params = [];
+
+    if ($categorie_id > 0) {
+        if ($sous_categorie_id > 0) {
+            $count_sql .= " AND categorie_id = ?";
+            $count_params[] = $sous_categorie_id;
+        } else {
+            $sub_ids = [];
+            if (isset($subcategories_data[$categorie_id])) {
+                foreach ($subcategories_data[$categorie_id] as $sub) {
+                    $sub_ids[] = $sub['id'];
+                }
+            }
+            if (!empty($sub_ids)) {
+                $placeholders = implode(',', array_fill(0, count($sub_ids), '?'));
+                $count_sql .= " AND (categorie_id = ? OR categorie_id IN ($placeholders))";
+                $count_params[] = $categorie_id;
+                foreach ($sub_ids as $sub_id) {
+                    $count_params[] = $sub_id;
+                }
+            } else {
+                $count_sql .= " AND categorie_id = ?";
+                $count_params[] = $categorie_id;
+            }
+        }
+    }
+
+    if (!empty($search)) {
+        $count_sql .= " AND (nom LIKE ? OR description LIKE ?)";
+        $count_params[] = "%$search%";
+        $count_params[] = "%$search%";
+    }
+
+    $stmt_count = $pdo->prepare($count_sql);
+    $stmt_count->execute($count_params);
+    $total_products = $stmt_count->fetchColumn();
+    $total_pages = ceil($total_products / $per_page);
+
+    $offset = ($page - 1) * $per_page;
+    $sql .= " LIMIT " . (int)$per_page . " OFFSET " . (int)$offset;
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $produits = $stmt->fetchAll();
 }
-
-if (!empty($search)) {
-    $count_sql .= " AND (nom LIKE ? OR description LIKE ?)";
-    $count_params[] = "%$search%";
-    $count_params[] = "%$search%";
-}
-
-$stmt_count = $pdo->prepare($count_sql);
-$stmt_count->execute($count_params);
-$total_products = $stmt_count->fetchColumn();
-$total_pages = ceil($total_products / $per_page);
-
-$offset = ($page - 1) * $per_page;
-$sql .= " LIMIT " . (int)$per_page . " OFFSET " . (int)$offset;
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$produits = $stmt->fetchAll();
 
 // Récupérer les vidéos récentes pour l'accueil
 $videos_recents = $pdo->query("SELECT * FROM videos WHERE est_active = 1 ORDER BY created_at DESC LIMIT 4")->fetchAll();
+
+// ============================================
+// FONCTION POUR RÉCUPÉRER L'IMAGE
+// ============================================
+
+function getProductImage($image) {
+    if (empty($image)) {
+        return 'https://placehold.co/400x500/F5F5F5/C8922A?text=Abaya';
+    }
+    
+    $paths = [
+        '../uploads/abayas/' . $image,
+        '../uploads/produits/abayas/' . $image,
+        '../uploads/produits/' . $image,
+        'uploads/abayas/' . $image,
+        'uploads/produits/abayas/' . $image,
+        'uploads/produits/' . $image,
+    ];
+    
+    foreach ($paths as $path) {
+        if (file_exists($path)) {
+            return $path;
+        }
+    }
+    
+    return 'https://placehold.co/400x500/F5F5F5/C8922A?text=' . urlencode(str_replace('.jpeg', '', $image));
+}
+
+// ============================================
+// FONCTION POUR LE NOM DE LA SOUS-CATÉGORIE
+// ============================================
+
+function getSousCategorieNom($id, $subcategories_data) {
+    foreach ($subcategories_data as $cat_id => $subs) {
+        foreach ($subs as $sub) {
+            if ($sub['id'] == $id) {
+                return $sub['nom'];
+            }
+        }
+    }
+    return 'Collection';
+}
 ?>
 
 <!DOCTYPE html>
@@ -445,7 +565,7 @@ $videos_recents = $pdo->query("SELECT * FROM videos WHERE est_active = 1 ORDER B
         .product-info { padding: 18px; text-align: center; }
         .product-title { font-size: 0.88rem; font-weight: 600; color: #1A1A1A; margin-bottom: 5px; }
 
-        /* ✅ STYLE POUR LE PRIX PROMOTIONNEL */
+        /* STYLE POUR LE PRIX PROMOTIONNEL */
         .product-price {
             font-size: 0.95rem;
             font-weight: 700;
@@ -755,43 +875,30 @@ $videos_recents = $pdo->query("SELECT * FROM videos WHERE est_active = 1 ORDER B
                     <div class="products-grid">
                         <?php foreach ($produits as $p): ?>
                             <?php
-                            $img = '';
-                            if (!empty($p['image_principale'])) {
-                                $paths = [
-                                    '../uploads/produits/' . $p['image_principale'],
-                                    '../uploads/produits/abayas/' . $p['image_principale'],
-                                    '../uploads/produits/sacs/' . $p['image_principale'],
-                                    '../uploads/produits/chaussures/' . $p['image_principale']
-                                ];
-                                foreach ($paths as $path) {
-                                    if (file_exists($path)) {
-                                        $img = $path;
-                                        break;
-                                    }
-                                }
-                            }
+                            // Récupérer l'image
+                            $img = getProductImage($p['image_principale'] ?? '');
                             
-                            // ✅ Déterminer le prix à afficher
+                            // Déterminer le prix
                             $prix_affiché = $p['prix'];
                             $prix_ancien = null;
                             $est_promo = false;
                             
-                            // Vérifier si le produit a une promotion active
                             if (!empty($p['prix_promo']) && $p['prix_promo'] > 0 && $p['prix_promo'] < $p['prix']) {
                                 $prix_affiché = $p['prix_promo'];
                                 $prix_ancien = $p['prix'];
                                 $est_promo = true;
                             }
+                            
+                            // Récupérer le nom de la sous-catégorie
+                            $sous_cat_nom = '';
+                            if (!empty($p['sous_categorie_id'])) {
+                                $sous_cat_nom = getSousCategorieNom($p['sous_categorie_id'], $subcategories_data);
+                            }
                             ?>
                             <div class="product-card">
                                 <div class="product-img">
-                                    <?php if ($img): ?>
-                                        <img src="<?= $img ?>" alt="<?= htmlspecialchars($p['nom']) ?>">
-                                    <?php else: ?>
-                                        <img src="https://placehold.co/400x500/F5F5F5/C8922A?text=<?= urlencode(substr($p['nom'], 0, 20)) ?>" alt="<?= htmlspecialchars($p['nom']) ?>">
-                                    <?php endif; ?>
+                                    <img src="<?= $img ?>" alt="<?= htmlspecialchars($p['nom']) ?>">
                                     
-                                    <!-- ✅ Badge promotion -->
                                     <?php if ($est_promo): ?>
                                         <div class="product-badge-promo">-<?= round((1 - $p['prix_promo'] / $p['prix']) * 100) ?>%</div>
                                     <?php endif; ?>
@@ -803,6 +910,9 @@ $videos_recents = $pdo->query("SELECT * FROM videos WHERE est_active = 1 ORDER B
                                 </div>
                                 <div class="product-info">
                                     <div class="product-title"><?= htmlspecialchars($p['nom']) ?></div>
+                                    <?php if ($sous_cat_nom): ?>
+                                        <div style="font-size: 0.7rem; color: #999; margin-bottom: 5px;"><?= htmlspecialchars($sous_cat_nom) ?></div>
+                                    <?php endif; ?>
                                     <div class="product-price">
                                         <?php if ($est_promo): ?>
                                             <span class="old-price"><?= number_format($prix_ancien, 0, ',', ' ') ?> FCFA</span>
