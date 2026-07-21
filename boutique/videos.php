@@ -2,8 +2,10 @@
 // ============================================
 // SESSION PUBLIQUE SÉPARÉE
 // ============================================
-session_name('PUBLIC_SESSION');
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_name('PUBLIC_SESSION');
+    session_start();
+}
 
 // ============================================
 // VÉRIFICATION MAINTENANCE
@@ -12,7 +14,6 @@ require_once '../includes/maintenance_check.php';
 
 $titre_page = 'Vidéos - Awa Ka Sugu';
 require_once '../includes/header.php';
-require_once '../includes/navbar.php';
 
 $host = 'localhost';
 $dbname = 'awakasugu_db';
@@ -26,24 +27,59 @@ try {
     die("Erreur : " . $e->getMessage());
 }
 
-// Récupérer les vidéos actives
-$videos = $pdo->query("SELECT * FROM videos WHERE est_active = 1 ORDER BY created_at DESC")->fetchAll();
-
+// ============================================
+// FONCTIONS
+// ============================================
 function getYoutubeId($url) {
+    if (empty($url)) return '';
     preg_match('/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&]+)/', $url, $matches);
     return $matches[1] ?? '';
 }
 
 function getYoutubeEmbedUrl($url) {
-    preg_match('/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&]+)/', $url, $matches);
-    return isset($matches[1]) ? "https://www.youtube.com/embed/" . $matches[1] : $url;
+    if (empty($url)) return '#';
+    $id = getYoutubeId($url);
+    return !empty($id) ? "https://www.youtube.com/embed/" . $id : $url;
 }
 
 function getVideoUrl($video) {
+    if (!empty($video['fichier_video'])) {
+        $path = '../uploads/videos/' . $video['fichier_video'];
+        if (file_exists($path)) {
+            return $path;
+        }
+    }
     if ($video['type'] == 'local' && !empty($video['fichier_video'])) {
         return '../uploads/videos/' . $video['fichier_video'];
     }
-    return getYoutubeEmbedUrl($video['url_ou_fichier']);
+    if (!empty($video['url_ou_fichier'])) {
+        return getYoutubeEmbedUrl($video['url_ou_fichier']);
+    }
+    return '#';
+}
+
+function isLocalVideo($video) {
+    if (!empty($video['fichier_video'])) {
+        $path = '../uploads/videos/' . $video['fichier_video'];
+        if (file_exists($path)) {
+            return true;
+        }
+    }
+    if ($video['type'] == 'local' && !empty($video['fichier_video'])) {
+        return true;
+    }
+    return false;
+}
+
+// ============================================
+// RÉCUPÉRATION DES VIDÉOS
+// ============================================
+$videos = [];
+try {
+    $stmt = $pdo->query("SELECT * FROM videos WHERE est_active = 1 ORDER BY created_at DESC");
+    $videos = $stmt->fetchAll();
+} catch(PDOException $e) {
+    $videos = [];
 }
 ?>
 
@@ -51,299 +87,643 @@ function getVideoUrl($video) {
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Vidéos - Awa Ka Sugu</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Jost:wght@300;400;500;600;700;800&display=swap');
         
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Jost', sans-serif; background: #F8F7F5; color: #1A1A1A; }
-        
-        .banner {
-            background: linear-gradient(135deg, #0D0D0D 0%, #1A1A1A 50%, #0D0D0D 100%);
-            padding: 70px 20px 60px;
-            text-align: center;
-        }
-        
-        .banner h1 {
-            font-size: 2.8rem;
-            color: #C8922A;
-            font-weight: 700;
-        }
-        
-        .banner p {
-            color: rgba(255,255,255,0.5);
-            margin-top: 12px;
-        }
-        
-        .container {
-            max-width: 1300px;
-            margin: 0 auto;
-            padding: 0 20px 60px;
-        }
-        
-        .videos-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 30px;
-            margin-top: 40px;
-        }
-        
-        .video-card {
-            background: white;
-            border-radius: 20px;
+        body { 
+            font-family: 'Jost', sans-serif; 
+            background: #000; 
+            color: #fff;
             overflow: hidden;
-            box-shadow: 0 8px 25px rgba(0,0,0,0.08);
-            transition: all 0.4s;
-            cursor: pointer;
+            height: 100vh;
         }
         
-        .video-card:hover {
-            transform: translateY(-8px);
-            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
-        }
-        
-        .video-thumbnail {
-            position: relative;
-            aspect-ratio: 16/9;
-            overflow: hidden;
-            background: #1A1A1A;
-        }
-        
-        .video-thumbnail img, .video-thumbnail video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transition: transform 0.5s;
-        }
-        
-        .video-card:hover .video-thumbnail img {
-            transform: scale(1.05);
-        }
-        
-        .play-btn {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 60px;
-            height: 60px;
-            background: rgba(200,146,42,0.9);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s;
-        }
-        
-        .play-btn i {
-            font-size: 1.8rem;
-            color: white;
-            margin-left: 5px;
-        }
-        
-        .video-card:hover .play-btn {
-            transform: translate(-50%, -50%) scale(1.1);
-            background: #C8922A;
-        }
-        
-        .video-info {
-            padding: 20px;
-        }
-        
-        .video-title {
-            font-size: 1.1rem;
-            font-weight: 700;
-            color: #1A1A1A;
-            margin-bottom: 8px;
-        }
-        
-        .video-meta {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 0.7rem;
-            color: #C8922A;
-        }
-        
-        .empty-state {
-            text-align: center;
-            padding: 80px;
-            background: white;
-            border-radius: 24px;
-        }
-        
-        .empty-state i {
-            font-size: 4rem;
-            color: #E8D5B0;
-            margin-bottom: 20px;
-        }
-        
-        .video-modal {
-            display: none;
+        /* ===== HEADER TIKTOK ===== */
+        .tiktok-header {
             position: fixed;
             top: 0;
             left: 0;
+            right: 0;
+            z-index: 100;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, transparent 100%);
+            pointer-events: none;
+        }
+        .tiktok-header > * { pointer-events: auto; }
+        .tiktok-header .logo {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #C8922A;
+            text-decoration: none;
+        }
+        .tiktok-header .logo span { color: #fff; }
+        .tiktok-header .actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .tiktok-header .actions .btn-nav {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: 30px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border: 1.5px solid rgba(255,255,255,0.15);
+            color: rgba(255,255,255,0.7);
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(10px);
+        }
+        .tiktok-header .actions .btn-nav i {
+            font-size: 0.85rem;
+        }
+        .tiktok-header .actions .btn-nav:hover {
+            background: rgba(200,146,42,0.2);
+            border-color: #C8922A;
+            color: #C8922A;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(200,146,42,0.15);
+        }
+        .tiktok-header .actions .btn-nav.btn-shop {
+            background: linear-gradient(135deg, rgba(200,146,42,0.2), rgba(200,146,42,0.05));
+            border-color: rgba(200,146,42,0.3);
+            color: #C8922A;
+        }
+        .tiktok-header .actions .btn-nav.btn-shop:hover {
+            background: linear-gradient(135deg, #C8922A, #E8B55A);
+            border-color: #C8922A;
+            color: #1A1A1A;
+            box-shadow: 0 4px 25px rgba(200,146,42,0.3);
+        }
+        .tiktok-header .actions .btn-nav.btn-home {
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.1);
+            color: rgba(255,255,255,0.6);
+        }
+        .tiktok-header .actions .btn-nav.btn-home:hover {
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.2);
+            color: #fff;
+        }
+
+        /* ===== CONTAINER VIDÉO ===== */
+        .video-container {
+            height: 100vh;
+            overflow-y: scroll;
+            scroll-snap-type: y mandatory;
+            scroll-behavior: smooth;
+        }
+        .video-container::-webkit-scrollbar { display: none; }
+
+        /* ===== CHAQUE VIDÉO ===== */
+        .video-item {
+            position: relative;
+            height: 100vh;
             width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.95);
-            z-index: 1000;
+            scroll-snap-align: start;
+            display: flex;
             align-items: center;
             justify-content: center;
-        }
-        
-        .video-modal.active {
-            display: flex;
-        }
-        
-        .modal-content {
-            position: relative;
-            width: 90%;
-            max-width: 1000px;
-            background: #1A1A1A;
-            border-radius: 20px;
+            background: #000;
             overflow: hidden;
         }
-        
-        .modal-video-container {
-            position: relative;
-            padding-bottom: 56.25%;
-            height: 0;
-        }
-        
-        .modal-video-container video, .modal-video-container iframe {
-            position: absolute;
-            top: 0;
-            left: 0;
+
+        /* ===== LECTEUR VIDÉO ===== */
+        .video-player {
             width: 100%;
             height: 100%;
-            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #0D0D0D;
         }
-        
-        .modal-close {
-            position: absolute;
-            top: -40px;
-            right: 0;
-            background: none;
+        .video-player video,
+        .video-player iframe {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
             border: none;
-            color: white;
-            font-size: 2rem;
+            background: #000;
+        }
+
+        /* ===== OVERLAY INFOS (style TikTok) ===== */
+        .video-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 20px 20px 30px;
+            background: linear-gradient(0deg, rgba(0,0,0,0.85) 0%, transparent 100%);
+            pointer-events: none;
+        }
+        .video-overlay > * { pointer-events: auto; }
+
+        /* Info utilisateur */
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 2px solid #C8922A;
+            flex-shrink: 0;
+        }
+        .user-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .user-name {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #fff;
+        }
+        .user-name span { color: #C8922A; }
+        .user-handle {
+            font-size: 0.7rem;
+            color: rgba(255,255,255,0.5);
+        }
+
+        /* Titre et description */
+        .video-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+        .video-desc {
+            font-size: 0.78rem;
+            color: rgba(255,255,255,0.6);
+            line-height: 1.4;
+        }
+
+        /* Indicateur de progression */
+        .video-progress {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: rgba(255,255,255,0.1);
+            z-index: 5;
+        }
+        .video-progress .bar {
+            height: 100%;
+            background: #C8922A;
+            width: 0%;
+            transition: width 0.5s linear;
+        }
+
+        /* ===== SIDE ACTIONS (simplifié) ===== */
+        .side-actions {
+            position: absolute;
+            right: 16px;
+            bottom: 100px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 18px;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .side-actions > * { pointer-events: auto; }
+        .side-action {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            color: rgba(255,255,255,0.7);
+            text-decoration: none;
+            transition: all 0.3s;
             cursor: pointer;
         }
-        
-        .modal-info {
-            padding: 20px;
-            color: white;
+        .side-action:hover { color: #C8922A; transform: scale(1.05); }
+        .side-action i { font-size: 1.6rem; }
+        .side-action span {
+            font-size: 0.6rem;
+            font-weight: 600;
         }
-        
-        @media (max-width: 900px) {
-            .videos-grid { grid-template-columns: repeat(2, 1fr); }
+        .side-action .badge {
+            background: #C8922A;
+            color: #000;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.55rem;
+            font-weight: 700;
         }
-        
-        @media (max-width: 600px) {
-            .videos-grid { grid-template-columns: 1fr; }
+
+        /* ===== INDICATEUR DE SCROLL ===== */
+        .scroll-indicator {
+            position: fixed;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 50;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            pointer-events: none;
+        }
+        .scroll-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            transition: all 0.3s;
+            cursor: pointer;
+            pointer-events: auto;
+        }
+        .scroll-dot.active {
+            background: #C8922A;
+            transform: scale(1.3);
+            box-shadow: 0 0 12px rgba(200,146,42,0.5);
+        }
+
+        /* ===== EMPTY STATE ===== */
+        .empty-state {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 40px;
+            color: rgba(255,255,255,0.5);
+        }
+        .empty-state i {
+            font-size: 4rem;
+            color: rgba(200,146,42,0.3);
+            margin-bottom: 20px;
+        }
+        .empty-state h3 {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.5rem;
+            color: #fff;
+            margin-bottom: 8px;
+        }
+        .empty-state p { font-size: 0.9rem; }
+
+        /* ===== BADGE "VIDÉO" ===== */
+        .badge-video {
+            display: inline-block;
+            background: rgba(200,146,42,0.15);
+            color: #C8922A;
+            font-size: 0.55rem;
+            font-weight: 600;
+            padding: 2px 10px;
+            border-radius: 12px;
+            border: 1px solid rgba(200,146,42,0.1);
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 768px) {
+            .tiktok-header .logo { font-size: 1rem; }
+            .tiktok-header .actions .btn-nav {
+                padding: 5px 12px;
+                font-size: 0.6rem;
+            }
+            .tiktok-header .actions .btn-nav i { font-size: 0.7rem; }
+            .user-avatar { width: 32px; height: 32px; }
+            .user-name { font-size: 0.8rem; }
+            .video-title { font-size: 0.78rem; }
+            .video-desc { font-size: 0.7rem; }
+            .side-actions { right: 10px; bottom: 80px; gap: 14px; }
+            .side-action i { font-size: 1.3rem; }
+            .side-action span { font-size: 0.5rem; }
+            .video-overlay { padding: 14px 14px 20px; }
+        }
+        @media (max-width: 480px) {
+            .tiktok-header .actions .btn-nav {
+                padding: 4px 10px;
+                font-size: 0.5rem;
+            }
+            .tiktok-header .actions .btn-nav i { font-size: 0.6rem; }
+            .tiktok-header .actions .btn-nav span { display: none; }
+            .side-actions { right: 6px; bottom: 70px; gap: 10px; }
+            .side-action i { font-size: 1.1rem; }
+            .video-overlay { padding: 10px 10px 16px; }
         }
     </style>
 </head>
 <body>
 
-<div class="banner">
-    <h1>📹 VIDÉOS</h1>
-    <p>Découvrez les actualités et conseils d'Awa Doumbia</p>
-</div>
+<!-- ===== HEADER ===== -->
+<header class="tiktok-header">
+    <a href="../index.php" class="logo">AWA KA <span>SUGU</span></a>
+    <div class="actions">
+        <a href="../index.php" class="btn-nav btn-home" title="Accueil">
+            <i class="bi bi-house-heart-fill"></i>
+            <span>Accueil</span>
+        </a>
+        <a href="../boutique/catalogue.php" class="btn-nav btn-shop" title="Boutique">
+            <i class="bi bi-bag-fill"></i>
+            <span>Boutique</span>
+        </a>
+    </div>
+</header>
 
-<div class="container">
+<!-- ===== INDICATEUR DE SCROLL ===== -->
+<div class="scroll-indicator" id="scrollIndicator"></div>
+
+<!-- ===== CONTAINER VIDÉOS ===== -->
+<div class="video-container" id="videoContainer">
+
     <?php if (empty($videos)): ?>
-        <div class="empty-state">
-            <i class="bi bi-camera-reels"></i>
-            <p>Aucune vidéo disponible pour le moment</p>
-            <p style="font-size: 0.8rem;">Revenez bientôt pour découvrir nos contenus exclusifs !</p>
+        <div class="video-item">
+            <div class="empty-state">
+                <i class="bi bi-camera-reels"></i>
+                <h3>Aucune vidéo disponible</h3>
+                <p>Revenez bientôt pour découvrir nos contenus exclusifs.</p>
+            </div>
         </div>
     <?php else: ?>
-        <div class="videos-grid">
-            <?php foreach ($videos as $video): ?>
-                <?php
-                // Détecter si c'est une vidéo locale ou YouTube
-                $isLocal = ($video['type'] == 'local' && !empty($video['fichier_video']));
-                $videoUrl = getVideoUrl($video);
-                $thumbUrl = '';
-                
-                if ($isLocal) {
-                    $thumbUrl = $videoUrl;
-                } else {
-                    $youtubeId = getYoutubeId($video['url_ou_fichier']);
-                    $thumbUrl = "https://img.youtube.com/vi/" . $youtubeId . "/maxresdefault.jpg";
-                }
-                ?>
-                <div class="video-card" onclick="openVideoModal('<?= $videoUrl ?>', '<?= htmlspecialchars($video['titre']) ?>', '<?= $video['type'] ?>')">
-                    <div class="video-thumbnail">
-                        <?php if($isLocal): ?>
-                            <video src="<?= $thumbUrl ?>" muted></video>
-                        <?php else: ?>
-                            <img src="<?= $thumbUrl ?>" 
-                                 alt="<?= htmlspecialchars($video['titre']) ?>"
-                                 onerror="this.src='https://placehold.co/400x225/C8922A/FFF?text=<?= urlencode($video['titre']) ?>'">
-                        <?php endif; ?>
-                        <div class="play-btn">
-                            <i class="bi bi-play-fill"></i>
-                        </div>
+        <?php foreach ($videos as $index => $video): 
+            $isLocal = isLocalVideo($video);
+            $videoUrl = getVideoUrl($video);
+            $titre = htmlspecialchars($video['titre'] ?? 'Vidéo');
+            $description = htmlspecialchars($video['description'] ?? '');
+            $created_at = date('d/m/Y', strtotime($video['created_at'] ?? 'now'));
+            $vues = number_format($video['vues'] ?? 0, 0, ',', ' ');
+            $type_label = $isLocal ? '📹 Local' : '▶️ YouTube';
+        ?>
+        <div class="video-item" data-index="<?= $index ?>">
+            <!-- Lecteur vidéo -->
+            <div class="video-player">
+                <?php if($isLocal): ?>
+                    <video muted playsinline preload="metadata" poster="">
+                        <source src="<?= $videoUrl ?>" type="video/mp4">
+                        Votre navigateur ne supporte pas la lecture vidéo.
+                    </video>
+                <?php else: ?>
+                    <iframe src="<?= $videoUrl ?>?autoplay=0&rel=0&controls=1" frameborder="0" allowfullscreen allow="encrypted-media"></iframe>
+                <?php endif; ?>
+            </div>
+
+            <!-- Overlay infos -->
+            <div class="video-overlay">
+                <div class="user-info">
+                    <div class="user-avatar">
+                        <img src="../assets/images/awa1.jpeg" alt="Awa Doumbia" onerror="this.src='https://placehold.co/40x40/C8922A/FFF?text=A'">
                     </div>
-                    <div class="video-info">
-                        <div class="video-title"><?= htmlspecialchars($video['titre']) ?></div>
-                        <div class="video-meta">
-                            <span><i class="bi bi-calendar3"></i> <?= date('d/m/Y', strtotime($video['created_at'])) ?></span>
-                            <span><i class="bi bi-camera-reels"></i> <?= $isLocal ? 'LOCAL' : strtoupper($video['type']) ?></span>
-                        </div>
+                    <div>
+                        <div class="user-name">Awa <span>Doumbia</span></div>
+                        <div class="user-handle">@awadoumbia223 • <?= $type_label ?></div>
                     </div>
                 </div>
-            <?php endforeach; ?>
+                <div class="video-title"><?= $titre ?></div>
+                <?php if (!empty($description)): ?>
+                    <div class="video-desc"><?= $description ?></div>
+                <?php endif; ?>
+            </div>
+
+            <!-- Actions latérales (Lecture + Date + Partager) -->
+            <div class="side-actions">
+                <div class="side-action" onclick="togglePlay(this)">
+                    <i class="bi bi-play-fill"></i>
+                    <span>Lecture</span>
+                </div>
+                <div class="side-action">
+                    <i class="bi bi-calendar3"></i>
+                    <span><?= $created_at ?></span>
+                </div>
+                <div class="side-action" onclick="partager()">
+                    <i class="bi bi-share"></i>
+                    <span>Partager</span>
+                </div>
+            </div>
+
+            <!-- Barre de progression -->
+            <div class="video-progress">
+                <div class="bar" id="progressBar-<?= $index ?>"></div>
+            </div>
         </div>
+        <?php endforeach; ?>
     <?php endif; ?>
 </div>
 
-<div id="videoModal" class="video-modal">
-    <div class="modal-content">
-        <button class="modal-close" onclick="closeVideoModal()">&times;</button>
-        <div class="modal-video-container" id="modalVideoContainer">
-        </div>
-        <div class="modal-info">
-            <h3 id="modalTitle"></h3>
-        </div>
-    </div>
-</div>
-
 <script>
-    function getYoutubeId(url) {
-        const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&]+)/);
-        return match ? match[1] : '';
-    }
-    
-    function openVideoModal(url, title, type) {
-        const container = document.getElementById('modalVideoContainer');
-        if (type === 'local') {
-            container.innerHTML = '<video controls autoplay><source src="' + url + '" type="video/mp4">Votre navigateur ne supporte pas la lecture vidéo.</video>';
-        } else {
-            container.innerHTML = '<iframe src="' + url + '" frameborder="0" allowfullscreen></iframe>';
+    // ============================================
+    // VARIABLES
+    // ============================================
+    const container = document.getElementById('videoContainer');
+    const videos = container.querySelectorAll('.video-item');
+    let currentIndex = 0;
+    let isPlaying = false;
+    let videoPlayers = [];
+
+    // ============================================
+    // CRÉER LES INDICATEURS DE SCROLL
+    // ============================================
+    const indicator = document.getElementById('scrollIndicator');
+    videos.forEach((_, i) => {
+        const dot = document.createElement('div');
+        dot.className = 'scroll-dot' + (i === 0 ? ' active' : '');
+        dot.dataset.index = i;
+        dot.addEventListener('click', () => scrollToVideo(i));
+        indicator.appendChild(dot);
+    });
+
+    // ============================================
+    // INITIALISER LES LECTEURS VIDÉO
+    // ============================================
+    videos.forEach((item, index) => {
+        const video = item.querySelector('video');
+        const iframe = item.querySelector('iframe');
+        
+        if (video) {
+            videoPlayers[index] = video;
+            if (index === 0) {
+                video.muted = false;
+                video.play().catch(() => {});
+                isPlaying = true;
+                updatePlayIcon(index, true);
+            }
+            
+            video.addEventListener('timeupdate', () => {
+                if (video.duration) {
+                    const progress = (video.currentTime / video.duration) * 100;
+                    const bar = document.getElementById('progressBar-' + index);
+                    if (bar) bar.style.width = progress + '%';
+                }
+            });
+        } else if (iframe) {
+            videoPlayers[index] = iframe;
         }
-        document.getElementById('modalTitle').innerText = title;
-        document.getElementById('videoModal').classList.add('active');
-        document.body.style.overflow = 'hidden';
-    }
-    
-    function closeVideoModal() {
-        document.getElementById('modalVideoContainer').innerHTML = '';
-        document.getElementById('videoModal').classList.remove('active');
-        document.body.style.overflow = 'auto';
-    }
-    
-    document.getElementById('videoModal').addEventListener('click', function(e) {
-        if (e.target === this) closeVideoModal();
     });
-    
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') closeVideoModal();
+
+    // ============================================
+    // DÉTECTION DE LA VIDÉO ACTIVE (SCROLL)
+    // ============================================
+    let isScrolling = false;
+    container.addEventListener('scroll', () => {
+        if (isScrolling) return;
+        isScrolling = true;
+        requestAnimationFrame(() => {
+            const containerRect = container.getBoundingClientRect();
+            let activeIndex = 0;
+            
+            videos.forEach((item, index) => {
+                const rect = item.getBoundingClientRect();
+                const center = rect.top + rect.height / 2;
+                const containerCenter = containerRect.top + containerRect.height / 2;
+                
+                if (Math.abs(center - containerCenter) < Math.abs(rect.height / 2)) {
+                    activeIndex = index;
+                }
+            });
+            
+            if (activeIndex !== currentIndex) {
+                const oldVideo = videoPlayers[currentIndex];
+                if (oldVideo && oldVideo.tagName === 'VIDEO') {
+                    oldVideo.pause();
+                    updatePlayIcon(currentIndex, false);
+                }
+                
+                currentIndex = activeIndex;
+                const newVideo = videoPlayers[currentIndex];
+                if (newVideo && newVideo.tagName === 'VIDEO') {
+                    newVideo.muted = false;
+                    newVideo.play().catch(() => {});
+                    updatePlayIcon(currentIndex, true);
+                    isPlaying = true;
+                }
+                
+                document.querySelectorAll('.scroll-dot').forEach((dot, i) => {
+                    dot.classList.toggle('active', i === currentIndex);
+                });
+            }
+            
+            isScrolling = false;
+        });
+    }, { passive: true });
+
+    // ============================================
+    // TOGGLE PLAY/PAUSE
+    // ============================================
+    function togglePlay(element) {
+        const item = element.closest('.video-item');
+        const index = parseInt(item.dataset.index);
+        const video = videoPlayers[index];
+        
+        if (!video || video.tagName !== 'VIDEO') return;
+        
+        if (video.paused) {
+            video.play().catch(() => {});
+            isPlaying = true;
+            updatePlayIcon(index, true);
+        } else {
+            video.pause();
+            isPlaying = false;
+            updatePlayIcon(index, false);
+        }
+    }
+
+    function updatePlayIcon(index, playing) {
+        const item = videos[index];
+        if (!item) return;
+        const playBtn = item.querySelector('.side-action:first-child i');
+        const label = item.querySelector('.side-action:first-child span');
+        if (playBtn) {
+            playBtn.className = playing ? 'bi bi-pause-fill' : 'bi bi-play-fill';
+        }
+        if (label) {
+            label.textContent = playing ? 'Pause' : 'Lecture';
+        }
+    }
+
+    // ============================================
+    // CLIC SUR LA VIDÉO (PLAY/PAUSE)
+    // ============================================
+    videos.forEach((item, index) => {
+        const video = item.querySelector('video');
+        if (video) {
+            video.addEventListener('click', () => {
+                if (video.paused) {
+                    video.play().catch(() => {});
+                    isPlaying = true;
+                    updatePlayIcon(index, true);
+                } else {
+                    video.pause();
+                    isPlaying = false;
+                    updatePlayIcon(index, false);
+                }
+            });
+        }
     });
+
+    // ============================================
+    // NAVIGATION AU CLAVIER (FLÈCHES HAUT/BAS)
+    // ============================================
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            const nextIndex = Math.min(currentIndex + 1, videos.length - 1);
+            scrollToVideo(nextIndex);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            const prevIndex = Math.max(currentIndex - 1, 0);
+            scrollToVideo(prevIndex);
+        }
+    });
+
+    function scrollToVideo(index) {
+        if (index === currentIndex) return;
+        const item = videos[index];
+        if (item) {
+            item.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }
+
+    // ============================================
+    // PARTAGER
+    // ============================================
+    function partager() {
+        const url = window.location.href;
+        if (navigator.share) {
+            navigator.share({ 
+                title: 'Awa Ka Sugu - Vidéos', 
+                text: 'Découvrez cette vidéo sur Awa Ka Sugu !',
+                url: url 
+            });
+        } else {
+            navigator.clipboard.writeText(url).then(() => {
+                alert('Lien copié dans le presse-papiers !');
+            }).catch(() => {
+                alert('Copiez le lien : ' + url);
+            });
+        }
+    }
+
+    // ============================================
+    // INITIALISATION - Démarrer la première vidéo
+    // ============================================
+    setTimeout(() => {
+        const firstVideo = videoPlayers[0];
+        if (firstVideo && firstVideo.tagName === 'VIDEO') {
+            firstVideo.muted = false;
+            firstVideo.play().catch(() => {});
+            updatePlayIcon(0, true);
+            isPlaying = true;
+        }
+    }, 500);
 </script>
 
 <?php require_once '../includes/footer.php'; ?>

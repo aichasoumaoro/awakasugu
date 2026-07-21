@@ -38,10 +38,43 @@ if (!$commande) {
     exit;
 }
 
-// Récupérer les détails
-$stmt = $pdo->prepare("SELECT * FROM details_commande WHERE commande_id = ?");
+// ============================================
+// RÉCUPÉRER LES DÉTAILS AVEC COULEURS ET TAILLES
+// ============================================
+$stmt = $pdo->prepare("
+    SELECT 
+        dc.*,
+        p.nom as produit_nom,
+        p.image_principale,
+        c.nom as couleur_nom_complet,
+        c.code_hex as couleur_code,
+        t.nom as taille_nom_complet
+    FROM details_commande dc
+    LEFT JOIN produits p ON p.id = dc.produit_id
+    LEFT JOIN couleurs c ON c.id = dc.couleur_id
+    LEFT JOIN tailles t ON t.id = dc.taille_id
+    WHERE dc.commande_id = ?
+");
 $stmt->execute([$commande_id]);
 $details = $stmt->fetchAll();
+
+// Si aucune couleur/taille trouvée via les ID, essayer avec les noms
+if (!empty($details) && empty($details[0]['couleur_nom_complet'])) {
+    $stmt = $pdo->prepare("
+        SELECT 
+            dc.*,
+            p.nom as produit_nom,
+            p.image_principale,
+            dc.couleur_nom as couleur_nom_complet,
+            NULL as couleur_code,
+            dc.taille_nom as taille_nom_complet
+        FROM details_commande dc
+        LEFT JOIN produits p ON p.id = dc.produit_id
+        WHERE dc.commande_id = ?
+    ");
+    $stmt->execute([$commande_id]);
+    $details = $stmt->fetchAll();
+}
 
 // Traitement du changement de statut
 if (isset($_GET['changer_statut']) && isset($_GET['statut'])) {
@@ -128,6 +161,67 @@ if (isset($_GET['changer_statut']) && isset($_GET['statut'])) {
             color: #C8922A;
         }
         
+        .badge-couleur {
+            display: inline-block;
+            padding: 4px 12px 4px 8px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 500;
+            border: 1px solid #E8ECF0;
+            background: #F8F9FA;
+        }
+        .badge-couleur .color-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 6px;
+            vertical-align: middle;
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+        .badge-taille {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            background: #E8ECF0;
+            color: #0D0D0D;
+            border: 1px solid #D5D8DD;
+        }
+        .badge-taille i {
+            margin-right: 4px;
+            font-size: 0.6rem;
+        }
+        
+        .produit-cell {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .produit-cell .thumb {
+            width: 50px;
+            height: 50px;
+            border-radius: 8px;
+            object-fit: cover;
+            background: #F5F3F0;
+            border: 1px solid #EEEAE5;
+            flex-shrink: 0;
+        }
+        .produit-cell .info {
+            display: flex;
+            flex-direction: column;
+        }
+        .produit-cell .info .nom {
+            font-weight: 600;
+            color: #1A1A1A;
+            font-size: 0.9rem;
+        }
+        .produit-cell .info .ref {
+            font-size: 0.65rem;
+            color: #8A99AA;
+        }
+        
         .btn-group .dropdown-menu { border-radius: 10px; border: 1px solid #E8ECF0; }
         .dropdown-item { padding: 8px 20px; font-size: 0.85rem; }
         .dropdown-item:hover { background: #FEFBF5; color: #C8922A; }
@@ -137,6 +231,8 @@ if (isset($_GET['changer_statut']) && isset($_GET['statut'])) {
             .sidebar { display: none; }
             .content { margin-left: 0; padding: 20px 16px; }
             .content-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+            .produit-cell .thumb { width: 40px; height: 40px; }
+            .produit-cell .info .nom { font-size: 0.8rem; }
         }
     </style>
 </head>
@@ -190,8 +286,8 @@ if (isset($_GET['changer_statut']) && isset($_GET['statut'])) {
                 <div class="card-body">
                     <div class="info-box">
                         <p><strong>Nom :</strong> <?= htmlspecialchars($commande['nom_client']) ?></p>
-                        <p><strong>Téléphone :</strong> <?= htmlspecialchars($commande['telephone_client'] ?? $commande['telephone'] ?? '') ?></p>
-                        <p><strong>Email :</strong> <?= htmlspecialchars($commande['email_client'] ?? 'Non renseigné') ?></p>
+                        <p><strong>Téléphone :</strong> <?= htmlspecialchars($commande['telephone']) ?></p>
+                        <p><strong>Email :</strong> <?= htmlspecialchars($commande['email'] ?? 'Non renseigné') ?></p>
                         <p><strong>Adresse :</strong> <?= nl2br(htmlspecialchars($commande['adresse_livraison'] ?? '')) ?></p>
                         <?php if(!empty($commande['commune'])): ?>
                             <p><strong>Commune :</strong> <?= htmlspecialchars($commande['commune']) ?></p>
@@ -212,13 +308,20 @@ if (isset($_GET['changer_statut']) && isset($_GET['statut'])) {
                             $paiements = [
                                 'livraison' => '💵 Paiement à la livraison',
                                 'orange_money' => '🟠 Orange Money',
-                                'wave' => '🌊 Wave',
-                                'moov_money' => '📱 Moov Money',
-                                'carte' => '💳 Carte bancaire',
-                                'especes' => '💰 Espèces'
+                                'wave' => '🌊 Wave'
                             ];
                             $mode = $commande['mode_paiement'] ?? 'livraison';
                             echo '<span class="badge-paiement">' . ($paiements[$mode] ?? $mode) . '</span>';
+                            ?>
+                        </p>
+                        <p><strong>Mode de livraison :</strong> 
+                            <?php 
+                            $livraisons = [
+                                'livraison' => '🚚 Livraison à domicile',
+                                'retrait_boutique' => '🏪 Retrait en boutique'
+                            ];
+                            $mode_liv = $commande['mode_livraison'] ?? 'livraison';
+                            echo '<span class="badge-paiement">' . ($livraisons[$mode_liv] ?? $mode_liv) . '</span>';
                             ?>
                         </p>
                         <p><strong>Statut :</strong> 
@@ -250,8 +353,10 @@ if (isset($_GET['changer_statut']) && isset($_GET['statut'])) {
             <table class="table table-bordered mb-0">
                 <thead>
                     <tr>
-                        <th>Produit</th>
+                        <th style="min-width:200px;">Produit</th>
                         <th style="text-align:center;">Quantité</th>
+                        <th style="text-align:center;min-width:130px;">Couleur</th>
+                        <th style="text-align:center;min-width:90px;">Taille</th>
                         <th style="text-align:right;">Prix unitaire</th>
                         <th style="text-align:right;">Total</th>
                     </tr>
@@ -259,19 +364,102 @@ if (isset($_GET['changer_statut']) && isset($_GET['statut'])) {
                 <tbody>
                     <?php if(empty($details)): ?>
                         <tr>
-                            <td colspan="4" class="text-center py-4" style="color:#8A99AA;">
+                            <td colspan="6" class="text-center py-4" style="color:#8A99AA;">
                                 <i class="bi bi-inbox" style="font-size:2rem;display:block;margin-bottom:10px;"></i>
                                 Aucun détail disponible
                             </td>
                         </tr>
                     <?php else: ?>
-                        <?php foreach($details as $d): ?>
+                        <?php foreach($details as $d): 
+                            // Récupérer l'image du produit
+                            $image_path = '';
+                            if (!empty($d['image_principale'])) {
+                                $image_name = pathinfo($d['image_principale'], PATHINFO_FILENAME);
+                                $dossiers = [
+                                    '../uploads/produits/voile/',
+                                    'uploads/produits/voile/',
+                                    '../uploads/produits/pret a porter femme/',
+                                    'uploads/produits/pret a porter femme/',
+                                    '../uploads/produits/les tallons/',
+                                    'uploads/produits/les tallons/',
+                                    '../uploads/produits/fermés/',
+                                    'uploads/produits/fermés/',
+                                    '../uploads/produits/les turbants/',
+                                    'uploads/produits/les turbants/',
+                                    '../uploads/produits/les foulards/',
+                                    'uploads/produits/les foulards/',
+                                    '../uploads/produits/les foullards/',
+                                    'uploads/produits/les foullards/',
+                                    '../uploads/produits/port-monaie/',
+                                    'uploads/produits/port-monaie/',
+                                    '../uploads/produits/sacs a mains/',
+                                    'uploads/produits/sacs a mains/',
+                                    '../uploads/produits/ensemble tallons sacs/',
+                                    'uploads/produits/ensemble tallons sacs/',
+                                    '../uploads/produits/abayas/',
+                                    'uploads/produits/abayas/',
+                                    '../uploads/produits/abayas pour enfants/',
+                                    'uploads/produits/abayas pour enfants/',
+                                    '../uploads/produits/',
+                                    'uploads/produits/',
+                                ];
+                                $extensions = ['', '.jpeg', '.jpg', '.png', '.gif', '.webp'];
+                                foreach ($dossiers as $dossier) {
+                                    foreach ($extensions as $ext) {
+                                        $test_path = $dossier . $image_name . $ext;
+                                        if (file_exists($test_path)) {
+                                            $image_path = $test_path;
+                                            break 2;
+                                        }
+                                    }
+                                }
+                            }
+                            if (empty($image_path)) {
+                                $image_path = 'https://placehold.co/50x50/F5F5F5/C8922A?text=' . urlencode(substr($d['produit_nom'] ?? 'P', 0, 1));
+                            }
+                            
+                            // Récupérer les noms de couleur et taille
+                            $couleur_nom = $d['couleur_nom_complet'] ?? $d['couleur_nom'] ?? $d['couleur'] ?? null;
+                            $taille_nom = $d['taille_nom_complet'] ?? $d['taille_nom'] ?? $d['taille'] ?? null;
+                            $couleur_code = $d['couleur_code'] ?? null;
+                            
+                            $has_couleur = !empty($couleur_nom);
+                            $has_taille = !empty($taille_nom);
+                            $total_ligne = ($d['prix_unitaire'] ?? 0) * ($d['quantite'] ?? 0);
+                        ?>
                         <tr>
-                            <td><?= htmlspecialchars($d['nom_produit']) ?></td>
-                            <td style="text-align:center;"><?= $d['quantite'] ?></td>
+                            <td>
+                                <div class="produit-cell">
+                                    <img src="<?= $image_path ?>" alt="<?= htmlspecialchars($d['produit_nom'] ?? '') ?>" class="thumb" onerror="this.src='https://placehold.co/50x50/F5F5F5/C8922A?text=<?= urlencode(substr($d['produit_nom'] ?? 'P', 0, 1)) ?>'">
+                                    <div class="info">
+                                        <span class="nom"><?= htmlspecialchars($d['produit_nom'] ?? $d['nom_produit'] ?? 'Produit inconnu') ?></span>
+                                        <span class="ref">Réf: #<?= $d['produit_id'] ?? '' ?></span>
+                                    </div>
+                                </div>
+                            </td>
+                            <td style="text-align:center;font-weight:600;"><?= $d['quantite'] ?></td>
+                            <td style="text-align:center;">
+                                <?php if($has_couleur): ?>
+                                    <span class="badge-couleur">
+                                        <span class="color-dot" style="background-color: <?= htmlspecialchars($couleur_code ?? '#CCCCCC') ?>;"></span>
+                                        <?= htmlspecialchars($couleur_nom) ?>
+                                    </span>
+                                <?php else: ?>
+                                    <span class="text-muted" style="font-size:0.7rem;">Non spécifiée</span>
+                                <?php endif; ?>
+                            </td>
+                            <td style="text-align:center;">
+                                <?php if($has_taille): ?>
+                                    <span class="badge-taille">
+                                        <i class="bi bi-rulers"></i> <?= htmlspecialchars($taille_nom) ?>
+                                    </span>
+                                <?php else: ?>
+                                    <span class="text-muted" style="font-size:0.7rem;">Non spécifiée</span>
+                                <?php endif; ?>
+                            </td>
                             <td style="text-align:right;"><?= number_format($d['prix_unitaire'], 0, ',', ' ') ?> FCFA</td>
                             <td style="text-align:right;font-weight:600;color:#C8922A;">
-                                <?= number_format(($d['prix_unitaire'] ?? 0) * ($d['quantite'] ?? 0), 0, ',', ' ') ?> FCFA
+                                <?= number_format($total_ligne, 0, ',', ' ') ?> FCFA
                             </td>
                         </tr>
                         <?php endforeach; ?>
@@ -279,7 +467,7 @@ if (isset($_GET['changer_statut']) && isset($_GET['statut'])) {
                 </tbody>
                 <tfoot>
                     <tr class="table-total">
-                        <td colspan="3" class="text-end"><strong>TOTAL</strong></td>
+                        <td colspan="5" class="text-end"><strong>TOTAL</strong></td>
                         <td style="text-align:right;font-size:1.1rem;">
                             <strong><?= number_format($commande['total'], 0, ',', ' ') ?> FCFA</strong>
                         </td>

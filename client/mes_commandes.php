@@ -3,19 +3,13 @@
 // MES COMMANDES - Awa Ka Sugu
 // ============================================
 
-// ============================================
-// SESSION PUBLIQUE SÉPARÉE
-// ============================================
 session_name('PUBLIC_SESSION');
 session_start();
 
-// ============================================
-// VÉRIFICATION MAINTENANCE
-// ============================================
 require_once '../includes/maintenance_check.php';
 
 // Vérifier si le client est connecté
-if (!isset($_SESSION['client_id'])) {
+if (!isset($_SESSION['client_id']) || empty($_SESSION['client_id'])) {
     header('Location: connexion.php');
     exit;
 }
@@ -32,51 +26,131 @@ try {
     die("Erreur de connexion : " . $e->getMessage());
 }
 
-$client_id = $_SESSION['client_id'];
+$client_id = (int)$_SESSION['client_id'];
 
-// Récupérer les commandes du client avec client_id
-$stmt = $pdo->prepare("
-    SELECT * FROM commandes 
-    WHERE client_id = ? 
-    ORDER BY created_at DESC
-");
+// Récupérer le téléphone du client
+$stmt = $pdo->prepare("SELECT telephone, email, nom FROM clients WHERE id = ?");
 $stmt->execute([$client_id]);
-$commandes = $stmt->fetchAll();
+$client = $stmt->fetch();
 
-// Récupérer les commandes sans client_id mais avec le même email/téléphone
-$client_info = $pdo->prepare("SELECT email, telephone FROM clients WHERE id = ?");
-$client_info->execute([$client_id]);
-$client = $client_info->fetch();
+$commandes = [];
+$reservations = [];
 
-if ($client && !empty($client['email'])) {
-    $stmt2 = $pdo->prepare("
-        SELECT * FROM commandes 
-        WHERE client_id IS NULL 
-        AND (email = ? OR telephone = ?)
+// ============================================
+// 1. RÉCUPÉRER LES COMMANDES DE LA TABLE `commandes` (BOUTIQUE)
+// ============================================
+try {
+    $stmt = $pdo->prepare("
+        SELECT *, 'boutique' as type_commande 
+        FROM commandes 
+        WHERE client_id = ? 
         ORDER BY created_at DESC
     ");
-    $stmt2->execute([$client['email'], $client['telephone']]);
-    $commandes_sans_id = $stmt2->fetchAll();
+    $stmt->execute([$client_id]);
+    $commandes_boutique = $stmt->fetchAll();
     
-    // Fusionner les deux listes
-    $commandes = array_merge($commandes, $commandes_sans_id);
-    
-    // Trier par date décroissante
-    usort($commandes, function($a, $b) {
-        return strtotime($b['created_at']) - strtotime($a['created_at']);
-    });
+    if ($client && !empty($client['telephone'])) {
+        $stmt2 = $pdo->prepare("
+            SELECT *, 'boutique' as type_commande 
+            FROM commandes 
+            WHERE (client_id IS NULL OR client_id = 0)
+            AND telephone = ?
+            ORDER BY created_at DESC
+        ");
+        $stmt2->execute([$client['telephone']]);
+        $commandes_boutique_sans_id = $stmt2->fetchAll();
+        $commandes_boutique = array_merge($commandes_boutique, $commandes_boutique_sans_id);
+    }
+    $commandes = array_merge($commandes, $commandes_boutique);
+} catch(PDOException $e) {
+    error_log("Table commandes: " . $e->getMessage());
 }
 
-// Statistiques
+// ============================================
+// 2. RÉCUPÉRER LES COMMANDES DE LA TABLE `commandes_repas` (REPAS)
+// ============================================
+try {
+    $stmt = $pdo->query("SHOW TABLES LIKE 'commandes_repas'");
+    if ($stmt->rowCount() > 0) {
+        // Récupérer les commandes repas par téléphone (pas de client_id)
+        if ($client && !empty($client['telephone'])) {
+            $stmt = $pdo->prepare("
+                SELECT *, 'repas' as type_commande 
+                FROM commandes_repas 
+                WHERE telephone = ?
+                ORDER BY created_at DESC
+            ");
+            $stmt->execute([$client['telephone']]);
+            $commandes_repas = $stmt->fetchAll();
+            $commandes = array_merge($commandes, $commandes_repas);
+        }
+    }
+} catch(PDOException $e) {
+    error_log("Table commandes_repas: " . $e->getMessage());
+}
+
+// ============================================
+// 3. RÉCUPÉRER LES RÉSERVATIONS PAR TÉLÉPHONE
+// ============================================
+try {
+    if ($client && !empty($client['telephone'])) {
+        $stmt = $pdo->prepare("
+            SELECT *, 'reservation' as type_commande 
+            FROM reservations 
+            WHERE telephone = ?
+            ORDER BY date_reservation DESC, heure_reservation DESC
+        ");
+        $stmt->execute([$client['telephone']]);
+        $reservations = $stmt->fetchAll();
+    }
+} catch(PDOException $e) {
+    error_log("Table reservations: " . $e->getMessage());
+}
+
+// ============================================
+// 4. FUSIONNER COMMANDES + RÉSERVATIONS
+// ============================================
+$items = array_merge($commandes, $reservations);
+
+// Supprimer les doublons
+$unique = [];
+foreach ($items as $item) {
+    $key = ($item['id'] ?? 0) . '_' . ($item['type_commande'] ?? 'boutique');
+    $unique[$key] = $item;
+}
+$items = array_values($unique);
+
+// Trier par date décroissante
+usort($items, function($a, $b) {
+    $date_a = $a['created_at'] ?? $a['date_reservation'] ?? '1970-01-01';
+    $date_b = $b['created_at'] ?? $b['date_reservation'] ?? '1970-01-01';
+    return strtotime($date_b) - strtotime($date_a);
+});
+
+// ============================================
+// STATISTIQUES
+// ============================================
 $nb_commandes = count($commandes);
+$nb_reservations = count($reservations);
+$total_items = count($items);
 $total_depense = 0;
 foreach($commandes as $c) {
-    $total_depense += $c['total'];
+    $total_depense += (float)($c['total'] ?? 0);
 }
 
-$titre_page = 'Mes commandes';
+$titre_page = 'Mes commandes & réservations';
 require_once '../includes/header.php';
 require_once '../includes/navbar.php';
+
+$statuts_labels = [
+    'en_attente' => 'En attente',
+    'confirmee' => 'Confirmée',
+    'en_preparation' => 'En préparation',
+    'en_livraison' => 'En livraison',
+    'livree' => 'Livrée',
+    'terminee' => 'Terminée',
+    'annulee' => 'Annulée'
+];
 ?>
 
 <style>
@@ -219,6 +293,7 @@ require_once '../includes/navbar.php';
 .statut-en_preparation { background: #CCE5FF; color: #004085; }
 .statut-en_livraison { background: #E8D5F5; color: #6A1B9A; }
 .statut-livree { background: #D4EDDA; color: #155724; }
+.statut-terminee { background: #D4EDDA; color: #155724; }
 .statut-annulee { background: #F8D7DA; color: #721C24; }
 .btn-detail {
     background: none;
@@ -232,6 +307,26 @@ require_once '../includes/navbar.php';
 .btn-detail:hover {
     color: #9A6E1A;
     text-decoration: underline;
+}
+.badge-type {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.6rem;
+    font-weight: 600;
+    margin-left: 5px;
+}
+.badge-boutique {
+    background: #D1ECF1;
+    color: #0C5460;
+}
+.badge-repas {
+    background: #FFF3CD;
+    color: #856404;
+}
+.badge-reservation {
+    background: #E8D5F5;
+    color: #6A1B9A;
 }
 .empty-state {
     text-align: center;
@@ -281,17 +376,25 @@ require_once '../includes/navbar.php';
 <div class="compte-container">
     <div class="compte-header">
         <div>
-            <h1>📦 Mes commandes</h1>
-            <p>Retrouvez l'historique de toutes vos commandes</p>
+            <h1>📦 Mes commandes & réservations</h1>
+            <p>Retrouvez l'historique de toutes vos commandes et réservations</p>
         </div>
         <div class="compte-stats">
+            <div class="stat-card">
+                <div class="number"><?= $total_items ?></div>
+                <div class="label">Total</div>
+            </div>
             <div class="stat-card">
                 <div class="number"><?= $nb_commandes ?></div>
                 <div class="label">Commandes</div>
             </div>
             <div class="stat-card">
-                <div class="number"><?= number_format($total_depense, 0, ',', ' ') ?> F</div>
-                <div class="label">Total dépensé</div>
+                <div class="number"><?= $nb_reservations ?></div>
+                <div class="label">Réservations</div>
+            </div>
+            <div class="stat-card">
+                <div class="number"><?= number_format($total_depense, 0, ',', ' ') ?></div>
+                <div class="label">Dépensé (F)</div>
             </div>
         </div>
     </div>
@@ -311,9 +414,6 @@ require_once '../includes/navbar.php';
                 <a href="mes_factures.php"><i class="bi bi-file-pdf"></i> Mes factures</a>
             </div>
             <div class="menu-item">
-                <a href="mes_points.php"><i class="bi bi-star"></i> Points fidélité</a>
-            </div>
-            <div class="menu-item">
                 <a href="mon_profil.php"><i class="bi bi-person"></i> Mon profil</a>
             </div>
             <div class="menu-item logout">
@@ -322,66 +422,99 @@ require_once '../includes/navbar.php';
         </aside>
         
         <main class="compte-content">
-            <h2 class="section-title"><i class="bi bi-clock-history"></i> Historique des commandes</h2>
+            <h2 class="section-title"><i class="bi bi-clock-history"></i> Historique</h2>
             
-            <?php if(empty($commandes)): ?>
+            <?php if(empty($items)): ?>
                 <div class="empty-state">
                     <i class="bi bi-inbox"></i>
-                    <p>Vous n'avez pas encore passé de commande.</p>
+                    <p>Vous n'avez pas encore de commande ni de réservation.</p>
+                    <a href="menu.php" class="btn-boutique" style="margin-bottom:10px;">
+                        <i class="bi bi-bag"></i> Commander un repas
+                    </a>
                     <a href="../boutique/catalogue.php" class="btn-boutique">
-                        <i class="bi bi-bag"></i> Découvrir la boutique
+                        <i class="bi bi-shop"></i> Voir la boutique
                     </a>
                 </div>
             <?php else: ?>
                 <table class="table-commandes">
                     <thead>
                         <tr>
-                            <th>N° commande</th>
+                            <th>N°</th>
                             <th>Date</th>
-                            <th>Total</th>
+                            <th>Type</th>
+                            <th>Détail</th>
+                            <th>Montant</th>
                             <th>Statut</th>
                             <th style="text-align:center;">Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach($commandes as $c): 
-                            $statut_labels = [
-                                'en_attente' => 'En attente',
-                                'confirmee' => 'Confirmée',
-                                'en_preparation' => 'En préparation',
-                                'en_livraison' => 'En livraison',
-                                'livree' => 'Livrée',
-                                'annulee' => 'Annulée'
-                            ];
-                            $statut_key = $c['statut'] ?? 'en_attente';
+                        <?php foreach($items as $item): 
+                            $type = $item['type_commande'] ?? 'boutique';
+                            
+                            if ($type == 'reservation') {
+                                $numero = 'RES-' . str_pad($item['id'], 6, '0', STR_PAD_LEFT);
+                                $date = date('d/m/Y', strtotime($item['date_reservation']));
+                                $heure = substr($item['heure_reservation'] ?? '00:00', 0, 5);
+                                $detail = $item['nb_personnes'] . ' pers. à ' . $heure;
+                                $montant = '-';
+                                $statut_key = $item['statut'] ?? 'en_attente';
+                                $type_label = '📅 Réservation';
+                                $type_class = 'badge-reservation';
+                                $link = '#';
+                            } else {
+                                $numero = $item['numero_commande'] ?? 'N/A';
+                                $date = date('d/m/Y', strtotime($item['created_at'] ?? 'now'));
+                                $detail = $item['nom_plat'] ?? 'Commande';
+                                $montant = number_format($item['total'] ?? 0, 0, ',', ' ') . ' FCFA';
+                                $statut_key = $item['statut'] ?? 'en_attente';
+                                
+                                if ($type == 'repas') {
+                                    $type_label = '🍽️ Repas';
+                                    $type_class = 'badge-repas';
+                                } else {
+                                    $type_label = '🛍️ Boutique';
+                                    $type_class = 'badge-boutique';
+                                }
+                                $link = 'commande_detail.php?id=' . ($item['id'] ?? 0) . '&type=' . $type;
+                            }
                         ?>
                         <tr>
-                            <td><strong><?= htmlspecialchars($c['numero_commande']) ?></strong></td>
-                            <td style="color:#8A99AA;font-size:0.85rem;"><?= date('d/m/Y', strtotime($c['created_at'])) ?></td>
-                            <td style="font-weight:600;color:#C8922A;"><?= number_format($c['total'], 0, ',', ' ') ?> FCFA</td>
+                            <td><strong><?= htmlspecialchars($numero) ?></strong></td>
+                            <td style="color:#8A99AA;font-size:0.85rem;">
+                                <?= $date ?>
+                            </td>
+                            <td>
+                                <span class="badge-type <?= $type_class ?>">
+                                    <?= $type_label ?>
+                                </span>
+                            </td>
+                            <td style="font-size:0.85rem;color:#5A6B7A;">
+                                <?= htmlspecialchars($detail) ?>
+                            </td>
+                            <td style="font-weight:600;color:#C8922A;">
+                                <?= $montant ?>
+                            </td>
                             <td>
                                 <span class="statut statut-<?= $statut_key ?>">
-                                    <?= $statut_labels[$statut_key] ?? $statut_key ?>
+                                    <?= $statuts_labels[$statut_key] ?? $statut_key ?>
                                 </span>
                             </td>
                             <td style="text-align:center;">
-                                <a href="commande_detail.php?id=<?= $c['id'] ?>" class="btn-detail">
+                                <?php if ($type != 'reservation'): ?>
+                                <a href="<?= $link ?>" class="btn-detail">
                                     <i class="bi bi-eye"></i> Voir
                                 </a>
+                                <?php else: ?>
+                                <span style="color:#8A99AA;font-size:0.7rem;">
+                                    <i class="bi bi-calendar-check"></i>
+                                </span>
+                                <?php endif; ?>
                             </td>
                         </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
-                
-                <?php if($nb_commandes > 0): ?>
-                <div style="margin-top:20px;padding:15px 20px;background:#FEFBF5;border-radius:12px;border:1px solid rgba(200,146,42,0.1);">
-                    <p style="font-size:0.85rem;color:#8A99AA;margin:0;">
-                        <i class="bi bi-info-circle" style="color:#C8922A;"></i>
-                        Vous avez effectué <strong style="color:#C8922A;"><?= $nb_commandes ?></strong> commande(s) pour un total de <strong style="color:#C8922A;"><?= number_format($total_depense, 0, ',', ' ') ?> FCFA</strong>
-                    </p>
-                </div>
-                <?php endif; ?>
             <?php endif; ?>
         </main>
     </div>

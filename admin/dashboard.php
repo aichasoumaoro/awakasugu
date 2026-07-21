@@ -1,5 +1,9 @@
 <?php
 // ============================================
+// DASHBOARD - ADMIN AWA KA SUGU
+// ============================================
+
+// ============================================
 // SESSION ADMIN SÉPARÉE
 // ============================================
 require_once 'session_config.php';
@@ -21,91 +25,309 @@ try {
     die("Erreur : " . $e->getMessage());
 }
 
-// Fonction pour extraire l'ID YouTube
-function getYoutubeId($url) {
-    preg_match('/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&]+)/', $url, $matches);
-    return $matches[1] ?? '';
+// ============================================
+// FONCTIONS STATISTIQUES
+// ============================================
+
+/**
+ * Calcule le nombre total de produits
+ */
+function getTotalProduits($pdo) {
+    $stmt = $pdo->query("SELECT COUNT(*) as nb FROM produits");
+    return (int)$stmt->fetchColumn();
+}
+
+/**
+ * Calcule le nombre de produits en rupture de stock
+ */
+function getProduitsRupture($pdo) {
+    $stmt = $pdo->query("SELECT COUNT(*) as nb FROM produits WHERE stock <= 0");
+    return (int)$stmt->fetchColumn();
+}
+
+/**
+ * Calcule le nombre total de clients
+ */
+function getTotalClients($pdo) {
+    $stmt = $pdo->query("SELECT COUNT(*) as nb FROM clients");
+    return (int)$stmt->fetchColumn();
+}
+
+/**
+ * Calcule le nombre de nouveaux clients du mois
+ */
+function getNouveauxClientsMois($pdo) {
+    $stmt = $pdo->query("
+        SELECT COUNT(*) as nb 
+        FROM clients 
+        WHERE MONTH(created_at) = MONTH(CURDATE()) 
+        AND YEAR(created_at) = YEAR(CURDATE())
+    ");
+    return (int)$stmt->fetchColumn();
+}
+
+/**
+ * Calcule le nombre de commandes confirmées (livrées, confirmées, terminées)
+ */
+function getNbCommandesConfirmees($pdo) {
+    $stmt = $pdo->query("
+        SELECT COUNT(*) as nb 
+        FROM commandes 
+        WHERE statut IN ('confirmee', 'livree', 'terminee')
+    ");
+    return (int)$stmt->fetchColumn();
+}
+
+/**
+ * Calcule le nombre de commandes en attente
+ */
+function getNbCommandesAttente($pdo) {
+    $stmt = $pdo->query("
+        SELECT COUNT(*) as nb 
+        FROM commandes 
+        WHERE statut = 'en_attente'
+    ");
+    return (int)$stmt->fetchColumn();
+}
+
+/**
+ * Calcule le nombre total de ventes sur place (boutique)
+ */
+function getNbVentesSurPlace($pdo) {
+    $stmt = $pdo->query("
+        SELECT COUNT(*) as nb 
+        FROM ventes_boutique 
+        WHERE statut = 'confirmee'
+    ");
+    return (int)$stmt->fetchColumn();
+}
+
+/**
+ * Calcule le nombre de paiements en attente
+ */
+function getNbPaiementsAttente($pdo) {
+    $stmt = $pdo->query("
+        SELECT COUNT(*) as nb 
+        FROM paiements 
+        WHERE statut = 'en_attente'
+    ");
+    return (int)$stmt->fetchColumn();
+}
+
+/**
+ * Calcule le CA total des commandes confirmées (livrées, confirmées, terminées)
+ */
+function getCaCommandesTotal($pdo) {
+    $stmt = $pdo->query("
+        SELECT COALESCE(SUM(total), 0) as total 
+        FROM commandes 
+        WHERE statut IN ('confirmee', 'livree', 'terminee')
+    ");
+    return (float)$stmt->fetchColumn();
+}
+
+/**
+ * Calcule le CA des commandes du mois (livrées, confirmées, terminées)
+ */
+function getCaCommandesMois($pdo) {
+    $stmt = $pdo->query("
+        SELECT COALESCE(SUM(total), 0) as total 
+        FROM commandes 
+        WHERE statut IN ('confirmee', 'livree', 'terminee')
+        AND MONTH(created_at) = MONTH(CURDATE()) 
+        AND YEAR(created_at) = YEAR(CURDATE())
+    ");
+    return (float)$stmt->fetchColumn();
+}
+
+/**
+ * Calcule le CA total des ventes sur place
+ */
+function getCaVentesSurPlaceTotal($pdo) {
+    $stmt = $pdo->query("
+        SELECT COALESCE(SUM(total), 0) as total 
+        FROM ventes_boutique 
+        WHERE statut = 'confirmee'
+    ");
+    return (float)$stmt->fetchColumn();
+}
+
+/**
+ * Calcule le CA des ventes sur place du mois
+ */
+function getCaVentesSurPlaceMois($pdo) {
+    $stmt = $pdo->query("
+        SELECT COALESCE(SUM(total), 0) as total 
+        FROM ventes_boutique 
+        WHERE statut = 'confirmee'
+        AND MONTH(created_at) = MONTH(CURDATE()) 
+        AND YEAR(created_at) = YEAR(CURDATE())
+    ");
+    return (float)$stmt->fetchColumn();
+}
+
+/**
+ * Calcule le total des achats du mois
+ */
+function getAchatsMois($pdo) {
+    $stmt = $pdo->query("
+        SELECT COALESCE(SUM(total_ligne), 0) as total 
+        FROM achats 
+        WHERE MONTH(date_achat) = MONTH(CURDATE()) 
+        AND YEAR(date_achat) = YEAR(CURDATE())
+    ");
+    return (float)$stmt->fetchColumn();
 }
 
 // ============================================
-// STATISTIQUES GÉNÉRALES
+// RÉCUPÉRATION DES STATISTIQUES
 // ============================================
 
 // Produits
-$total_produits = $pdo->query("SELECT COUNT(*) FROM produits")->fetchColumn();
-$produits_rupture = $pdo->query("SELECT COUNT(*) FROM produits WHERE stock <= 0")->fetchColumn();
-$valeur_stock = $pdo->query("SELECT COALESCE(SUM(prix * stock), 0) FROM produits")->fetchColumn();
+$total_produits = getTotalProduits($pdo);
+$produits_rupture = getProduitsRupture($pdo);
 
 // Clients
-$total_clients = $pdo->query("SELECT COUNT(*) FROM clients")->fetchColumn();
-$clients_mois = $pdo->query("SELECT COUNT(*) FROM clients WHERE MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())")->fetchColumn();
+$total_clients = getTotalClients($pdo);
+$clients_mois = getNouveauxClientsMois($pdo);
 
-// ============================================
-// COMMANDES EN LIGNE
-// ============================================
-$total_commandes = $pdo->query("SELECT COUNT(*) FROM commandes")->fetchColumn();
-$commandes_mois = $pdo->query("SELECT COUNT(*) FROM commandes WHERE MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())")->fetchColumn();
-$commandes_attente = $pdo->query("SELECT COUNT(*) FROM commandes WHERE statut = 'en_attente'")->fetchColumn();
-$ca_commandes_mois = $pdo->query("SELECT COALESCE(SUM(total), 0) FROM commandes WHERE MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())")->fetchColumn();
+// Commandes
+$total_commandes = getNbCommandesConfirmees($pdo);
+$commandes_attente = getNbCommandesAttente($pdo);
+$ca_commandes_total = getCaCommandesTotal($pdo);
+$ca_commandes_mois = getCaCommandesMois($pdo);
 
-// ============================================
-// VENTES EN BOUTIQUE (POS)
-// ============================================
-$total_ventes_boutique = $pdo->query("SELECT COUNT(*) FROM ventes_boutique")->fetchColumn();
-$ventes_boutique_mois = $pdo->query("SELECT COUNT(*) FROM ventes_boutique WHERE MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())")->fetchColumn();
-$ca_ventes_boutique_mois = $pdo->query("SELECT COALESCE(SUM(total), 0) FROM ventes_boutique WHERE MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())")->fetchColumn();
-$ventes_boutique_recents = $pdo->query("SELECT * FROM ventes_boutique ORDER BY created_at DESC LIMIT 5")->fetchAll();
+// Ventes sur place
+$total_ventes_boutique = getNbVentesSurPlace($pdo);
+$ca_ventes_boutique_total = getCaVentesSurPlaceTotal($pdo);
+$ca_ventes_boutique_mois = getCaVentesSurPlaceMois($pdo);
 
-// ============================================
-// ACHATS (Approvisionnement)
-// ============================================
-$total_achats = $pdo->query("SELECT COUNT(*) FROM achats")->fetchColumn();
-$achats_mois = $pdo->query("SELECT COALESCE(SUM(total_ligne), 0) FROM achats WHERE MONTH(date_achat) = MONTH(CURDATE()) AND YEAR(date_achat) = YEAR(CURDATE())")->fetchColumn();
-$achats_recents = $pdo->query("SELECT * FROM achats ORDER BY date_achat DESC LIMIT 5")->fetchAll();
+// Paiements
+$nb_paiements_attente = getNbPaiementsAttente($pdo);
 
-// ============================================
-// STATISTIQUES GLOBALES
-// ============================================
+// Achats
+$achats_mois = getAchatsMois($pdo);
+
+// Calcul des totaux
 $ca_total_mois = $ca_commandes_mois + $ca_ventes_boutique_mois;
+$ca_total_global = $ca_commandes_total + $ca_ventes_boutique_total;
 $benefice_brut = $ca_total_mois - $achats_mois;
 
-// Ventes mensuelles (Commandes en ligne)
-$ventes_mois = [];
-for($i = 1; $i <= 12; $i++) {
-    $stmt = $pdo->prepare("SELECT COALESCE(SUM(total), 0) FROM commandes WHERE MONTH(created_at) = ? AND YEAR(created_at) = YEAR(CURDATE())");
-    $stmt->execute([$i]);
-    $ventes_mois[$i] = $stmt->fetchColumn();
-}
-
-// Ventes boutique mensuelles
-$ventes_boutique_mois_graph = [];
-for($i = 1; $i <= 12; $i++) {
-    $stmt = $pdo->prepare("SELECT COALESCE(SUM(total), 0) FROM ventes_boutique WHERE MONTH(created_at) = ? AND YEAR(created_at) = YEAR(CURDATE())");
-    $stmt->execute([$i]);
-    $ventes_boutique_mois_graph[$i] = $stmt->fetchColumn();
-}
-
-// Top ventes (produits)
-$best_sellers = $pdo->query("
-    SELECT p.nom, SUM(dc.quantite) as vendu
-    FROM details_commande dc
-    JOIN produits p ON p.id = dc.produit_id
-    GROUP BY dc.produit_id
-    ORDER BY vendu DESC
+// Ventes boutique récentes
+$ventes_boutique_recents = $pdo->query("
+    SELECT * FROM ventes_boutique 
+    WHERE statut = 'confirmee'
+    ORDER BY created_at DESC 
     LIMIT 5
 ")->fetchAll();
 
-// Dernières commandes
-$dernieres_commandes = $pdo->query("SELECT * FROM commandes ORDER BY created_at DESC LIMIT 5")->fetchAll();
+// Réservations
+$reservations_aujourdhui = $pdo->query("
+    SELECT COUNT(*) FROM reservations WHERE date_reservation = CURDATE()
+")->fetchColumn();
+$reservations_attente = $pdo->query("
+    SELECT COUNT(*) FROM reservations WHERE statut = 'en_attente'
+")->fetchColumn();
+
+// Nouveaux clients (sans les points)
+$nouveaux_clients = $pdo->query("
+    SELECT id, nom, telephone, created_at FROM clients ORDER BY created_at DESC LIMIT 5
+")->fetchAll();
+
+// Commandes en attente avec infos client
+$commandes_en_attente = $pdo->query("
+    SELECT c.*, cl.nom as client_nom, cl.telephone as client_telephone 
+    FROM commandes c
+    LEFT JOIN clients cl ON cl.id = c.client_id
+    WHERE c.statut = 'en_attente'
+    ORDER BY c.created_at DESC 
+    LIMIT 20
+")->fetchAll();
 
 // Alertes stock
-$alertes_stock = $pdo->query("SELECT * FROM produits WHERE stock <= seuil_alerte AND stock > 0 ORDER BY stock ASC LIMIT 5")->fetchAll();
+$alertes_stock = $pdo->query("
+    SELECT * FROM produits 
+    WHERE stock <= seuil_alerte AND stock > 0 
+    ORDER BY stock ASC 
+    LIMIT 5
+")->fetchAll();
+
+// Ventes mensuelles pour le graphique
+$ventes_mois = [];
+for($i = 1; $i <= 12; $i++) {
+    $stmt = $pdo->prepare("
+        SELECT COALESCE(SUM(total), 0) 
+        FROM commandes 
+        WHERE statut IN ('confirmee', 'livree', 'terminee')
+        AND MONTH(created_at) = ? 
+        AND YEAR(created_at) = YEAR(CURDATE())
+    ");
+    $stmt->execute([$i]);
+    $ventes_mois[$i] = (float)$stmt->fetchColumn();
+}
+
+// Ventes boutique mensuelles pour le graphique
+$ventes_boutique_mois_graph = [];
+for($i = 1; $i <= 12; $i++) {
+    $stmt = $pdo->prepare("
+        SELECT COALESCE(SUM(total), 0) 
+        FROM ventes_boutique 
+        WHERE statut = 'confirmee'
+        AND MONTH(created_at) = ? 
+        AND YEAR(created_at) = YEAR(CURDATE())
+    ");
+    $stmt->execute([$i]);
+    $ventes_boutique_mois_graph[$i] = (float)$stmt->fetchColumn();
+}
+
+// Maintenance
+$maintenance_status = $pdo->query("
+    SELECT site_actif, message_maintenance 
+    FROM maintenance_globale 
+    ORDER BY id DESC LIMIT 1
+")->fetch();
+$site_en_maintenance = $maintenance_status && $maintenance_status['site_actif'] == 0;
+
+// Message de paiement
+$message_paiement = $_SESSION['message_paiement'] ?? '';
+unset($_SESSION['message_paiement']);
+
+// Statistiques pour affichage
+$commandes_attente_count = getNbCommandesAttente($pdo);
+$nb_ventes_boutique = getNbVentesSurPlace($pdo);
+$nb_paiements_attente_count = getNbPaiementsAttente($pdo);
 
 // ============================================
-// STATUT MAINTENANCE
+// GESTION DE LA SUPPRESSION D'UNE COMMANDE
 // ============================================
-$maintenance_status = $pdo->query("SELECT site_actif, message_maintenance FROM maintenance_globale ORDER BY id DESC LIMIT 1")->fetch();
-$site_en_maintenance = $maintenance_status && $maintenance_status['site_actif'] == 0;
+$delete_message = '';
+$delete_error = '';
+
+if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
+    $commande_id = (int)$_GET['delete'];
+    
+    try {
+        $stmt = $pdo->prepare("SELECT statut FROM commandes WHERE id = ?");
+        $stmt->execute([$commande_id]);
+        $commande = $stmt->fetch();
+        
+        if ($commande) {
+            $stmt = $pdo->prepare("DELETE FROM details_commande WHERE commande_id = ?");
+            $stmt->execute([$commande_id]);
+            
+            $stmt = $pdo->prepare("DELETE FROM commandes WHERE id = ?");
+            $stmt->execute([$commande_id]);
+            
+            $delete_message = "La commande a été supprimée avec succès.";
+            // Rafraîchir le compteur
+            $commandes_attente_count = getNbCommandesAttente($pdo);
+        } else {
+            $delete_error = "Commande introuvable.";
+        }
+    } catch(PDOException $e) {
+        $delete_error = "Erreur lors de la suppression : " . $e->getMessage();
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -121,7 +343,6 @@ $site_en_maintenance = $maintenance_status && $maintenance_status['site_actif'] 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Jost', sans-serif; background: #F5F7FA; color: #1A2C3E; display: flex; min-height: 100vh; }
 
-        /* ===== SIDEBAR ===== */
         .sidebar {
             width: 260px;
             background: #0D0D0D;
@@ -200,7 +421,6 @@ $site_en_maintenance = $maintenance_status && $maintenance_status['site_actif'] 
         .nav-item.active i { color: #C8922A; }
         .nav-item.logout:hover { color: #E74C3C; background: rgba(231,76,60,0.1); border-left-color: #E74C3C; }
 
-        /* ===== MAIN ===== */
         .main {
             margin-left: 260px;
             flex: 1;
@@ -229,14 +449,43 @@ $site_en_maintenance = $maintenance_status && $maintenance_status['site_actif'] 
         }
         .topbar-title span { color: #C8922A; }
         .topbar-breadcrumb { font-size: 0.75rem; color: #999; margin-top: 2px; }
+        .topbar-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
         
-        .topbar-right {
-            display: flex;
+        /* Alerte commandes en attente */
+        .alert-badge {
+            display: inline-flex;
             align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
+            gap: 6px;
+            background: #E74C3C;
+            color: #fff;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            animation: pulse 2s infinite;
+            text-decoration: none;
+            transition: all 0.3s;
         }
-        
+        .alert-badge:hover {
+            background: #C0392B;
+            transform: scale(1.05);
+            color: #fff;
+        }
+        .alert-badge i { font-size: 0.9rem; }
+        .alert-badge .count {
+            background: rgba(255,255,255,0.25);
+            padding: 0 8px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+        }
+        .alert-badge.hidden { display: none; }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(231, 76, 60, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0); }
+        }
+
         .btn-admin {
             display: inline-flex;
             align-items: center;
@@ -253,13 +502,8 @@ $site_en_maintenance = $maintenance_status && $maintenance_status['site_actif'] 
             background: #fff;
         }
         .btn-admin:hover { border-color: #C8922A; color: #C8922A; }
-        .btn-primary {
-            background: #C8922A;
-            color: #fff;
-            border-color: #C8922A;
-        }
-        .btn-primary:hover { background: #9A6E1A; color: #fff; border-color: #9A6E1A; }
-        
+        .btn-primary { background: #C8922A; color: #fff; border-color: #C8922A; }
+        .btn-primary:hover { background: #9A6E1A; color: #fff; }
         .btn-maintenance {
             background: <?= $site_en_maintenance ? '#E74C3C' : '#2ECC71' ?>;
             color: #fff;
@@ -268,12 +512,38 @@ $site_en_maintenance = $maintenance_status && $maintenance_status['site_actif'] 
         .btn-maintenance:hover {
             background: <?= $site_en_maintenance ? '#C0392B' : '#27AE60' ?>;
             color: #fff;
-            border-color: <?= $site_en_maintenance ? '#C0392B' : '#27AE60' ?>;
+        }
+        .btn-site {
+            background: linear-gradient(135deg, #C8922A, #E8B55A);
+            color: #fff !important;
+            border-color: #C8922A !important;
+            box-shadow: 0 4px 14px rgba(200,146,42,0.25);
+        }
+        .btn-site:hover {
+            background: linear-gradient(135deg, #9A6E1A, #C8922A) !important;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 22px rgba(200,146,42,0.35);
+            color: #fff !important;
         }
 
         .content { padding: 28px 32px; flex: 1; }
+        .alert-success {
+            background: #D4EDDA;
+            border-left: 4px solid #27AE60;
+            color: #0A3622;
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .alert-danger {
+            background: #F8D7DA;
+            border-left: 4px solid #E74C3C;
+            color: #721C24;
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
 
-        /* Welcome */
         .welcome-card {
             background: linear-gradient(135deg, #fff 0%, #FEF9F0 100%);
             border-radius: 20px;
@@ -285,14 +555,12 @@ $site_en_maintenance = $maintenance_status && $maintenance_status['site_actif'] 
             flex-wrap: wrap;
             gap: 20px;
             border: 1px solid rgba(200,146,42,0.15);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
         }
         .welcome-card h2 { font-size: 1.5rem; font-weight: 700; color: #1A2C3E; margin-bottom: 6px; }
         .welcome-card h2 span { color: #C8922A; }
         .welcome-card p { font-size: 0.85rem; color: #8A99AA; }
         .welcome-icon { font-size: 2.5rem; opacity: 0.7; }
 
-        /* Stats */
         .stats-row {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -321,6 +589,7 @@ $site_en_maintenance = $maintenance_status && $maintenance_status['site_actif'] 
         .ic-blue { background: rgba(41,128,185,0.1); color: #2980B9; }
         .ic-purple { background: rgba(142,68,173,0.1); color: #8E44AD; }
         .ic-red { background: rgba(231,76,60,0.1); color: #E74C3C; }
+        .ic-gold { background: rgba(200,146,42,0.15); color: #C8922A; }
         .stat-val {
             font-family: 'Playfair Display', serif;
             font-size: 1.4rem; font-weight: 700;
@@ -328,7 +597,6 @@ $site_en_maintenance = $maintenance_status && $maintenance_status['site_actif'] 
         }
         .stat-lbl { font-size: 0.7rem; color: #8A99AA; margin-top: 2px; }
 
-        /* Cards */
         .card-white {
             background: #fff;
             border-radius: 20px;
@@ -356,18 +624,6 @@ $site_en_maintenance = $maintenance_status && $maintenance_status['site_actif'] 
         .card-title i { color: #C8922A; font-size: 1.1rem; }
         .card-body { padding: 18px 24px; }
 
-        /* Alertes stock */
-        .alert-stock {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 16px;
-            background: #FEF6E6;
-            border-left: 3px solid #E67E22;
-            border-radius: 8px;
-            margin-bottom: 8px;
-        }
-        .alert-stock span { color: #5A6B7A; font-size: 0.85rem; }
         .btn-small {
             padding: 4px 14px;
             border-radius: 20px;
@@ -376,6 +632,11 @@ $site_en_maintenance = $maintenance_status && $maintenance_status['site_actif'] 
             transition: all 0.2s;
             font-family: 'Jost', sans-serif;
             font-weight: 600;
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
         }
         .btn-small.or { background: rgba(200,146,42,0.12); color: #C8922A; }
         .btn-small.or:hover { background: #C8922A; color: #fff; }
@@ -383,64 +644,129 @@ $site_en_maintenance = $maintenance_status && $maintenance_status['site_actif'] 
         .btn-small.green:hover { background: #145E38; }
         .btn-small.blue { background: rgba(41,128,185,0.12); color: #2980B9; }
         .btn-small.blue:hover { background: #2980B9; color: #fff; }
+        .btn-small.red { background: rgba(231,76,60,0.12); color: #E74C3C; }
+        .btn-small.red:hover { background: #E74C3C; color: #fff; }
+        .btn-small.gray { background: #F0F2F5; color: #5A6B7A; }
+        .btn-small.gray:hover { background: #E0E6ED; }
 
         .badge-statut {
             display: inline-block;
             padding: 3px 12px;
             border-radius: 20px;
-            font-size: 0.7rem;
+            font-size: 0.65rem;
             font-weight: 600;
-            white-space: nowrap;
         }
         .statut-en_attente { background: #FEF6E6; color: #E67E22; }
         .statut-confirmee { background: #E8F5E9; color: #2E7D32; }
+        .statut-en_preparation { background: #FFF3E0; color: #E67E22; }
+        .statut-en_livraison { background: #E3F2FD; color: #1565C0; }
         .statut-livree { background: #E8F5E9; color: #1A7A4A; }
+        .statut-terminee { background: #E8F5E9; color: #1A7A4A; }
+        .statut-annulee { background: #FBE9E7; color: #C62828; }
 
-        .btn-detail {
-            background: rgba(200,146,42,0.08);
-            padding: 5px 10px;
-            border-radius: 6px;
-            color: #C8922A;
-            display: inline-flex;
-            align-items: center;
-            text-decoration: none;
-            transition: all 0.2s;
-        }
-        .btn-detail:hover { background: #C8922A; color: #fff; }
-
-        .empty-state { text-align: center; padding: 30px; color: #8A99AA; }
-        .empty-state i { font-size: 2rem; margin-bottom: 10px; display: block; }
+        .empty-state { text-align: center; padding: 25px; color: #8A99AA; }
+        .empty-state i { font-size: 2rem; display: block; margin-bottom: 5px; color: #D5D5D5; }
+        .empty-state p { margin: 0; font-size: 0.85rem; }
 
         .dashboard-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-columns: 1fr 1fr;
             gap: 20px;
             margin-bottom: 28px;
         }
 
-        /* Vente item */
         .vente-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 10px 0;
+            padding: 10px 16px;
             border-bottom: 1px solid #F0F2F5;
         }
         .vente-item:last-child { border-bottom: none; }
-        .vente-info .vente-numero { font-weight: 600; font-size: 0.85rem; }
-        .vente-info .vente-client { font-size: 0.7rem; color: #8A99AA; }
-        .vente-total { color: #C8922A; font-weight: 700; font-size: 0.9rem; }
+        .vente-numero { font-weight: 600; font-size: 0.85rem; }
+        .vente-client { font-size: 0.7rem; color: #8A99AA; }
 
-        .achat-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 0;
-            border-bottom: 1px solid #F0F2F5;
+        /* Tableau des commandes */
+        .table-container {
+            overflow-x: auto;
         }
-        .achat-item:last-child { border-bottom: none; }
-        .achat-produit { font-weight: 600; font-size: 0.85rem; }
-        .achat-fournisseur { font-size: 0.65rem; color: #8A99AA; }
+        .table-commandes {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        .table-commandes th {
+            text-align: left;
+            padding: 12px 16px;
+            background: #F8F9FA;
+            color: #5A6B7A;
+            font-weight: 600;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid #E8ECF0;
+        }
+        .table-commandes td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #F0F2F5;
+            vertical-align: middle;
+        }
+        .table-commandes tr:hover {
+            background: #F8F9FA;
+        }
+        .table-commandes .actions {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .table-commandes .actions .btn-small {
+            font-size: 0.65rem;
+            padding: 3px 10px;
+        }
+        .text-muted { color: #8A99AA; }
+        .fw-600 { font-weight: 600; }
+        .text-gold { color: #C8922A; }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.active {
+            display: flex;
+        }
+        .modal-box {
+            background: #fff;
+            border-radius: 16px;
+            padding: 30px;
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+        }
+        .modal-box h3 {
+            font-family: 'Playfair Display', serif;
+            margin-bottom: 10px;
+        }
+        .modal-box p {
+            color: #5A6B7A;
+            margin-bottom: 20px;
+        }
+        .modal-box .modal-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        .modal-box .btn-small {
+            padding: 8px 24px;
+            font-size: 0.8rem;
+        }
 
         @media (max-width: 1100px) {
             .stats-row { grid-template-columns: repeat(2, 1fr); }
@@ -453,10 +779,24 @@ $site_en_maintenance = $maintenance_status && $maintenance_status['site_actif'] 
             .stats-row { grid-template-columns: 1fr 1fr; }
             .dashboard-grid { grid-template-columns: 1fr; }
             .topbar-right { flex-wrap: wrap; }
+            .table-commandes { font-size: 0.75rem; }
+            .table-commandes th, .table-commandes td { padding: 8px 10px; }
         }
     </style>
 </head>
 <body>
+
+<!-- ===== MODAL DE CONFIRMATION SUPPRESSION ===== -->
+<div class="modal-overlay" id="deleteModal">
+    <div class="modal-box">
+        <h3>⚠️ Confirmer la suppression</h3>
+        <p>Êtes-vous sûr de vouloir supprimer cette commande ? Cette action est irréversible.</p>
+        <div class="modal-actions">
+            <a href="#" class="btn-small gray" onclick="closeDeleteModal()">Annuler</a>
+            <a href="#" class="btn-small red" id="confirmDeleteBtn">Supprimer</a>
+        </div>
+    </div>
+</div>
 
 <!-- ===== SIDEBAR ===== -->
 <aside class="sidebar">
@@ -490,6 +830,7 @@ $site_en_maintenance = $maintenance_status && $maintenance_status['site_actif'] 
         <a href="promotions.php" class="nav-item"><i class="bi bi-percent"></i> Promotions</a>
         <a href="videos.php" class="nav-item"><i class="bi bi-camera-reels"></i> Vidéos</a>
         <a href="factures.php" class="nav-item"><i class="bi bi-file-earmark-text"></i> Factures</a>
+        <a href="paiements.php" class="nav-item"><i class="bi bi-credit-card"></i> Paiements</a>
         <a href="maintenance.php" class="nav-item"><i class="bi bi-tools"></i> Maintenance</a>
 
         <div class="nav-section">Compte</div>
@@ -507,7 +848,13 @@ $site_en_maintenance = $maintenance_status && $maintenance_status['site_actif'] 
             <div class="topbar-breadcrumb">Administration → Vue d'ensemble</div>
         </div>
         <div class="topbar-right">
-            <!-- Bouton Maintenance (à droite) -->
+            <!-- Alerte commandes en attente -->
+            <a href="commandes.php?filtre=en_attente" class="alert-badge <?= $commandes_attente_count == 0 ? 'hidden' : '' ?>">
+                <i class="bi bi-bell-fill"></i>
+                <?= $commandes_attente_count ?> commande(s) en attente
+                <span class="count">!</span>
+            </a>
+            
             <a href="maintenance.php" class="btn-admin btn-maintenance">
                 <i class="bi bi-tools"></i>
                 <?= $site_en_maintenance ? '🔴 Maintenance active' : '🟢 Site actif' ?>
@@ -515,13 +862,25 @@ $site_en_maintenance = $maintenance_status && $maintenance_status['site_actif'] 
             <a href="point_de_vente.php" class="btn-admin btn-primary">
                 <i class="bi bi-cash-stack"></i> Nouvelle vente
             </a>
-            <a href="../index.php" target="_blank" class="btn-admin">
+            <a href="../index.php" class="btn-admin btn-site">
                 <i class="bi bi-eye"></i> Voir le site
             </a>
         </div>
     </div>
 
     <div class="content">
+
+        <?php if($message_paiement): ?>
+            <div class="alert-success"><i class="bi bi-check-circle-fill"></i> <?= $message_paiement ?></div>
+        <?php endif; ?>
+        
+        <?php if($delete_message): ?>
+            <div class="alert-success"><i class="bi bi-check-circle-fill"></i> <?= $delete_message ?></div>
+        <?php endif; ?>
+        
+        <?php if($delete_error): ?>
+            <div class="alert-danger"><i class="bi bi-exclamation-triangle-fill"></i> <?= $delete_error ?></div>
+        <?php endif; ?>
 
         <!-- Welcome -->
         <div class="welcome-card">
@@ -574,67 +933,188 @@ $site_en_maintenance = $maintenance_status && $maintenance_status['site_actif'] 
                 <div class="stat-icon ic-or"><i class="bi bi-cart"></i></div>
                 <div>
                     <div class="stat-val"><?= $total_commandes ?></div>
-                    <div class="stat-lbl">Commandes en ligne</div>
+                    <div class="stat-lbl">Commandes validées</div>
                 </div>
             </div>
             <div class="stat-box">
                 <div class="stat-icon ic-or"><i class="bi bi-cash-stack"></i></div>
                 <div>
-                    <div class="stat-val"><?= $total_ventes_boutique ?></div>
-                    <div class="stat-lbl">Ventes en boutique</div>
+                    <div class="stat-val"><?= $nb_ventes_boutique ?></div>
+                    <div class="stat-lbl">Ventes sur place</div>
                 </div>
             </div>
             <div class="stat-box">
-                <div class="stat-icon ic-green"><i class="bi bi-receipt"></i></div>
+                <div class="stat-icon ic-gold"><i class="bi bi-credit-card"></i></div>
                 <div>
-                    <div class="stat-val"><?= number_format($ca_commandes_mois, 0, ',', ' ') ?> F</div>
-                    <div class="stat-lbl">CA Commandes en ligne</div>
+                    <div class="stat-val"><?= $nb_paiements_attente_count ?></div>
+                    <div class="stat-lbl">Paiements en attente</div>
                 </div>
             </div>
             <div class="stat-box">
-                <div class="stat-icon ic-blue"><i class="bi bi-shop"></i></div>
+                <div class="stat-icon ic-red"><i class="bi bi-clock-history"></i></div>
                 <div>
-                    <div class="stat-val"><?= number_format($ca_ventes_boutique_mois, 0, ',', ' ') ?> F</div>
-                    <div class="stat-lbl">CA Ventes boutique</div>
+                    <div class="stat-val"><?= $commandes_attente_count ?></div>
+                    <div class="stat-lbl">Commandes en attente</div>
                 </div>
             </div>
         </div>
 
         <!-- ============================================ -->
-        <!-- GRAPHIQUE ET TOP VENTES -->
+        <!-- COMMANDES EN ATTENTE -->
         <!-- ============================================ -->
-        <div class="dashboard-grid" style="grid-template-columns: 2fr 1fr;">
+        <div class="card-white">
+            <div class="card-header">
+                <div class="card-title">
+                    <i class="bi bi-clock-history"></i> Commandes à traiter
+                    <span style="font-size:0.7rem;font-weight:normal;background:#F0F2F5;padding:2px 10px;border-radius:20px;margin-left:8px;">
+                        <?= count($commandes_en_attente) ?> en attente
+                    </span>
+                </div>
+                <a href="commandes.php?filtre=en_attente" class="btn-small green">
+                    <i class="bi bi-check2-circle"></i> Gérer les commandes
+                </a>
+            </div>
+            <div class="card-body" style="padding:0;">
+                <div class="table-container">
+                    <table class="table-commandes">
+                        <thead>
+                            <tr>
+                                <th>N° Commande</th>
+                                <th>Client</th>
+                                <th>Date</th>
+                                <th>Total</th>
+                                <th>Paiement</th>
+                                <th>Statut</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if(empty($commandes_en_attente)): ?>
+                                <tr>
+                                    <td colspan="7" style="text-align:center;padding:30px;color:#8A99AA;">
+                                        <i class="bi bi-check-circle" style="font-size:1.5rem;display:block;margin-bottom:5px;color:#27AE60;"></i>
+                                        ✅ Aucune commande en attente
+                                    </td>
+                                </tr>
+                            <?php else: 
+                                foreach($commandes_en_attente as $c):
+                                    $statutLabels = [
+                                        'en_attente' => 'En attente',
+                                        'confirmee' => 'Confirmée',
+                                        'en_preparation' => 'Préparation',
+                                        'en_livraison' => 'Livraison',
+                                        'livree' => 'Livrée',
+                                        'terminee' => 'Terminée',
+                                        'annulee' => 'Annulée'
+                                    ];
+                                    $statutLabel = $statutLabels[$c['statut']] ?? $c['statut'];
+                            ?>
+                                <tr>
+                                    <td class="fw-600"><?= htmlspecialchars($c['numero_commande'] ?? 'N/A') ?></td>
+                                    <td>
+                                        <?= htmlspecialchars($c['client_nom'] ?? 'Inconnu') ?>
+                                        <div class="text-muted" style="font-size:0.7rem;"><?= htmlspecialchars($c['client_telephone'] ?? '') ?></div>
+                                    </td>
+                                    <td><?= date('d/m/Y H:i', strtotime($c['created_at'])) ?></td>
+                                    <td class="text-gold fw-600"><?= number_format($c['total'], 0, ',', ' ') ?> F</td>
+                                    <td>
+                                        <span style="background:rgba(200,146,42,0.1);padding:2px 10px;border-radius:20px;font-size:0.65rem;color:#C8922A;">
+                                            <?= htmlspecialchars($c['mode_paiement'] ?? 'Non défini') ?>
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="badge-statut statut-<?= $c['statut'] ?>">
+                                            <?= $statutLabel ?>
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="actions">
+                                            <a href="commande_detail.php?id=<?= $c['id'] ?>" class="btn-small blue" title="Voir le détail">
+                                                <i class="bi bi-eye"></i>
+                                            </a>
+                                            <a href="commande_pdf.php?id=<?= $c['id'] ?>" class="btn-small or" title="Télécharger PDF" target="_blank">
+                                                <i class="bi bi-file-pdf"></i>
+                                            </a>
+                                            <button onclick="confirmDelete(<?= $c['id'] ?>)" class="btn-small red" title="Supprimer">
+                                                <i class="bi bi-trash3"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
 
-            <!-- Graphique combiné -->
+        <!-- ============================================ -->
+        <!-- GRILLE 2 COLONNES : RÉSERVATIONS / NOUVEAUX CLIENTS -->
+        <!-- ============================================ -->
+        <div class="dashboard-grid">
+            
+            <!-- 1. Réservations -->
             <div class="card-white">
                 <div class="card-header">
-                    <div class="card-title">
-                        <i class="bi bi-graph-up"></i> Ventes mensuelles
-                        <span style="font-size:0.7rem;font-weight:normal;background:#F0F2F5;padding:2px 8px;border-radius:20px;margin-left:8px;"><?= date('Y') ?></span>
-                    </div>
+                    <div class="card-title"><i class="bi bi-calendar-check"></i> Réservations</div>
+                    <a href="reservations.php" class="btn-small or">Voir tout</a>
                 </div>
-                <div class="card-body">
-                    <canvas id="ventesChart" height="250"></canvas>
+                <div class="card-body" style="padding:0;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:15px;">
+                        <div style="text-align:center;background:#FEFBF5;border-radius:10px;padding:15px;border:1px solid rgba(200,146,42,0.08);">
+                            <div style="font-size:1.5rem;font-weight:700;color:#2980B9;"><?= $reservations_aujourdhui ?></div>
+                            <div style="font-size:0.65rem;color:#8A99AA;">Aujourd'hui</div>
+                        </div>
+                        <div style="text-align:center;background:#FEFBF5;border-radius:10px;padding:15px;border:1px solid rgba(200,146,42,0.08);">
+                            <div style="font-size:1.5rem;font-weight:700;color:#E67E22;"><?= $reservations_attente ?></div>
+                            <div style="font-size:0.65rem;color:#8A99AA;">En attente</div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Top ventes produits -->
+            <!-- 2. Nouveaux clients -->
             <div class="card-white">
                 <div class="card-header">
-                    <div class="card-title"><i class="bi bi-trophy-fill"></i> Meilleures ventes</div>
+                    <div class="card-title"><i class="bi bi-people"></i> Nouveaux clients</div>
+                    <a href="clients.php" class="btn-small or">Voir tout</a>
                 </div>
-                <div class="card-body">
-                    <?php if(empty($best_sellers)): ?>
-                        <div class="empty-state"><i class="bi bi-trophy"></i><p>Aucune vente</p></div>
+                <div class="card-body" style="padding:0;">
+                    <?php if(empty($nouveaux_clients)): ?>
+                        <div class="empty-state">
+                            <i class="bi bi-people"></i>
+                            <p>Aucun nouveau client</p>
+                        </div>
                     <?php else: ?>
-                        <?php foreach($best_sellers as $p): ?>
-                        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #F0F2F5;">
-                            <span style="font-size:0.85rem;"><?= htmlspecialchars($p['nom']) ?></span>
-                            <span style="color:#C8922A;font-weight:600;"><?= $p['vendu'] ?> vendus</span>
+                        <?php foreach($nouveaux_clients as $c): ?>
+                        <div class="vente-item">
+                            <div>
+                                <div class="vente-numero"><?= htmlspecialchars($c['nom'] ?? 'Inconnu') ?></div>
+                                <div class="vente-client"><?= htmlspecialchars($c['telephone'] ?? '') ?> • <?= date('d/m/Y', strtotime($c['created_at'])) ?></div>
+                            </div>
+                            <div>
+                                <span style="color:#8A99AA;font-size:0.7rem;">Client</span>
+                            </div>
                         </div>
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </div>
+            </div>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- GRAPHIQUE -->
+        <!-- ============================================ -->
+        <div class="card-white">
+            <div class="card-header">
+                <div class="card-title">
+                    <i class="bi bi-graph-up"></i> Ventes mensuelles
+                    <span style="font-size:0.7rem;font-weight:normal;background:#F0F2F5;padding:2px 8px;border-radius:20px;margin-left:8px;"><?= date('Y') ?></span>
+                </div>
+            </div>
+            <div class="card-body">
+                <canvas id="ventesChart" height="200"></canvas>
             </div>
         </div>
 
@@ -649,8 +1129,8 @@ $site_en_maintenance = $maintenance_status && $maintenance_status['site_actif'] 
             </div>
             <div class="card-body">
                 <?php foreach($alertes_stock as $p): ?>
-                <div class="alert-stock">
-                    <span><strong><?= htmlspecialchars($p['nom']) ?></strong> — Stock restant : <strong><?= $p['stock'] ?></strong></span>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:#FEF6E6;border-left:3px solid #E67E22;border-radius:8px;margin-bottom:8px;">
+                    <span style="color:#5A6B7A;font-size:0.85rem;"><strong><?= htmlspecialchars($p['nom']) ?></strong> — Stock restant : <strong><?= $p['stock'] ?></strong></span>
                     <a href="produit_modifier.php?id=<?= $p['id'] ?>" class="btn-small or">Réapprovisionner</a>
                 </div>
                 <?php endforeach; ?>
@@ -658,109 +1138,38 @@ $site_en_maintenance = $maintenance_status && $maintenance_status['site_actif'] 
         </div>
         <?php endif; ?>
 
-        <!-- ============================================ -->
-        <!-- COMMANDES EN ATTENTE -->
-        <!-- ============================================ -->
-        <?php if($commandes_attente > 0): ?>
-        <div style="background:#E8F5E9;border-left:3px solid #1A7A4A;padding:14px 20px;border-radius:12px;margin-bottom:28px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
-            <p style="color:#2E7D32;font-size:0.85rem;margin:0;">
-                <i class="bi bi-clock-history"></i> <strong><?= $commandes_attente ?> commande(s)</strong> en attente de traitement.
-            </p>
-            <a href="commandes.php?filtre=en_attente" class="btn-small green">Traiter →</a>
-        </div>
-        <?php endif; ?>
-
-        <!-- ============================================ -->
-        <!-- 3 COLONNES : Commandes / Ventes boutique / Achats -->
-        <!-- ============================================ -->
-        <div class="dashboard-grid">
-
-            <!-- Dernières commandes en ligne -->
-            <div class="card-white">
-                <div class="card-header">
-                    <div class="card-title"><i class="bi bi-receipt"></i> Commandes en ligne</div>
-                    <a href="commandes.php" class="btn-small or">Voir tout</a>
-                </div>
-                <div class="card-body" style="padding:0;">
-                    <?php if(empty($dernieres_commandes)): ?>
-                        <div class="empty-state"><i class="bi bi-inbox"></i><p>Aucune commande</p></div>
-                    <?php else: ?>
-                        <?php foreach($dernieres_commandes as $c): ?>
-                        <div class="vente-item" style="padding:10px 16px;">
-                            <div class="vente-info">
-                                <div class="vente-numero"><?= htmlspecialchars($c['numero_commande']) ?></div>
-                                <div class="vente-client"><?= htmlspecialchars($c['nom_client']) ?> • <?= date('d/m/Y', strtotime($c['created_at'])) ?></div>
-                            </div>
-                            <div>
-                                <span class="badge-statut statut-<?= $c['statut'] ?>" style="font-size:0.65rem;">
-                                    <?= ['en_attente'=>'En attente','confirmee'=>'Confirmée','en_preparation'=>'Préparation','en_livraison'=>'Livraison','livree'=>'Livrée','annulee'=>'Annulée'][$c['statut']] ?? $c['statut'] ?>
-                                </span>
-                                <span style="color:#C8922A;font-weight:600;margin-left:10px;"><?= number_format($c['total'], 0, ',', ' ') ?> F</span>
-                            </div>
-                        </div>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </div>
-            </div>
-
-            <!-- Dernières ventes en boutique -->
-            <div class="card-white">
-                <div class="card-header">
-                    <div class="card-title"><i class="bi bi-shop"></i> Ventes boutique</div>
-                    <a href="point_de_vente.php" class="btn-small blue">Nouvelle</a>
-                </div>
-                <div class="card-body" style="padding:0;">
-                    <?php if(empty($ventes_boutique_recents)): ?>
-                        <div class="empty-state"><i class="bi bi-cart-x"></i><p>Aucune vente en boutique</p></div>
-                    <?php else: ?>
-                        <?php foreach($ventes_boutique_recents as $v): ?>
-                        <div class="vente-item" style="padding:10px 16px;">
-                            <div class="vente-info">
-                                <div class="vente-numero"><?= htmlspecialchars($v['numero_vente']) ?></div>
-                                <div class="vente-client"><?= htmlspecialchars($v['client_nom']) ?> • <?= date('d/m/Y', strtotime($v['created_at'])) ?></div>
-                            </div>
-                            <div>
-                                <span style="background:rgba(200,146,42,0.1);padding:2px 10px;border-radius:20px;font-size:0.65rem;color:#C8922A;"><?= $v['mode_paiement'] ?></span>
-                                <span style="color:#C8922A;font-weight:700;margin-left:10px;"><?= number_format($v['total'], 0, ',', ' ') ?> F</span>
-                            </div>
-                        </div>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </div>
-            </div>
-
-            <!-- Derniers achats (approvisionnement) -->
-            <div class="card-white">
-                <div class="card-header">
-                    <div class="card-title"><i class="bi bi-box-seam"></i> Approvisionnements</div>
-                    <a href="achats.php" class="btn-small or">Voir tout</a>
-                </div>
-                <div class="card-body" style="padding:0;">
-                    <?php if(empty($achats_recents)): ?>
-                        <div class="empty-state"><i class="bi bi-box"></i><p>Aucun achat</p></div>
-                    <?php else: ?>
-                        <?php foreach($achats_recents as $a): ?>
-                        <div class="achat-item" style="padding:10px 16px;">
-                            <div>
-                                <div class="achat-produit"><?= htmlspecialchars($a['nom_produit']) ?></div>
-                                <div class="achat-fournisseur"><?= htmlspecialchars($a['fournisseur_nom'] ?? 'Inconnu') ?> • <?= $a['quantite'] ?> unités</div>
-                            </div>
-                            <div style="color:#2980B9;font-weight:600;"><?= number_format($a['total_ligne'], 0, ',', ' ') ?> F</div>
-                        </div>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </div>
-            </div>
-        </div>
-
     </div><!-- /content -->
 </div><!-- /main -->
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
+// ============================================
+// GESTION DE LA SUPPRESSION DE COMMANDE
+// ============================================
+let deleteId = null;
+
+function confirmDelete(id) {
+    deleteId = id;
+    document.getElementById('deleteModal').classList.add('active');
+    document.getElementById('confirmDeleteBtn').href = '?delete=' + id;
+}
+
+function closeDeleteModal() {
+    document.getElementById('deleteModal').classList.remove('active');
+    deleteId = null;
+}
+
+// Fermer la modale en cliquant à l'extérieur
+document.getElementById('deleteModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeDeleteModal();
+    }
+});
+
+// ============================================
+// GRAPHIQUE
+// ============================================
 const ctx = document.getElementById('ventesChart').getContext('2d');
 
-// Données combinées
 const labels = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
 const commandesData = <?= json_encode(array_values($ventes_mois)) ?>;
 const boutiqueData = <?= json_encode(array_values($ventes_boutique_mois_graph)) ?>;
@@ -779,7 +1188,7 @@ new Chart(ctx, {
                 borderRadius: 4,
             },
             {
-                label: 'Ventes boutique',
+                label: 'Ventes sur place',
                 data: boutiqueData,
                 backgroundColor: 'rgba(41,128,185,0.7)',
                 borderColor: '#2980B9',

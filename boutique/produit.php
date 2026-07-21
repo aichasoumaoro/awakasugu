@@ -44,18 +44,18 @@ if ($produit['categorie_id']) {
     $categorie = $stmt->fetch();
 }
 
-// ✅ Récupérer les couleurs du produit
+// Récupérer les couleurs UNIQUES du produit
 $stmt = $pdo->prepare("
-    SELECT c.* FROM couleurs c
+    SELECT DISTINCT c.* FROM couleurs c
     JOIN produit_couleurs pc ON pc.couleur_id = c.id
     WHERE pc.produit_id = ?
 ");
 $stmt->execute([$id]);
 $couleurs_produit = $stmt->fetchAll();
 
-// ✅ Récupérer les tailles du produit
+// Récupérer les tailles UNIQUES du produit
 $stmt = $pdo->prepare("
-    SELECT t.* FROM tailles t
+    SELECT DISTINCT t.* FROM tailles t
     JOIN produit_tailles pt ON pt.taille_id = t.id
     WHERE pt.produit_id = ?
 ");
@@ -68,6 +68,63 @@ if ($produit['categorie_id']) {
     $stmt = $pdo->prepare("SELECT * FROM produits WHERE categorie_id = ? AND id != ? AND est_visible = 1 LIMIT 4");
     $stmt->execute([$produit['categorie_id'], $id]);
     $similaires = $stmt->fetchAll();
+}
+
+// Fonction pour l'image du produit
+function getProductImageDetail($image) {
+    if (empty($image)) {
+        return 'https://placehold.co/600x600/F5F5F5/C8922A?text=Produit';
+    }
+    
+    $image = trim($image);
+    $image_name = pathinfo($image, PATHINFO_FILENAME);
+    $extension = pathinfo($image, PATHINFO_EXTENSION);
+    
+    $dossiers = [
+        '../uploads/produits/voile/',
+        'uploads/produits/voile/',
+        '../uploads/produits/pret a porter femme/',
+        'uploads/produits/pret a porter femme/',
+        '../uploads/produits/les tallons/',
+        'uploads/produits/les tallons/',
+        '../uploads/produits/fermés/',
+        'uploads/produits/fermés/',
+        '../uploads/produits/les turbants/',
+        'uploads/produits/les turbants/',
+        '../uploads/produits/les foulards/',
+        'uploads/produits/les foulards/',
+        '../uploads/produits/les foullards/',
+        'uploads/produits/les foullards/',
+        '../uploads/produits/port-monaie/',
+        'uploads/produits/port-monaie/',
+        '../uploads/produits/sacs a mains/',
+        'uploads/produits/sacs a mains/',
+        '../uploads/produits/ensemble tallons sacs/',
+        'uploads/produits/ensemble tallons sacs/',
+        '../uploads/produits/abayas/',
+        'uploads/produits/abayas/',
+        '../uploads/produits/abayas pour enfants/',
+        'uploads/produits/abayas pour enfants/',
+        '../uploads/produits/',
+        'uploads/produits/',
+    ];
+    
+    $extensions = ['', '.jpeg', '.jpg', '.png', '.gif', '.webp'];
+    
+    if (!empty($extension)) {
+        $extensions = array_merge([$extension], $extensions);
+    }
+    
+    foreach ($dossiers as $dossier) {
+        foreach ($extensions as $ext) {
+            $test_path = $dossier . $image_name . $ext;
+            if (file_exists($test_path)) {
+                return $test_path;
+            }
+        }
+    }
+    
+    return 'https://placehold.co/600x600/F5F5F5/C8922A?text=' . urlencode($image_name);
 }
 
 $prix_affiché = $produit['prix'];
@@ -83,7 +140,6 @@ require_once '../includes/navbar.php';
 ?>
 
 <style>
-/* ========== PAGE PRODUIT ========== */
 .produit-page { padding: 40px 0 60px; }
 .container-custom { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
 .produit-grid {
@@ -151,7 +207,6 @@ require_once '../includes/navbar.php';
 .stock-rupture { background: #F8D7DA; color: #721C24; }
 .stock-faible { background: #FFF3CD; color: #856404; }
 
-/* ✅ STYLES POUR COULEURS ET TAILLES */
 .produit-options {
     margin: 15px 0;
     padding: 15px 0;
@@ -222,14 +277,33 @@ require_once '../includes/navbar.php';
     border-radius: 10px;
     font-size: 0.95rem;
     font-family: 'Jost', sans-serif;
-    transition: border-color 0.3s;
 }
 .qte-input:focus { outline: none; border-color: #C8922A; }
+
+/* --- STYLES POUR LES DEUX BOUTONS --- */
+.produit-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.produit-actions .btn-group-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.produit-actions .btn-ajouter {
+    flex: 1;
+    min-width: 160px;
+}
+
 .btn-ajouter {
     background: linear-gradient(135deg, #C8922A, #E8B55A);
     color: white;
     border: none;
-    padding: 14px 30px;
+    padding: 14px 20px;
     border-radius: 12px;
     font-weight: 700;
     font-size: 0.95rem;
@@ -238,15 +312,52 @@ require_once '../includes/navbar.php';
     align-items: center;
     justify-content: center;
     gap: 10px;
-    width: 100%;
     cursor: pointer;
+    text-decoration: none;
 }
 .btn-ajouter:hover {
     background: linear-gradient(135deg, #9A6E1A, #C8922A);
     transform: translateY(-2px);
     box-shadow: 0 5px 20px rgba(200,146,42,0.3);
 }
-.btn-ajouter:disabled { background: #ccc; cursor: not-allowed; transform: none; box-shadow: none; }
+.btn-ajouter:disabled { 
+    background: #ccc; 
+    cursor: not-allowed; 
+    transform: none; 
+    box-shadow: none; 
+}
+
+.btn-commander {
+    background: linear-gradient(135deg, #0D0D0D, #2D2D2D);
+    color: white;
+    border: none;
+    padding: 14px 20px;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    transition: all 0.3s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    cursor: pointer;
+    text-decoration: none;
+    flex: 1;
+    min-width: 160px;
+}
+.btn-commander:hover {
+    background: linear-gradient(135deg, #000000, #1A1A1A);
+    transform: translateY(-2px);
+    box-shadow: 0 5px 20px rgba(0,0,0,0.25);
+}
+.btn-commander:disabled {
+    background: #999;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+/* --- FIN STYLES BOUTONS --- */
+
 .similaires { margin-top: 60px; }
 .similaires h3 {
     font-family: 'Playfair Display', serif;
@@ -297,7 +408,6 @@ require_once '../includes/navbar.php';
 }
 .produit-avis-link:hover { color: #9A6E1A; }
 
-/* ✅ FORMULAIRE AVEC CHAMPS CACHÉS POUR COULEUR ET TAILLE */
 #couleur_input, #taille_input { display: none; }
 
 @media (max-width: 900px) {
@@ -308,6 +418,14 @@ require_once '../includes/navbar.php';
     .similaires-grid { grid-template-columns: repeat(2, 1fr); }
     .produit-nom { font-size: 1.5rem; }
     .produit-prix { font-size: 1.8rem; }
+    .produit-actions .btn-group-actions {
+        flex-direction: column;
+    }
+    .produit-actions .btn-ajouter,
+    .btn-commander {
+        min-width: 100%;
+        flex: none;
+    }
 }
 @media (max-width: 500px) {
     .similaires-grid { grid-template-columns: 1fr; }
@@ -317,19 +435,13 @@ require_once '../includes/navbar.php';
 <div class="produit-page">
     <div class="container-custom">
         <div class="produit-grid">
-            <!-- Image -->
             <div class="produit-image">
                 <?php 
-                if(!empty($produit['image_principale']) && file_exists('../uploads/produits/' . $produit['image_principale'])) {
-                    $image = '../uploads/produits/' . $produit['image_principale'];
-                } else {
-                    $image = 'https://placehold.co/600x600/F7EDD8/C8922A?text=' . urlencode($produit['nom']);
-                }
+                $image = getProductImageDetail($produit['image_principale'] ?? '');
                 ?>
                 <img src="<?= $image ?>" alt="<?= htmlspecialchars($produit['nom']) ?>">
             </div>
 
-            <!-- Informations -->
             <div class="produit-info">
                 <?php if($categorie): ?>
                     <span class="produit-categorie"><?= htmlspecialchars($categorie['nom']) ?></span>
@@ -359,27 +471,30 @@ require_once '../includes/navbar.php';
                     <i class="bi bi-box-seam"></i> <?= $stock_text ?>
                 </div>
 
-                <!-- ✅ COULEURS DISPONIBLES -->
-                <?php if(!empty($couleurs_produit)): ?>
+                <!-- COULEURS DISPONIBLES -->
                 <div class="produit-options">
-                    <div class="option-title"><i class="bi bi-palette"></i> Couleurs disponibles</div>
+                    <div class="option-title"><i class="bi bi-palette"></i> Couleurs disponibles <?php if(!empty($couleurs_produit)): ?>(<?= count($couleurs_produit) ?>)<?php endif; ?></div>
+                    <?php if(!empty($couleurs_produit)): ?>
                     <div class="couleurs-list">
                         <?php foreach($couleurs_produit as $c): ?>
                         <div class="couleur-item" 
-                             style="background-color: <?= $c['code_hex'] ?>; border-color: <?= $c['code_hex'] == '#FFFFFF' ? '#ccc' : 'var(--bs-border-color)' ?>;"
+                             style="background-color: <?= $c['code_hex'] ?>; border-color: <?= $c['code_hex'] == '#FFFFFF' ? '#ccc' : '#E0E0E0' ?>;"
                              data-couleur-id="<?= $c['id'] ?>"
                              data-couleur-nom="<?= htmlspecialchars($c['nom']) ?>"
-                             onclick="selectionnerCouleur(this)"></div>
+                             onclick="selectionnerCouleur(this)"
+                             title="<?= htmlspecialchars($c['nom']) ?>"></div>
                         <?php endforeach; ?>
                     </div>
                     <small id="couleur_selectionnee" style="color:#8A99AA;font-size:0.75rem;">Cliquez sur une couleur</small>
+                    <?php else: ?>
+                    <p style="color:#999;font-size:0.8rem;">Aucune couleur disponible pour ce produit</p>
+                    <?php endif; ?>
                 </div>
-                <?php endif; ?>
 
-                <!-- ✅ TAILLES DISPONIBLES -->
-                <?php if(!empty($tailles_produit)): ?>
+                <!-- TAILLES DISPONIBLES -->
                 <div class="produit-options">
-                    <div class="option-title"><i class="bi bi-rulers"></i> Tailles disponibles</div>
+                    <div class="option-title"><i class="bi bi-rulers"></i> Tailles disponibles <?php if(!empty($tailles_produit)): ?>(<?= count($tailles_produit) ?>)<?php endif; ?></div>
+                    <?php if(!empty($tailles_produit)): ?>
                     <div class="tailles-list">
                         <?php foreach($tailles_produit as $t): ?>
                         <div class="taille-item" data-taille-id="<?= $t['id'] ?>" data-taille-nom="<?= htmlspecialchars($t['nom']) ?>" onclick="selectionnerTaille(this)">
@@ -388,8 +503,10 @@ require_once '../includes/navbar.php';
                         <?php endforeach; ?>
                     </div>
                     <small id="taille_selectionnee" style="color:#8A99AA;font-size:0.75rem;">Cliquez sur une taille</small>
+                    <?php else: ?>
+                    <p style="color:#999;font-size:0.8rem;">Aucune taille disponible pour ce produit</p>
+                    <?php endif; ?>
                 </div>
-                <?php endif; ?>
 
                 <div class="produit-description">
                     <h3>📝 Description</h3>
@@ -406,42 +523,56 @@ require_once '../includes/navbar.php';
                 </a>
 
                 <?php if($produit['stock'] > 0): ?>
-                <form action="panier.php" method="POST" style="margin-top:20px;">
+                <!-- ========================================== -->
+                <!-- SECTION AVEC LES DEUX BOUTONS              -->
+                <!-- ========================================== -->
+                <div class="produit-actions">
                     <div class="d-flex align-items-center gap-3 mb-3">
                         <label class="fw-bold" style="font-size:0.9rem;">Quantité :</label>
-                        <input type="number" name="quantite" class="qte-input" value="1" min="1" max="<?= $produit['stock'] ?>">
+                        <input type="number" id="quantite_produit" class="qte-input" value="1" min="1" max="<?= $produit['stock'] ?>">
                     </div>
-                    <!-- ✅ CHAMPS CACHÉS POUR COULEUR ET TAILLE -->
-                    <input type="hidden" name="couleur_id" id="couleur_input" value="">
-                    <input type="hidden" name="taille_id" id="taille_input" value="">
-                    <input type="hidden" name="action" value="ajouter">
-                    <input type="hidden" name="produit_id" value="<?= $produit['id'] ?>">
-                    <button type="submit" class="btn-ajouter" id="btnAjouterPanier">
-                        <i class="bi bi-cart-plus"></i> Ajouter au panier
-                    </button>
-                </form>
+                    
+                    <div class="btn-group-actions">
+                        <!-- Bouton AJOUTER AU PANIER (formulaire POST vers panier.php) -->
+                        <form action="panier.php" method="POST" style="flex:1;min-width:160px;margin:0;">
+                            <input type="hidden" name="produit_id" value="<?= $produit['id'] ?>">
+                            <input type="hidden" name="quantite" id="quantite_ajouter" value="1">
+                            <input type="hidden" name="couleur_id" id="couleur_input" value="">
+                            <input type="hidden" name="taille_id" id="taille_input" value="">
+                            <input type="hidden" name="action" value="ajouter">
+                            <button type="submit" class="btn-ajouter" id="btnAjouterPanier" style="width:100%;">
+                                <i class="bi bi-cart-plus"></i> Ajouter au panier
+                            </button>
+                        </form>
+                        
+                        <!-- Bouton COMMANDER (formulaire GET vers commande.php) -->
+                        <form action="commande.php" method="GET" style="flex:1;min-width:160px;margin:0;">
+                            <input type="hidden" name="produit_id" value="<?= $produit['id'] ?>">
+                            <input type="hidden" name="quantite" id="quantite_commander" value="1">
+                            <input type="hidden" name="couleur_id" id="couleur_input_commander" value="">
+                            <input type="hidden" name="taille_id" id="taille_input_commander" value="">
+                            <button type="submit" class="btn-commander" id="btnCommander" style="width:100%;">
+                                <i class="bi bi-lightning-fill"></i> Commander
+                            </button>
+                        </form>
+                    </div>
+                </div>
                 <?php else: ?>
-                    <button class="btn-ajouter" style="margin-top:20px;" disabled>
+                    <button class="btn-ajouter" style="margin-top:20px; width:100%;" disabled>
                         <i class="bi bi-x-circle"></i> Indisponible
                     </button>
                 <?php endif; ?>
             </div>
         </div>
 
-        <!-- Produits similaires -->
         <?php if(!empty($similaires)): ?>
         <div class="similaires">
             <h3>✨ Vous aimerez aussi</h3>
             <div class="similaires-grid">
-                <?php foreach($similaires as $s): ?>
+                <?php foreach($similaires as $s): 
+                    $img = getProductImageDetail($s['image_principale'] ?? '');
+                ?>
                 <a href="produit.php?id=<?= $s['id'] ?>" class="similaire-card">
-                    <?php 
-                    if(!empty($s['image_principale']) && file_exists('../uploads/produits/'.$s['image_principale'])) {
-                        $img = '../uploads/produits/' . $s['image_principale'];
-                    } else {
-                        $img = 'https://placehold.co/300x180/F7EDD8/C8922A?text=' . urlencode($s['nom']);
-                    }
-                    ?>
                     <img src="<?= $img ?>" alt="<?= htmlspecialchars($s['nom']) ?>">
                     <h5><?= htmlspecialchars($s['nom']) ?></h5>
                     <div class="similaire-prix"><?= number_format($s['prix'], 0, ',', ' ') ?> FCFA</div>
@@ -454,64 +585,93 @@ require_once '../includes/navbar.php';
 </div>
 
 <script>
-// ✅ Sélection des couleurs
+// Sélection de la couleur
 function selectionnerCouleur(element) {
-    // Retirer la classe active de tous
     document.querySelectorAll('.couleur-item').forEach(el => el.classList.remove('active'));
-    // Ajouter la classe active à l'élément cliqué
     element.classList.add('active');
-    // Mettre à jour le champ caché
-    document.getElementById('couleur_input').value = element.dataset.couleurId;
-    // Mettre à jour le label
-    document.getElementById('couleur_selectionnee').textContent = 'Couleur sélectionnée : ' + element.dataset.couleurNom;
-    // Vérifier si tout est sélectionné
+    
+    const couleurId = element.dataset.couleurId;
+    const couleurNom = element.dataset.couleurNom;
+    
+    // Mettre à jour les deux formulaires
+    document.getElementById('couleur_input').value = couleurId;
+    document.getElementById('couleur_input_commander').value = couleurId;
+    
+    document.getElementById('couleur_selectionnee').textContent = 'Couleur sélectionnée : ' + couleurNom;
     verifierSelection();
 }
 
-// ✅ Sélection des tailles
+// Sélection de la taille
 function selectionnerTaille(element) {
-    // Retirer la classe active de tous
     document.querySelectorAll('.taille-item').forEach(el => el.classList.remove('active'));
-    // Ajouter la classe active à l'élément cliqué
     element.classList.add('active');
-    // Mettre à jour le champ caché
-    document.getElementById('taille_input').value = element.dataset.tailleId;
-    // Mettre à jour le label
-    document.getElementById('taille_selectionnee').textContent = 'Taille sélectionnée : ' + element.dataset.tailleNom;
-    // Vérifier si tout est sélectionné
+    
+    const tailleId = element.dataset.tailleId;
+    const tailleNom = element.dataset.tailleNom;
+    
+    // Mettre à jour les deux formulaires
+    document.getElementById('taille_input').value = tailleId;
+    document.getElementById('taille_input_commander').value = tailleId;
+    
+    document.getElementById('taille_selectionnee').textContent = 'Taille sélectionnée : ' + tailleNom;
     verifierSelection();
 }
 
-// ✅ Vérifier si les options sont sélectionnées
+// Mise à jour de la quantité
+document.addEventListener('DOMContentLoaded', function() {
+    const qteInput = document.getElementById('quantite_produit');
+    const qteAjouter = document.getElementById('quantite_ajouter');
+    const qteCommander = document.getElementById('quantite_commander');
+    
+    qteInput.addEventListener('change', function() {
+        const val = parseInt(this.value) || 1;
+        qteAjouter.value = val;
+        qteCommander.value = val;
+    });
+    
+    qteInput.addEventListener('input', function() {
+        const val = parseInt(this.value) || 1;
+        qteAjouter.value = val;
+        qteCommander.value = val;
+    });
+});
+
 function verifierSelection() {
     const couleur = document.getElementById('couleur_input').value;
     const taille = document.getElementById('taille_input').value;
-    const btn = document.getElementById('btnAjouterPanier');
+    const btnPanier = document.getElementById('btnAjouterPanier');
+    const btnCommander = document.getElementById('btnCommander');
     
-    // Vérifier si des éléments de sélection existent
     const couleurItems = document.querySelectorAll('.couleur-item');
     const tailleItems = document.querySelectorAll('.taille-item');
     
-    // Si des couleurs existent, vérifier qu'une est sélectionnée
+    let selectionOk = true;
+    let message = '';
+    
     if (couleurItems.length > 0 && !couleur) {
-        btn.disabled = true;
-        btn.innerHTML = '<i class="bi bi-exclamation-circle"></i> Sélectionnez une couleur';
-        return;
+        selectionOk = false;
+        message = 'Choisir couleur';
     }
     
-    // Si des tailles existent, vérifier qu'une est sélectionnée
     if (tailleItems.length > 0 && !taille) {
-        btn.disabled = true;
-        btn.innerHTML = '<i class="bi bi-exclamation-circle"></i> Sélectionnez une taille';
-        return;
+        selectionOk = false;
+        message = message ? 'Couleur & taille' : 'Choisir taille';
     }
     
-    // Tout est sélectionné
-    btn.disabled = false;
-    btn.innerHTML = '<i class="bi bi-cart-plus"></i> Ajouter au panier';
+    if (selectionOk) {
+        btnPanier.disabled = false;
+        btnPanier.innerHTML = '<i class="bi bi-cart-plus"></i> Ajouter au panier';
+        btnCommander.disabled = false;
+        btnCommander.innerHTML = '<i class="bi bi-lightning-fill"></i> Commander';
+    } else {
+        btnPanier.disabled = true;
+        btnPanier.innerHTML = '<i class="bi bi-exclamation-circle"></i> ' + message;
+        btnCommander.disabled = true;
+        btnCommander.innerHTML = '<i class="bi bi-exclamation-circle"></i> ' + message;
+    }
 }
 
-// Initialiser la vérification au chargement
+// Initialisation
 document.addEventListener('DOMContentLoaded', function() {
     verifierSelection();
 });

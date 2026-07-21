@@ -22,6 +22,131 @@ try {
     die("Erreur : " . $e->getMessage());
 }
 
+// ============================================
+// FONCTION POUR AJOUTER DES POINTS
+// ============================================
+function ajouterPoints($pdo, $client_id, $commande_id, $points, $action) {
+    if ($points <= 0 || !$client_id) return false;
+    
+    try {
+        // Ajouter les points dans la table clients
+        $stmt = $pdo->prepare("UPDATE clients SET points_fidelite = points_fidelite + ? WHERE id = ?");
+        $stmt->execute([$points, $client_id]);
+        
+        // Ajouter dans l'historique
+        $stmt = $pdo->prepare("
+            INSERT INTO fidelite_historique (client_id, commande_id, points, action, created_at)
+            VALUES (?, ?, ?, ?, NOW())
+        ");
+        $stmt->execute([$client_id, $commande_id, $points, $action]);
+        
+        return true;
+    } catch(PDOException $e) {
+        error_log("Erreur ajout points : " . $e->getMessage());
+        return false;
+    }
+}
+
+// ============================================
+// FONCTION POUR RETIRER DES POINTS
+// ============================================
+function retirerPoints($pdo, $client_id, $commande_id, $points, $action) {
+    if ($points <= 0 || !$client_id) return false;
+    
+    try {
+        $stmt = $pdo->prepare("UPDATE clients SET points_fidelite = GREATEST(points_fidelite - ?, 0) WHERE id = ?");
+        $stmt->execute([$points, $client_id]);
+        
+        $stmt = $pdo->prepare("
+            INSERT INTO fidelite_historique (client_id, commande_id, points, action, created_at)
+            VALUES (?, ?, ?, ?, NOW())
+        ");
+        $stmt->execute([$client_id, $commande_id, -$points, $action]);
+        
+        return true;
+    } catch(PDOException $e) {
+        error_log("Erreur retrait points : " . $e->getMessage());
+        return false;
+    }
+}
+
+// ============================================
+// CHANGER LE STATUT D'UNE COMMANDE (BOUTIQUE)
+// ============================================
+if (isset($_GET['statut']) && isset($_GET['id'])) {
+    $id = (int)$_GET['id'];
+    $nouveau_statut = $_GET['statut'];
+    $statuts_valides = ['en_attente', 'confirmee', 'en_preparation', 'en_livraison', 'livree', 'annulee'];
+    
+    if (in_array($nouveau_statut, $statuts_valides)) {
+        // Récupérer l'ancien statut et les infos
+        $stmt = $pdo->prepare("SELECT * FROM commandes WHERE id = ?");
+        $stmt->execute([$id]);
+        $commande = $stmt->fetch();
+        $ancien_statut = $commande['statut'] ?? 'en_attente';
+        $client_id = $commande['client_id'] ?? null;
+        $telephone = $commande['telephone'] ?? null;
+        $total = $commande['total'] ?? 0;
+        
+        // Mettre à jour le statut
+        $stmt = $pdo->prepare("UPDATE commandes SET statut = ? WHERE id = ?");
+        $stmt->execute([$nouveau_statut, $id]);
+        
+        // Gestion des points
+        $statuts_avec_points = ['livree'];
+        $statuts_sans_points = ['annulee'];
+        
+        // Trouver le client_id via téléphone si nécessaire
+        if (!$client_id && !empty($telephone)) {
+            $stmt = $pdo->prepare("SELECT id FROM clients WHERE telephone = ?");
+            $stmt->execute([$telephone]);
+            $client = $stmt->fetch();
+            if ($client) {
+                $client_id = $client['id'];
+                $stmt = $pdo->prepare("UPDATE commandes SET client_id = ? WHERE id = ?");
+                $stmt->execute([$client_id, $id]);
+            }
+        }
+        
+        $message = 'Statut mis à jour !';
+        
+        // Ajouter des points si livrée
+        if ($client_id && in_array($nouveau_statut, $statuts_avec_points) && !in_array($ancien_statut, $statuts_avec_points)) {
+            $points = floor($total / 1000);
+            if ($points > 0) {
+                if (ajouterPoints($pdo, $client_id, $id, $points, "Commande #{$id} - boutique - livrée")) {
+                    $message .= ' +' . $points . ' points gagnés !';
+                }
+            }
+        }
+        
+        // Retirer des points si annulée
+        if ($client_id && in_array($nouveau_statut, $statuts_sans_points) && in_array($ancien_statut, $statuts_avec_points)) {
+            $points = floor($total / 1000);
+            if ($points > 0) {
+                if (retirerPoints($pdo, $client_id, $id, $points, "Annulation commande #{$id}")) {
+                    $message .= ' -' . $points . ' points retirés.';
+                }
+            }
+        }
+        
+        $_SESSION['message_commande'] = $message;
+        header('Location: commandes.php');
+        exit;
+    }
+}
+
+// ============================================
+// SUPPRIMER UNE COMMANDE
+// ============================================
+if (isset($_GET['supprimer'])) {
+    $id = (int)$_GET['supprimer'];
+    $pdo->prepare("DELETE FROM commandes WHERE id = ?")->execute([$id]);
+    $_SESSION['message_commande'] = 'Commande supprimée !';
+    header('Location: commandes.php');
+    exit;
+}
+
 $filtre = $_GET['filtre'] ?? 'toutes';
 $search = $_GET['search'] ?? '';
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
@@ -80,9 +205,6 @@ $stmt_count->execute($count_params);
 $total_groupes = (int)$stmt_count->fetchColumn();
 $total_pages = ($total_groupes > 0) ? ceil($total_groupes / $per_page) : 1;
 
-// ============================================
-// ✅ CORRECTION : LIMIT et OFFSET directement dans la requête
-// ============================================
 $sql .= " LIMIT " . (int)$per_page . " OFFSET " . (int)$offset;
 
 $stmt = $pdo->prepare($sql);
@@ -99,6 +221,18 @@ $stats = [
     'livree' => (int)$pdo->query("SELECT COUNT(DISTINCT nom_client, telephone) FROM commandes WHERE statut = 'livree'")->fetchColumn(),
     'annulee' => (int)$pdo->query("SELECT COUNT(DISTINCT nom_client, telephone) FROM commandes WHERE statut = 'annulee'")->fetchColumn(),
 ];
+
+$message = $_SESSION['message_commande'] ?? '';
+unset($_SESSION['message_commande']);
+
+$statut_labels = [
+    'en_attente' => ['label' => 'En attente', 'class' => 'statut-en_attente'],
+    'confirmee' => ['label' => 'Confirmée', 'class' => 'statut-confirmee'],
+    'en_preparation' => ['label' => 'Préparation', 'class' => 'statut-en_preparation'],
+    'en_livraison' => ['label' => 'Livraison', 'class' => 'statut-en_livraison'],
+    'livree' => ['label' => 'Livrée', 'class' => 'statut-livree'],
+    'annulee' => ['label' => 'Annulée', 'class' => 'statut-annulee']
+];
 ?>
 
 <!DOCTYPE html>
@@ -110,6 +244,7 @@ $stats = [
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,400&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
+        /* Vos styles existants */
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Jost', sans-serif; background: #F5F7FA; color: #1A2C3E; display: flex; min-height: 100vh; }
 
@@ -244,6 +379,14 @@ $stats = [
         .btn-outline:hover { border-color: #C8922A; color: #C8922A; }
 
         .content { padding: 28px 32px; flex: 1; }
+        .alert-success {
+            background: #D4EDDA;
+            border-left: 4px solid #27AE60;
+            color: #0A3622;
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
 
         .stats-row {
             display: grid;
@@ -476,6 +619,9 @@ $stats = [
     </div>
 
     <div class="content">
+        <?php if($message): ?>
+            <div class="alert-success"><i class="bi bi-check-circle-fill"></i> <?= $message ?></div>
+        <?php endif; ?>
 
         <!-- Stats -->
         <div class="stats-row">
@@ -566,15 +712,6 @@ $stats = [
                                 $statut_global = $s;
                             }
                         }
-                        
-                        $statut_labels = [
-                            'en_attente' => 'En attente',
-                            'confirmee' => 'Confirmée',
-                            'en_preparation' => 'Préparation',
-                            'en_livraison' => 'Livraison',
-                            'livree' => 'Livrée',
-                            'annulee' => 'Annulée'
-                        ];
                     ?>
                     <tr>
                         <td>
@@ -604,7 +741,7 @@ $stats = [
                             <?= date('d/m/Y H:i', strtotime($g['derniere_commande'])) ?>
                             <br>
                             <span class="badge-statut statut-<?= $statut_global ?>">
-                                <?= $statut_labels[$statut_global] ?? $statut_global ?>
+                                <?= $statut_labels[$statut_global]['label'] ?? $statut_global ?>
                             </span>
                         </td>
                         <td style="text-align:center;">

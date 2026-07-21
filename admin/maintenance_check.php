@@ -3,7 +3,45 @@
 // FICHIER DE VÉRIFICATION DE MAINTENANCE
 // ============================================
 
-// Connexion à la base de données
+// ============================================
+// 1. VÉRIFIER SI L'UTILISATEUR EST ADMIN
+// ============================================
+$is_admin = false;
+$admin_view = isset($_GET['admin_view']) && $_GET['admin_view'] == 1;
+
+// Sauvegarder la session publique
+$old_session_name = session_name();
+$old_session_id = session_id();
+
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
+// Vérifier la session admin
+session_name('ADMIN_SESSION');
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+if (isset($_SESSION['admin_id']) && !empty($_SESSION['admin_id'])) {
+    $is_admin = true;
+    $admin_nom = $_SESSION['admin_nom'] ?? 'Admin';
+}
+
+// Restaurer la session publique
+session_write_close();
+if (!empty($old_session_name)) {
+    session_name($old_session_name);
+} else {
+    session_name('PUBLIC_SESSION');
+}
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// ============================================
+// 2. CONNEXION À LA BASE DE DONNÉES
+// ============================================
 $host = 'localhost';
 $dbname = 'awakasugu_db';
 $user = 'root';
@@ -18,17 +56,7 @@ try {
 }
 
 // ============================================
-// 1. VÉRIFIER SI L'UTILISATEUR EST ADMIN
-// ============================================
-$is_admin = false;
-
-// Vérifier la session admin
-if (isset($_SESSION['admin_id']) && !empty($_SESSION['admin_id'])) {
-    $is_admin = true;
-}
-
-// ============================================
-// 2. VÉRIFIER LA MAINTENANCE GLOBALE
+// 3. VÉRIFIER LA MAINTENANCE GLOBALE
 // ============================================
 // Vérifier si la table existe
 $tableExists = $pdo->query("SHOW TABLES LIKE 'maintenance_globale'")->rowCount() > 0;
@@ -48,8 +76,8 @@ if (!$config) {
 // Si le site est en maintenance (site_actif = 0)
 if ($config['site_actif'] == 0) {
     
-    // Si l'utilisateur est ADMIN, il peut passer outre
-    if ($is_admin) {
+    // ✅ SI L'UTILISATEUR EST ADMIN OU QUE admin_view EST ACTIVÉ
+    if ($is_admin || $admin_view) {
         return; // Les admins voient le site normalement
     }
     
@@ -88,7 +116,7 @@ if ($config['site_actif'] == 0) {
                 text-align: center;
                 padding: 20px;
             }
-            .maintenance-container { max-width: 600px; padding: 40px; }
+            .maintenance-container { max-width:A 600px; padding: 40px; }
             .maintenance-icon {
                 font-size: 5rem;
                 color: #C8922A;
@@ -176,4 +204,3 @@ if ($config['site_actif'] == 0) {
     <?php
     exit();
 }
-?>

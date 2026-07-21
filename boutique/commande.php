@@ -25,6 +25,82 @@ require_once '../includes/maintenance_check.php';
 // ============================================
 require_once '../includes/envoi_email.php';
 
+// ============================================
+// ✅ PRISE EN CHARGE DU BOUTON "COMMANDER" DIRECT
+// ============================================
+// Si un produit_id est passé en GET (commande directe)
+$produit_direct = null;
+$quantite_directe = 1;
+$couleur_id_direct = null;
+$taille_id_direct = null;
+
+if (isset($_GET['produit_id']) && !empty($_GET['produit_id'])) {
+    $produit_id = (int)$_GET['produit_id'];
+    $quantite_directe = isset($_GET['quantite']) ? (int)$_GET['quantite'] : 1;
+    $couleur_id_direct = isset($_GET['couleur_id']) ? (int)$_GET['couleur_id'] : null;
+    $taille_id_direct = isset($_GET['taille_id']) ? (int)$_GET['taille_id'] : null;
+    
+    // Connexion pour récupérer le produit
+    $host = 'localhost';
+    $dbname = 'awakasugu_db';
+    $user = 'root';
+    $pass = '';
+    
+    try {
+        $pdo_temp = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $user, $pass);
+        $pdo_temp->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        
+        $stmt = $pdo_temp->prepare("SELECT * FROM produits WHERE id = ? AND est_visible = 1");
+        $stmt->execute([$produit_id]);
+        $produit_direct = $stmt->fetch();
+        
+        if ($produit_direct) {
+            // Vider le panier actuel
+            $_SESSION['panier'] = [];
+            
+            $prix = ($produit_direct['prix_promo'] && $produit_direct['prix_promo'] > 0 && $produit_direct['prix_promo'] < $produit_direct['prix']) 
+                    ? $produit_direct['prix_promo'] 
+                    : $produit_direct['prix'];
+            
+            // Récupérer les noms de couleur et taille
+            $couleur_nom = '';
+            $taille_nom = '';
+            $couleur_hex = '';
+            
+            if ($couleur_id_direct) {
+                $stmt = $pdo_temp->prepare("SELECT nom, code_hex FROM couleurs WHERE id = ?");
+                $stmt->execute([$couleur_id_direct]);
+                $c = $stmt->fetch();
+                $couleur_nom = $c['nom'] ?? '';
+                $couleur_hex = $c['code_hex'] ?? '';
+            }
+            
+            if ($taille_id_direct) {
+                $stmt = $pdo_temp->prepare("SELECT nom FROM tailles WHERE id = ?");
+                $stmt->execute([$taille_id_direct]);
+                $t = $stmt->fetch();
+                $taille_nom = $t['nom'] ?? '';
+            }
+            
+            // Ajouter le produit directement dans le panier
+            $_SESSION['panier'][] = [
+                'id' => $produit_direct['id'],
+                'nom' => $produit_direct['nom'],
+                'prix' => $prix,
+                'quantite' => $quantite_directe,
+                'couleur_id' => $couleur_id_direct,
+                'couleur_nom' => $couleur_nom,
+                'couleur_hex' => $couleur_hex,
+                'taille_id' => $taille_id_direct,
+                'taille_nom' => $taille_nom,
+                'image' => $produit_direct['image_principale']
+            ];
+        }
+    } catch(PDOException $e) {
+        // Ignorer l'erreur
+    }
+}
+
 // Vérifier que le panier n'est pas vide
 if (empty($_SESSION['panier'])) {
     header('Location: catalogue.php');
@@ -85,7 +161,7 @@ function genererFacturePDF($commande_id, $commande, $details, $pdo) {
     $pdf->AddPage();
     $pdf->SetAutoPageBreak(true, 25);
     
-    // ===== EN-TÊTE =====
+    // En-tête
     $pdf->SetFont('Arial', 'B', 20);
     $pdf->SetTextColor(200, 146, 42);
     $pdf->Cell(0, 10, 'AWA KA SUGU', 0, 1, 'C');
@@ -102,7 +178,7 @@ function genererFacturePDF($commande_id, $commande, $details, $pdo) {
     $pdf->Line(20, $pdf->GetY(), 190, $pdf->GetY());
     $pdf->Ln(8);
     
-    // ===== TITRE =====
+    // Titre
     $pdf->SetFont('Arial', 'B', 22);
     $pdf->SetTextColor(0, 0, 0);
     $pdf->Cell(0, 12, 'FACTURE', 0, 1, 'C');
@@ -112,15 +188,15 @@ function genererFacturePDF($commande_id, $commande, $details, $pdo) {
     $pdf->Cell(0, 6, 'N° ' . $numero_facture, 0, 1, 'C');
     $pdf->Ln(6);
     
-    // ===== INFORMATIONS CLIENT =====
+    // Informations client
     $pdf->SetFillColor(248, 249, 250);
     $pdf->SetDrawColor(200, 146, 42);
     $pdf->SetLineWidth(0.3);
     $pdf->Rect(20, $pdf->GetY(), 170, 75, 'DF');
     
     $startY = $pdf->GetY() + 5;
-    
     $pdf->SetY($startY);
+    
     $pdf->SetFont('Arial', 'B', 10);
     $pdf->SetTextColor(200, 146, 42);
     $pdf->SetX(30);
@@ -165,7 +241,7 @@ function genererFacturePDF($commande_id, $commande, $details, $pdo) {
     
     $pdf->Ln(10);
     
-    // ===== TABLEAU DES PRODUITS =====
+    // Tableau des produits
     $pdf->SetFont('Arial', 'B', 11);
     $pdf->SetTextColor(255, 255, 255);
     $pdf->SetFillColor(13, 13, 13);
@@ -301,14 +377,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ]);
         $commande_id = $pdo->lastInsertId();
         
-        // Insérer les détails de la commande
+        // ============================================
+        // INSÉRER LES DÉTAILS DE LA COMMANDE AVEC COULEURS ET TAILLES
+        // ============================================
         foreach ($_SESSION['panier'] as $item) {
-            $stmt = $pdo->prepare("
-                INSERT INTO details_commande (commande_id, produit_id, nom_produit, quantite, prix_unitaire, sous_total)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ");
             $sous_total = $item['prix'] * $item['quantite'];
-            $stmt->execute([$commande_id, $item['id'], $item['nom'], $item['quantite'], $item['prix'], $sous_total]);
+            
+            // Récupérer les informations de couleur et taille
+            $couleur_id = $item['couleur_id'] ?? null;
+            $taille_id = $item['taille_id'] ?? null;
+            $couleur_nom = $item['couleur_nom'] ?? null;
+            $taille_nom = $item['taille_nom'] ?? null;
+            
+            $stmt = $pdo->prepare("
+                INSERT INTO details_commande (
+                    commande_id, 
+                    produit_id, 
+                    nom_produit, 
+                    quantite, 
+                    prix_unitaire, 
+                    sous_total,
+                    couleur_id,
+                    taille_id,
+                    couleur_nom,
+                    taille_nom,
+                    couleur,
+                    taille
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            $stmt->execute([
+                $commande_id, 
+                $item['id'], 
+                $item['nom'], 
+                $item['quantite'], 
+                $item['prix'], 
+                $sous_total,
+                $couleur_id,
+                $taille_id,
+                $couleur_nom,
+                $taille_nom,
+                $couleur_nom,
+                $taille_nom
+            ]);
         }
         
         // Récupérer la commande complète pour la facture
@@ -394,8 +504,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <tbody>';
         
         foreach ($_SESSION['panier'] as $item) {
-            $message_html .= '<tr><td>' . htmlspecialchars($item['nom']) . '</td><td style="text-align:center;">' . $item['quantite'] . '</td><td style="text-align:right;">' . number_format($item['prix'], 0, ',', ' ') . ' F</td><td style="text-align:right;">' . number_format($item['prix'] * $item['quantite'], 0, ',', ' ') . ' F</td></tr>';
+            $message_html .= '<tr><td>' . htmlspecialchars($item['nom']);
+            // Ajouter les options (couleur et taille) dans l'email
+            if (!empty($item['couleur_nom']) || !empty($item['taille_nom'])) {
+                $options = [];
+                if (!empty($item['couleur_nom'])) $options[] = 'Couleur: ' . htmlspecialchars($item['couleur_nom']);
+                if (!empty($item['taille_nom'])) $options[] = 'Taille: ' . htmlspecialchars($item['taille_nom']);
+                $message_html .= '<br><small style="color:#888;">' . implode(' | ', $options) . '</small>';
+            }
+            $message_html .= '</td><td style="text-align:center;">' . $item['quantite'] . '</td><td style="text-align:right;">' . number_format($item['prix'], 0, ',', ' ') . ' F</td><td style="text-align:right;">' . number_format($item['prix'] * $item['quantite'], 0, ',', ' ') . ' F</td></tr>';
         }
+        
+        // Vider le panier (après avoir construit le HTML)
+        $panier_sauvegarde = $_SESSION['panier'];
+        $_SESSION['panier'] = [];
         
         $message_html .= '
                         </tbody>
@@ -416,11 +538,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </body>
         </html>';
         
-        // ✅ Envoyer l'email avec Brevo et la facture PDF en pièce jointe
+        // Envoyer l'email avec Brevo et la facture PDF en pièce jointe
         $email_envoye = envoyerEmail($email, $sujet, $message_html, $facture_info['pdf_path']);
-        
-        // Vider le panier
-        $_SESSION['panier'] = [];
         
         // ============================================
         // REDIRECTION AVEC MESSAGE DE SUCCÈS
@@ -468,6 +587,12 @@ if (isset($_SESSION['client_id'])) {
         $client_telephone = $client['telephone'] ?? '';
         $client_adresse = $client['adresse_complete'] ?? '';
     }
+}
+
+// Afficher un message si la commande vient du bouton "Commander"
+$commande_directe_message = '';
+if (isset($_GET['produit_id'])) {
+    $commande_directe_message = 'Vous commandez directement : ' . htmlspecialchars($produit_direct['nom'] ?? '') . ' (x' . $quantite_directe . ')';
 }
 ?>
 
@@ -586,6 +711,21 @@ if (isset($_SESSION['client_id'])) {
     align-items: center;
     gap: 10px;
 }
+.alert-info-commande {
+    background: #FFF8E1;
+    border-left: 4px solid #C8922A;
+    color: #5D4E37;
+    padding: 12px 16px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.alert-info-commande i {
+    color: #C8922A;
+    font-size: 1.2rem;
+}
 .resume-card h4 {
     font-family: 'Playfair Display', serif;
     color: #0D0D0D;
@@ -635,6 +775,19 @@ if (isset($_SESSION['client_id'])) {
     color: #8A99AA;
     font-size: 0.8rem;
 }
+.btn-retour {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #8A99AA;
+    text-decoration: none;
+    font-size: 0.9rem;
+    margin-bottom: 15px;
+    transition: color 0.3s;
+}
+.btn-retour:hover {
+    color: #C8922A;
+}
 @media (max-width: 850px) {
     .commande-grid { grid-template-columns: 1fr; }
     .formulaire-card, .resume-card { padding: 20px; }
@@ -657,7 +810,18 @@ if (isset($_SESSION['client_id'])) {
     <div class="commande-grid">
         <!-- Formulaire -->
         <div class="formulaire-card">
+            <a href="javascript:history.back()" class="btn-retour">
+                <i class="bi bi-arrow-left"></i> Retour
+            </a>
+            
             <div class="section-title">📍 Informations de livraison</div>
+            
+            <?php if($commande_directe_message): ?>
+                <div class="alert-info-commande">
+                    <i class="bi bi-bag-check"></i>
+                    <span><?= $commande_directe_message ?></span>
+                </div>
+            <?php endif; ?>
             
             <?php if($error): ?>
                 <div class="alert-error">
@@ -730,7 +894,26 @@ if (isset($_SESSION['client_id'])) {
             <h4>🛒 Récapitulatif</h4>
             <?php foreach($_SESSION['panier'] as $item): ?>
             <div class="resume-item">
-                <span class="item-name"><?= htmlspecialchars($item['nom']) ?> <span style="color:#8A99AA;font-size:0.8rem;">x<?= $item['quantite'] ?></span></span>
+                <span class="item-name">
+                    <?= htmlspecialchars($item['nom']) ?>
+                    <?php if(!empty($item['couleur_nom']) || !empty($item['taille_nom'])): ?>
+                        <br>
+                        <small style="color:#8A99AA;font-size:0.7rem;">
+                            <?php if(!empty($item['couleur_nom'])): ?>
+                                <span class="badge bg-light text-dark" style="font-weight:400;padding:1px 8px;border:1px solid #ddd;">
+                                    <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background-color:<?= $item['couleur_hex'] ?? '#ccc' ?>;vertical-align:middle;margin-right:3px;"></span>
+                                    <?= htmlspecialchars($item['couleur_nom']) ?>
+                                </span>
+                            <?php endif; ?>
+                            <?php if(!empty($item['taille_nom'])): ?>
+                                <span class="badge bg-light text-dark" style="font-weight:400;padding:1px 8px;border:1px solid #ddd;">
+                                    <?= htmlspecialchars($item['taille_nom']) ?>
+                                </span>
+                            <?php endif; ?>
+                        </small>
+                    <?php endif; ?>
+                    <span style="color:#8A99AA;font-size:0.8rem;">x<?= $item['quantite'] ?></span>
+                </span>
                 <span class="item-price"><?= number_format($item['prix'] * $item['quantite'], 0, ',', ' ') ?> F</span>
             </div>
             <?php endforeach; ?>

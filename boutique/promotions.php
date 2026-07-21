@@ -1,6 +1,6 @@
 <?php
 // ============================================
-// PROMOTIONS - Produits en solde
+// PROMOTIONS - Produits en solde (PUBLIC)
 // ============================================
 
 // ============================================
@@ -31,33 +31,87 @@ try {
     die("Erreur de connexion : " . $e->getMessage());
 }
 
-// Récupérer les produits en promotion
-$stmt = $pdo->query("
-    SELECT * FROM produits 
-    WHERE est_visible = 1 
-    AND est_promo = 1 
-    AND prix_promo IS NOT NULL 
-    AND prix_promo > 0 
-    AND prix_promo < prix
-    ORDER BY ((prix - prix_promo) / prix * 100) DESC
-");
-$produits = $stmt->fetchAll();
+// ============================================
+// FONCTION POUR L'IMAGE
+// ============================================
+function getImageUrl($image) {
+    if (empty($image)) {
+        return 'https://placehold.co/400x500/F5F5F5/C8922A?text=Produit';
+    }
+    
+    $image = trim($image);
+    $image_name = pathinfo($image, PATHINFO_FILENAME);
+    $extension = pathinfo($image, PATHINFO_EXTENSION);
+    
+    $dossiers = [
+        '../uploads/produits/port-monaie/',
+        'uploads/produits/port-monaie/',
+        '../uploads/produits/sacs a mains/',
+        'uploads/produits/sacs a mains/',
+        '../uploads/produits/ensemble tallons sacs/',
+        'uploads/produits/ensemble tallons sacs/',
+        '../uploads/produits/abayas/',
+        'uploads/produits/abayas/',
+        '../uploads/produits/abayas pour enfants/',
+        'uploads/produits/abayas pour enfants/',
+        '../uploads/produits/',
+        'uploads/produits/',
+        '../uploads/',
+        'uploads/',
+    ];
+    
+    $extensions = ['', '.jpeg', '.jpg', '.png', '.gif', '.webp'];
+    
+    if (!empty($extension)) {
+        $extensions = array_merge([$extension], $extensions);
+    }
+    
+    foreach ($dossiers as $dossier) {
+        foreach ($extensions as $ext) {
+            $test_path = $dossier . $image_name . $ext;
+            if (file_exists($test_path)) {
+                return $test_path;
+            }
+        }
+    }
+    
+    return 'https://placehold.co/400x500/F5F5F5/C8922A?text=' . urlencode($image_name);
+}
 
-// Récupérer les promotions actives depuis la table promotions
-$promotions = $pdo->query("
-    SELECT p.*, pr.nom as promo_nom, pr.description as promo_description
-    FROM promotions pr
-    LEFT JOIN produits p ON p.id = pr.produit_id
-    WHERE pr.est_active = 1 
-    AND pr.date_fin >= CURDATE()
-    AND (p.id IS NULL OR p.est_visible = 1)
-    ORDER BY pr.date_fin ASC
-    LIMIT 3
-")->fetchAll();
+// ============================================
+// RÉCUPÉRER LES PRODUITS EN PROMOTION
+// ============================================
+try {
+    $stmt = $pdo->query("
+        SELECT DISTINCT p.* 
+        FROM produits p
+        WHERE p.est_visible = 1 
+        AND p.est_promo = 1 
+        AND p.prix_promo IS NOT NULL 
+        AND p.prix_promo > 0 
+        AND p.prix_promo < p.prix
+        ORDER BY ((p.prix - p.prix_promo) / p.prix * 100) DESC
+    ");
+    $produits = $stmt->fetchAll();
+    
+} catch(PDOException $e) {
+    $produits = [];
+    error_log("Erreur récupération promotions: " . $e->getMessage());
+}
+
+$nb_promotions = count($produits);
+$reduction_max = 0;
+if (!empty($produits)) {
+    foreach($produits as $p) {
+        $reduction = round((($p['prix'] - $p['prix_promo']) / $p['prix']) * 100);
+        if ($reduction > $reduction_max) {
+            $reduction_max = $reduction;
+        }
+    }
+}
 ?>
 
 <style>
-/* ========== PAGE PROMOTIONS ========== */
 .promotions-header {
     background: linear-gradient(135deg, #1A1A1A 0%, #2D2D2D 100%);
     padding: 60px 0 50px;
@@ -83,6 +137,28 @@ $promotions = $pdo->query("
 .promotions-header p {
     color: rgba(255,255,255,0.6);
     font-size: 0.9rem;
+}
+.promotions-header .stats-promo {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    margin-top: 20px;
+}
+.promotions-header .stats-promo .stat {
+    text-align: center;
+}
+.promotions-header .stats-promo .stat .number {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #C8922A;
+    display: block;
+}
+.promotions-header .stats-promo .stat .label {
+    font-size: 0.6rem;
+    color: rgba(255,255,255,0.4);
+    text-transform: uppercase;
+    letter-spacing: 1px;
 }
 .container-custom {
     max-width: 1300px;
@@ -236,17 +312,31 @@ $promotions = $pdo->query("
     .products-grid { grid-template-columns: repeat(2, 1fr); }
     .container-custom { padding: 0 20px; }
     .promotions-header h1 { font-size: 1.8rem; }
+    .promotions-header .stats-promo { gap: 20px; }
 }
 @media (max-width: 500px) {
-    .products-grid { grid-template-columns: 1fr; }
+    .products-grid { grid-template-columns: 1fr; max-width: 320px; margin: 0 auto 25px; }
 }
 </style>
 
-<!-- Header -->
 <div class="promotions-header">
     <div class="container-custom">
         <h1>🔥 Promotions</h1>
         <p>Les meilleures offres du moment</p>
+        <div class="stats-promo">
+            <div class="stat">
+                <span class="number"><?= $nb_promotions ?></span>
+                <span class="label">Produits en promo</span>
+            </div>
+            <div class="stat">
+                <span class="number">-<?= $reduction_max ?>%</span>
+                <span class="label">Réduction max</span>
+            </div>
+            <div class="stat">
+                <span class="number">✦</span>
+                <span class="label">Offres limitées</span>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -261,18 +351,19 @@ $promotions = $pdo->query("
         <div class="section-title">
             <i class="bi bi-percent"></i>
             <span>Offres spéciales</span>
+            <span style="font-size:0.7rem;color:#8A99AA;font-weight:400;margin-left:5px;">
+                (<?= $nb_promotions ?> produit<?= $nb_promotions > 1 ? 's' : '' ?>)
+            </span>
         </div>
         
         <div class="products-grid">
             <?php foreach($produits as $p): 
                 $reduction = round((($p['prix'] - $p['prix_promo']) / $p['prix']) * 100);
-                $img = !empty($p['image_principale']) && file_exists('../uploads/produits/'.$p['image_principale']) 
-                    ? '../uploads/produits/'.$p['image_principale'] 
-                    : 'https://placehold.co/400x500/F8F8F8/C8922A?text='.urlencode($p['nom']);
+                $img = getImageUrl($p['image_principale'] ?? '');
             ?>
             <div class="product-card">
                 <div class="product-image">
-                    <img src="<?= $img ?>" alt="<?= htmlspecialchars($p['nom']) ?>">
+                    <img src="<?= $img ?>" alt="<?= htmlspecialchars($p['nom']) ?>" loading="lazy" onerror="this.src='https://placehold.co/400x500/F5F5F5/C8922A?text=<?= urlencode($p['nom'])?>'">
                     <div class="promo-badge">-<?= $reduction ?>%</div>
                 </div>
                 <div class="product-info">

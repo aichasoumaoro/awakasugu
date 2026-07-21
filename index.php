@@ -1,20 +1,18 @@
 <?php
 // ============================================
-// SESSION PUBLIQUE SÉPARÉE
+// INDEX - AWA KA SUGU
+// Page d'accueil complète avec splash screen
 // ============================================
+
 session_name('PUBLIC_SESSION');
 session_start();
 
 // ============================================
 // SPLASH SCREEN - AWA KA SUGU
-// S'affiche à chaque visite pendant 5 secondes
 // ============================================
-
-// Vérifier si on vient du splash ou si on doit l'afficher
 $show_splash = !isset($_GET['splash_done']);
 
 if ($show_splash) {
-    // Afficher le splash screen
     ?>
     <!DOCTYPE html>
     <html lang="fr">
@@ -27,12 +25,7 @@ if ($show_splash) {
             @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&family=Jost:wght@300;400;500;600;700&display=swap');
             @import url('https://fonts.googleapis.com/css2?family=Amiri&display=swap');
 
-            * {
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-            }
-
+            * { margin: 0; padding: 0; box-sizing: border-box; }
             body {
                 font-family: 'Jost', sans-serif;
                 min-height: 100vh;
@@ -43,7 +36,6 @@ if ($show_splash) {
                 overflow: hidden;
                 position: relative;
             }
-
             .particles {
                 position: absolute;
                 top: 0;
@@ -53,20 +45,17 @@ if ($show_splash) {
                 overflow: hidden;
                 z-index: 1;
             }
-
             .particle {
                 position: absolute;
                 background: radial-gradient(circle, rgba(200,146,42,0.4), transparent);
                 border-radius: 50%;
                 animation: floatParticle 8s infinite ease-in-out;
             }
-
             @keyframes floatParticle {
                 0%, 100% { transform: translateY(0) translateX(0); opacity: 0; }
                 50% { opacity: 0.5; }
                 100% { transform: translateY(-100px) translateX(50px); opacity: 0; }
             }
-
             .particle:nth-child(1) { width: 300px; height: 300px; top: -150px; left: -150px; animation-delay: 0s; }
             .particle:nth-child(2) { width: 200px; height: 200px; bottom: -100px; right: -100px; animation-delay: 1s; }
             .particle:nth-child(3) { width: 150px; height: 150px; top: 50%; left: 10%; animation-delay: 2s; }
@@ -83,29 +72,24 @@ if ($show_splash) {
                 width: 90%;
                 animation: fadeInScale 0.8s ease-out;
             }
-
             @keyframes fadeInScale {
                 from { opacity: 0; transform: scale(0.9); }
                 to { opacity: 1; transform: scale(1); }
             }
-
             .logo-wrapper {
                 margin-bottom: 30px;
                 animation: floatLogo 3s ease-in-out infinite;
             }
-
             @keyframes floatLogo {
                 0%, 100% { transform: translateY(0); }
                 50% { transform: translateY(-10px); }
             }
-
             .logo-ring {
                 position: relative;
                 width: 100px;
                 height: 100px;
                 margin: 0 auto;
             }
-
             .logo-ring-outer {
                 position: absolute;
                 top: 0;
@@ -116,12 +100,10 @@ if ($show_splash) {
                 background: linear-gradient(135deg, #C8922A, #F5D78C, #C8922A);
                 animation: rotateRing 3s linear infinite;
             }
-
             @keyframes rotateRing {
                 0% { transform: rotate(0deg); }
                 100% { transform: rotate(360deg); }
             }
-
             .logo-ring-inner {
                 position: absolute;
                 top: 6px;
@@ -134,7 +116,6 @@ if ($show_splash) {
                 align-items: center;
                 justify-content: center;
             }
-
             .logo-ring-inner span {
                 font-family: 'Playfair Display', serif;
                 font-size: 2.5rem;
@@ -144,11 +125,7 @@ if ($show_splash) {
                 background-clip: text;
                 color: transparent;
             }
-
-            .welcome-message {
-                margin-bottom: 25px;
-            }
-
+            .welcome-message { margin-bottom: 25px; }
             .salutation {
                 font-size: 2.2rem;
                 font-family: 'Playfair Display', serif;
@@ -159,12 +136,10 @@ if ($show_splash) {
                 animation: glowPulse 2s ease-in-out infinite;
                 font-weight: 700;
             }
-
             @keyframes glowPulse {
                 0%, 100% { text-shadow: 0 0 10px rgba(200,146,42,0.3), 0 2px 5px rgba(0,0,0,0.3); }
                 50% { text-shadow: 0 0 25px rgba(200,146,42,0.6), 0 2px 5px rgba(0,0,0,0.3); }
             }
-
             .arabic {
                 font-size: 1.8rem;
                 font-family: 'Amiri', serif;
@@ -173,7 +148,6 @@ if ($show_splash) {
                 direction: rtl;
                 text-shadow: 0 0 10px rgba(200,146,42,0.3);
             }
-
             .greeting-text {
                 font-size: 1rem;
                 color: rgba(255,255,255,0.9);
@@ -181,12 +155,7 @@ if ($show_splash) {
                 font-weight: 500;
                 text-shadow: 0 1px 2px rgba(0,0,0,0.2);
             }
-
-            .greeting-text strong {
-                color: #C8922A;
-                font-weight: 700;
-            }
-
+            .greeting-text strong { color: #C8922A; font-weight: 700; }
             .awa-photo {
                 width: 90px;
                 height: 90px;
@@ -197,18 +166,11 @@ if ($show_splash) {
                 box-shadow: 0 8px 20px rgba(200,146,42,0.3);
                 animation: pulseBorder 2s ease-in-out infinite;
             }
-
             @keyframes pulseBorder {
                 0%, 100% { border-color: #C8922A; box-shadow: 0 8px 20px rgba(200,146,42,0.3); }
                 50% { border-color: #E8B55A; box-shadow: 0 12px 30px rgba(200,146,42,0.5); }
             }
-
-            .awa-photo img {
-                width: 100%;
-                height: 100%;
-                object-fit: cover;
-            }
-
+            .awa-photo img { width: 100%; height: 100%; object-fit: cover; }
             .citation {
                 font-style: italic;
                 color: rgba(255,255,255,0.7);
@@ -219,19 +181,13 @@ if ($show_splash) {
                 border-radius: 20px;
                 border-left: 3px solid #C8922A;
             }
-
-            .citation i {
-                color: #C8922A;
-                margin-right: 8px;
-            }
-
+            .citation i { color: #C8922A; margin-right: 8px; }
             .loader {
                 margin-top: 25px;
                 display: flex;
                 justify-content: center;
                 gap: 8px;
             }
-
             .loader-dot {
                 width: 8px;
                 height: 8px;
@@ -239,16 +195,13 @@ if ($show_splash) {
                 border-radius: 50%;
                 animation: bounce 1.4s ease-in-out infinite;
             }
-
             .loader-dot:nth-child(1) { animation-delay: 0s; }
             .loader-dot:nth-child(2) { animation-delay: 0.2s; }
             .loader-dot:nth-child(3) { animation-delay: 0.4s; }
-
             @keyframes bounce {
                 0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
                 40% { transform: scale(1); opacity: 1; }
             }
-
             .redirect-text {
                 margin-top: 20px;
                 font-size: 0.7rem;
@@ -256,7 +209,6 @@ if ($show_splash) {
                 font-weight: 500;
                 letter-spacing: 1px;
             }
-
             @media (max-width: 600px) {
                 .salutation { font-size: 1.6rem; }
                 .arabic { font-size: 1.3rem; }
@@ -276,17 +228,13 @@ if ($show_splash) {
             <div class="particle"></div>
             <div class="particle"></div>
         </div>
-
         <div class="splash-container">
             <div class="logo-wrapper">
                 <div class="logo-ring">
                     <div class="logo-ring-outer"></div>
-                    <div class="logo-ring-inner">
-                        <span>A</span>
-                    </div>
+                    <div class="logo-ring-inner"><span>A</span></div>
                 </div>
             </div>
-
             <div class="welcome-message">
                 <div class="salutation">As-Salam Alaykoum</div>
                 <div class="arabic">السلام عليكم</div>
@@ -295,31 +243,25 @@ if ($show_splash) {
                     dans l'univers <strong>Awa Ka Sugu</strong>
                 </p>
             </div>
-
             <div class="awa-photo">
                 <img src="assets/images/awa1.jpeg" alt="Awa Doumbia" onerror="this.src='https://via.placeholder.com/90x90/C8922A/FFF?text=Awa'">
             </div>
-
             <div class="citation">
                 <i class="bi bi-chat-quote-fill"></i>
                 "Que la paix et la bénédiction d'Allah soient sur vous."
             </div>
-
             <div class="loader">
                 <div class="loader-dot"></div>
                 <div class="loader-dot"></div>
                 <div class="loader-dot"></div>
             </div>
-
             <div class="redirect-text">
                 Redirection vers le site dans <span id="countdown">5</span> secondes...
             </div>
         </div>
-
         <script>
             let timeLeft = 5;
             const countdownElement = document.getElementById('countdown');
-            
             const countdownInterval = setInterval(() => {
                 timeLeft--;
                 if (countdownElement) {
@@ -344,12 +286,14 @@ $titre_page = 'Accueil';
 $meta_desc  = 'Awa Ka Sugu — Boutique IBA Design & Restaurant Sofia. Mode et cuisine malienne à Bamako.';
 
 // ============================================
-// ✅ header.php inclut MAINTENANT maintenance_check.php
+// INCLUSIONS
 // ============================================
 require_once 'includes/header.php';
 require_once 'includes/navbar.php';
 
-// Connexion à la base de données pour les produits
+// ============================================
+// CONNEXION À LA BASE DE DONNÉES
+// ============================================
 $host = 'localhost';
 $dbname = 'awakasugu_db';
 $user = 'root';
@@ -362,15 +306,86 @@ try {
     die("Erreur de connexion : " . $e->getMessage());
 }
 
-$nouveautes = $pdo->query("SELECT * FROM produits WHERE est_visible=1 ORDER BY created_at DESC LIMIT 8")->fetchAll();
-$promos     = $pdo->query("SELECT p.*, pr.valeur as pv, pr.type as pt FROM produits p JOIN promotions pr ON p.id=pr.produit_id WHERE p.est_visible=1 AND p.est_promo=1 AND pr.est_active=1 AND pr.date_fin>=CURDATE() LIMIT 4")->fetchAll();
-$plat       = $pdo->query("SELECT * FROM plats WHERE est_plat_du_jour=1 AND est_visible=1 LIMIT 1")->fetch();
-$flash      = get_message();
+// ============================================
+// RÉCUPÉRATION DES NOUVEAUTÉS (4 derniers produits)
+// ============================================
+$nouveautes = [];
+try {
+    $stmt = $pdo->prepare("SELECT * FROM produits WHERE est_visible = 1 ORDER BY created_at DESC LIMIT 4");
+    $stmt->execute();
+    $nouveautes = $stmt->fetchAll();
+} catch(PDOException $e) {
+    $nouveautes = [];
+}
+
+$flash = get_message();
+
+// ============================================
+// FONCTION POUR OBTENIR L'IMAGE DU PRODUIT
+// ============================================
+function getProductImageHome($image) {
+    if (empty($image)) {
+        return 'https://placehold.co/400x500/F5F5F5/C8922A?text=Produit';
+    }
+    
+    $image = trim($image);
+    $image_name = pathinfo($image, PATHINFO_FILENAME);
+    $extension = pathinfo($image, PATHINFO_EXTENSION);
+    
+    // Tous les dossiers possibles
+    $dossiers = [
+        // Voiles
+        'uploads/produits/voile/',
+        // Prêt-à-porter femme
+        'uploads/produits/pret a porter femme/',
+        // Tallons
+        'uploads/produits/les tallons/',
+        // Fermées
+        'uploads/produits/fermés/',
+        // Turbants
+        'uploads/produits/les turbants/',
+        // Foulards
+        'uploads/produits/les foulards/',
+        'uploads/produits/les foullards/',
+        // Porte-monnaie
+        'uploads/produits/port-monaie/',
+        // Sacs à mains
+        'uploads/produits/sacs a mains/',
+        'uploads/produits/sacs-a-mains/',
+        // Ensemble tallons sacs
+        'uploads/produits/ensemble tallons sacs/',
+        'uploads/produits/ensemble-tallons-sacs/',
+        // Abayas
+        'uploads/produits/abayas/',
+        // Abayas enfants
+        'uploads/produits/abayas pour enfants/',
+        'uploads/produits/abayas-pour-enfants/',
+        // Dossier principal
+        'uploads/produits/',
+    ];
+    
+    $extensions = ['', '.jpeg', '.jpg', '.png', '.gif', '.webp'];
+    
+    if (!empty($extension)) {
+        $extensions = array_merge([$extension], $extensions);
+    }
+    
+    foreach ($dossiers as $dossier) {
+        foreach ($extensions as $ext) {
+            $path = $dossier . $image_name . $ext;
+            if (file_exists($path)) {
+                return $path;
+            }
+        }
+    }
+    
+    return 'https://placehold.co/400x500/F5F5F5/C8922A?text=' . urlencode($image_name);
+}
 ?>
 
 <style>
 /* ========================================
-   DESIGN PREMIUM AWA KA SUGU
+   DESIGN PREMIUM AWA KA SUGU - PAGE ACCUEIL
    ======================================== */
 
 * {
@@ -410,11 +425,7 @@ body {
     50% { transform: translateY(-20px); }
 }
 
-@keyframes glowPulse {
-    0%, 100% { box-shadow: 0 0 20px rgba(200,146,42,0.2); }
-    50% { box-shadow: 0 0 40px rgba(200,146,42,0.4); }
-}
-
+/* ===== HERO SECTION ===== */
 .hero-premium {
     position: relative;
     min-height: 90vh;
@@ -653,6 +664,7 @@ body {
 .floating-card .text { font-size: 0.85rem; color: rgba(255,255,255,0.8); }
 .floating-card .text strong { color: #C8922A; display: block; font-size: 1rem; }
 
+/* ===== SECTIONS ===== */
 .section { padding: 100px 0; }
 .container-custom { max-width: 1300px; margin: 0 auto; padding: 0 40px; }
 
@@ -709,6 +721,7 @@ body {
 .section-line::before { left: -12px; }
 .section-line::after { right: -12px; }
 
+/* ===== CARDS ===== */
 .cards-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -753,6 +766,7 @@ body {
 .service-card h3 { font-size: 1.1rem; font-weight: 600; color: #1A1A1A; margin-bottom: 10px; }
 .service-card p { font-size: 0.85rem; color: #8A99AA; line-height: 1.6; }
 
+/* ===== PRODUITS ===== */
 .products-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -848,55 +862,7 @@ body {
     transform: translateY(-2px);
 }
 
-.plat-card {
-    background: linear-gradient(135deg, #1A1A1A 0%, #2D2D2D 100%);
-    border-radius: 24px;
-    padding: 45px 50px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 30px;
-    position: relative;
-    overflow: hidden;
-}
-.plat-card::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    right: -50%;
-    width: 200%;
-    height: 200%;
-    background: radial-gradient(circle, rgba(200,146,42,0.08) 0%, transparent 70%);
-    animation: floatSlow 15s ease-in-out infinite;
-}
-.plat-left { flex: 1; z-index: 1; position: relative; }
-.plat-label {
-    font-size: 0.7rem;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: #C8922A;
-    margin-bottom: 10px;
-    display: inline-block;
-}
-.plat-left h3 { font-family: 'Playfair Display', serif; font-size: 1.8rem; color: #FFFFFF; margin-bottom: 8px; }
-.plat-left p { font-size: 0.9rem; color: rgba(255,255,255,0.5); }
-.plat-right { text-align: right; z-index: 1; position: relative; }
-.plat-price { font-size: 2.2rem; font-weight: 700; color: #C8922A; margin-bottom: 10px; }
-.btn-order-now {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: #C8922A;
-    color: white;
-    padding: 12px 28px;
-    border-radius: 40px;
-    text-decoration: none;
-    font-weight: 600;
-    transition: all 0.3s;
-}
-.btn-order-now:hover { background: #9A6E1A; transform: translateY(-2px); }
-
+/* ===== WHY SECTION ===== */
 .why-section {
     background: linear-gradient(135deg, #FFF9F0 0%, #FFFFFF 50%, #FFF9F0 100%);
     position: relative;
@@ -965,6 +931,7 @@ body {
 .why-card-modern h4 { font-size: 1.15rem; font-weight: 700; margin-bottom: 10px; color: #1A1A1A; }
 .why-card-modern p { font-size: 0.85rem; color: #8A99AA; line-height: 1.6; }
 
+/* ===== NEWSLETTER ===== */
 .newsletter-section {
     background: linear-gradient(135deg, #1A1A1A 0%, #2D2D2D 100%);
     border-radius: 24px;
@@ -1037,17 +1004,8 @@ body {
     background: linear-gradient(135deg, #9A6E1A, #C8922A);
     color: #FFFFFF;
 }
-.newsletter-success {
-    display: none;
-    margin-top: 20px;
-    padding: 12px;
-    background: rgba(40,167,69,0.2);
-    border-radius: 50px;
-    color: #28A745;
-    font-size: 0.85rem;
-}
-.newsletter-success.show { display: block; animation: slideUp 0.4s ease-out; }
 
+/* ===== AWA LEGACY ===== */
 .awa-legacy-section {
     padding: 100px 0;
     background: linear-gradient(135deg, #FFF9F0 0%, #FDF5E6 50%, #FFF9F0 100%);
@@ -1168,6 +1126,7 @@ body {
 .social-icon-link.facebook:hover { background: #1877F2; color: #FFFFFF; }
 .social-icon-link:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
 
+/* ===== RESPONSIVE ===== */
 @media (max-width: 1100px) {
     .cards-grid, .products-grid, .why-grid-modern { grid-template-columns: repeat(2, 1fr); }
     .legacy-wrapper { grid-template-columns: 1fr; gap: 40px; }
@@ -1179,8 +1138,6 @@ body {
     .hero-buttons { justify-content: center; }
     .hero-stats { justify-content: center; }
     .floating-card { left: 50%; transform: translateX(-50%); bottom: -20px; }
-    .plat-card { flex-direction: column; text-align: center; }
-    .plat-right { text-align: center; }
     .section-subtitle::before, .section-subtitle::after { display: none; }
 }
 @media (max-width: 700px) {
@@ -1195,7 +1152,7 @@ body {
 }
 </style>
 
-<!-- Flash message -->
+<!-- ===== FLASH MESSAGE ===== -->
 <?php if ($flash): ?>
     <div style="background: #D4EDDA; color: #0A3622; padding: 12px 20px; text-align: center;">
         <?= $flash['texte'] ?>
@@ -1217,10 +1174,10 @@ body {
                     Robes, abayas, foulards et accessoires d'exception, livrés chez vous à Bamako.
                 </p>
                 <div class="hero-buttons">
-                    <a href="<?= SITE_URL ?>/boutique/catalogue.php" class="btn-primary">
+                    <a href="boutique/catalogue.php" class="btn-primary">
                         <i class="bi bi-bag"></i> Explorer la collection
                     </a>
-                    <a href="<?= SITE_URL ?>/restaurant/menu.php" class="btn-outline">
+                    <a href="restaurant/menu.php" class="btn-outline">
                         <i class="bi bi-cup-hot"></i> Découvrir Sofia
                     </a>
                 </div>
@@ -1241,7 +1198,7 @@ body {
             </div>
             <div class="hero-image">
                 <div class="image-wrapper">
-                    <img src="<?= SITE_URL ?>/assets/images/awa1.jpeg" alt="Awa Doumbia" onerror="this.src='https://via.placeholder.com/500x500/F5F0E8/C8922A?text=Awa'">
+                    <img src="assets/images/awa1.jpeg" alt="Awa Doumbia" onerror="this.src='https://via.placeholder.com/500x500/F5F0E8/C8922A?text=Awa'">
                 </div>
                 <div class="floating-card">
                     <i class="bi bi-chat-quote-fill"></i>
@@ -1298,22 +1255,22 @@ body {
             <div class="section-line"></div>
         </div>
         <div class="cards-grid">
-            <a href="<?= SITE_URL ?>/boutique/catalogue.php" class="service-card">
+            <a href="boutique/catalogue.php" class="service-card">
                 <div class="service-icon"><i class="bi bi-bag-heart"></i></div>
                 <h3>IBA Design</h3>
                 <p>Mode modeste, robes, abayas, foulards et accessoires</p>
             </a>
-            <a href="<?= SITE_URL ?>/restaurant/menu.php" class="service-card">
+            <a href="restaurant/menu.php" class="service-card">
                 <div class="service-icon"><i class="bi bi-cup-hot"></i></div>
                 <h3>Restaurant Sofia</h3>
                 <p>Cuisine malienne authentique, plats faits maison</p>
             </a>
-            <a href="<?= SITE_URL ?>/boutique/promotions.php" class="service-card">
+            <a href="boutique/promotions.php" class="service-card">
                 <div class="service-icon"><i class="bi bi-percent"></i></div>
                 <h3>Promotions</h3>
                 <p>Offres spéciales et réductions exclusives</p>
             </a>
-            <a href="<?= SITE_URL ?>/boutique/suivi.php" class="service-card">
+            <a href="boutique/suivi.php" class="service-card">
                 <div class="service-icon"><i class="bi bi-truck"></i></div>
                 <h3>Suivi commande</h3>
                 <p>Suivez votre commande en temps réel</p>
@@ -1323,67 +1280,57 @@ body {
 </section>
 
 <!-- ===== NOUVEAUTÉS ===== -->
-<?php if (!empty($nouveautes)): ?>
-    <section class="section" style="background: #F8F9FA;">
-        <div class="container-custom">
-            <div class="section-header">
-                <span class="section-subtitle">Dernières créations</span>
-                <h2 class="section-title">Nouvelles <em>arrivées</em></h2>
-                <div class="section-line"></div>
-            </div>
+<section class="section" style="background: #F8F9FA;">
+    <div class="container-custom">
+        <div class="section-header">
+            <span class="section-subtitle">Dernières créations</span>
+            <h2 class="section-title">Nouvelles <em>arrivées</em></h2>
+            <div class="section-line"></div>
+        </div>
+        
+        <?php if (!empty($nouveautes)): ?>
             <div class="products-grid">
-                <?php
-                $compteur = 0;
-                foreach ($nouveautes as $p):
-                    if ($compteur >= 4) break;
-                    $compteur++;
-                    ?>
-                    <div class="product-item">
-                        <div class="product-image">
-                            <img src="<?= $p['image_principale'] ? UPLOAD_URL . 'produits/' . $p['image_principale'] : 'https://via.placeholder.com/400x500/F8F8F8/C8922A?text=Photo' ?>"
-                                alt="<?= htmlspecialchars($p['nom']) ?>">
-                            <div class="product-badge">Nouveau</div>
-                        </div>
-                        <div class="product-info">
-                            <div class="product-name"><?= htmlspecialchars($p['nom']) ?></div>
-                            <div class="product-price"><?= number_format($p['prix'], 0, ',', ' ') ?> FCFA</div>
-                            <a href="<?= SITE_URL ?>/boutique/commande_directe.php?id=<?= $p['id'] ?>" class="btn-buy-now">
-                                <i class="bi bi-lightning-charge"></i> Acheter maintenant
-                            </a>
-                        </div>
+                <?php foreach ($nouveautes as $p): 
+                    $image_produit = getProductImageHome($p['image_principale'] ?? '');
+                    $prix_affiché = $p['prix'];
+                    if (!empty($p['prix_promo']) && $p['prix_promo'] > 0 && $p['prix_promo'] < $p['prix']) {
+                        $prix_affiché = $p['prix_promo'];
+                    }
+                ?>
+                <div class="product-item">
+                    <div class="product-image">
+                        <img src="<?= htmlspecialchars($image_produit) ?>" 
+                             alt="<?= htmlspecialchars($p['nom']) ?>"
+                             onerror="this.src='https://placehold.co/400x500/F5F5F5/C8922A?text=<?= urlencode($p['nom']) ?>'">
+                        <div class="product-badge">Nouveau</div>
                     </div>
+                    <div class="product-info">
+                        <div class="product-name"><?= htmlspecialchars($p['nom']) ?></div>
+                        <div class="product-price"><?= number_format($prix_affiché, 0, ',', ' ') ?> FCFA</div>
+                        <a href="boutique/produit.php?id=<?= $p['id'] ?>" class="btn-buy-now">
+                            <i class="bi bi-lightning-charge"></i> Acheter maintenant
+                        </a>
+                    </div>
+                </div>
                 <?php endforeach; ?>
             </div>
+        <?php else: ?>
+            <div style="text-align: center; padding: 40px 0;">
+                <p style="color: #8A99AA; font-size: 1.1rem;">Aucun produit disponible pour le moment.</p>
+                <p style="color: #B0B0B0; font-size: 0.9rem;">Revenez bientôt pour découvrir nos nouveautés.</p>
+            </div>
+        <?php endif; ?>
+        
+        <?php if (!empty($nouveautes) && count($nouveautes) >= 4): ?>
             <div class="text-center" style="margin-top: 40px;">
-                <a href="<?= SITE_URL ?>/boutique/nouveautes.php" class="btn-view-all">
+                <a href="boutique/nouveautes.php" class="btn-view-all">
                     <i class="bi bi-eye"></i> Voir toutes les nouveautés
                     <i class="bi bi-arrow-right"></i>
                 </a>
             </div>
-        </div>
-    </section>
-<?php endif; ?>
-
-<!-- ===== PLAT DU JOUR ===== -->
-<?php if ($plat): ?>
-    <section class="section" style="padding: 0 40px 100px;">
-        <div class="container-custom">
-            <div class="plat-card">
-                <div class="plat-left">
-                    <span class="plat-label">🍽️ Plat du jour — Sofia</span>
-                    <h3><?= htmlspecialchars($plat['nom']) ?></h3>
-                    <p><?= htmlspecialchars($plat['description']) ?></p>
-                </div>
-                <div class="plat-right">
-                    <div class="plat-price"><?= number_format($plat['prix'], 0, ',', ' ') ?> FCFA</div>
-                    <a href="<?= SITE_URL ?>/restaurant/commande_repas.php?plat_id=<?= $plat['id'] ?>" class="btn-order-now">
-                        Commander maintenant
-                    </a>
-                </div>
-            </div>
-        </div>
-    </section>
-<?php endif; ?>
+        <?php endif; ?>
+    </div>
+</section>
 
 <!-- ===== POURQUOI CHOISIR ===== -->
 <section class="section why-section">
@@ -1424,7 +1371,7 @@ body {
         <div class="newsletter-section">
             <h3>Restez informée</h3>
             <p>Recevez vos newsletters, offres et invitations.</p>
-            <form class="newsletter-form-modern" method="GET" action="<?= SITE_URL ?>/client/inscription.php">
+            <form class="newsletter-form-modern" method="GET" action="client/inscription.php">
                 <div class="newsletter-input-group">
                     <i class="bi bi-envelope"></i>
                     <input type="email" name="email" placeholder="Votre adresse email" required>
@@ -1443,7 +1390,7 @@ body {
         <div class="legacy-wrapper">
             <div class="legacy-photo-card">
                 <div class="legacy-photo-frame">
-                    <img src="<?= SITE_URL ?>/assets/images/awa2.jpeg" alt="Awa Doumbia"
+                    <img src="assets/images/awa2.jpeg" alt="Awa Doumbia"
                         onerror="this.src='https://via.placeholder.com/500x500/C8922A/FFF?text=Awa'">
                 </div>
                 <div class="legacy-photo-badge">
@@ -1477,8 +1424,7 @@ body {
                     <div class="actions-list">
                         <div class="action-item">
                             <i class="bi bi-fire"></i>
-                            <p><strong>Incendie de Sougounicoura (2026)</strong> — Awa Doumbia a mobilisé <strong>128 095 086
-                                    FCFA</strong> pour les victimes.</p>
+                            <p><strong>Incendie de Sougounicoura (2026)</strong> — Awa Doumbia a mobilisé <strong>128 095 086 FCFA</strong> pour les victimes.</p>
                         </div>
                         <div class="action-item">
                             <i class="bi bi-droplet"></i>

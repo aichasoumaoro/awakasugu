@@ -54,61 +54,144 @@ if (!$client) {
     exit;
 }
 
-// Récupérer les commandes du client
-$commandes = $pdo->prepare("
-    SELECT * FROM commandes 
-    WHERE client_id = ? 
-    ORDER BY created_at DESC 
-    LIMIT 10
-");
-$commandes->execute([$client_id]);
-$commandes = $commandes->fetchAll();
+// ============================================
+// RÉCUPÉRER TOUTES LES COMMANDES (BOUTIQUE + REPAS)
+// ============================================
+$commandes = [];
 
-// Récupérer les commandes sans client_id (avant connexion)
+// 1. Commandes boutique avec client_id
 $stmt = $pdo->prepare("
-    SELECT * FROM commandes 
-    WHERE client_id IS NULL 
-    AND telephone = ? 
-    ORDER BY created_at DESC 
-    LIMIT 10
+    SELECT *, 'boutique' as type_commande 
+    FROM commandes 
+    WHERE client_id = ? 
+    ORDER BY created_at DESC
 ");
-$stmt->execute([$client['telephone']]);
-$commandes_sans_id = $stmt->fetchAll();
+$stmt->execute([$client_id]);
+$commandes_boutique = $stmt->fetchAll();
 
-// Fusionner les commandes
-$commandes = array_merge($commandes, $commandes_sans_id);
+// 2. Commandes repas avec client_id (si la colonne existe)
+try {
+    $stmt = $pdo->query("SHOW TABLES LIKE 'commandes_repas'");
+    if ($stmt->rowCount() > 0) {
+        $stmt = $pdo->query("SHOW COLUMNS FROM commandes_repas LIKE 'client_id'");
+        if ($stmt->rowCount() > 0) {
+            $stmt = $pdo->prepare("
+                SELECT *, 'repas' as type_commande 
+                FROM commandes_repas 
+                WHERE client_id = ? 
+                ORDER BY created_at DESC
+            ");
+            $stmt->execute([$client_id]);
+            $commandes_repas = $stmt->fetchAll();
+        } else {
+            $stmt = $pdo->prepare("
+                SELECT *, 'repas' as type_commande 
+                FROM commandes_repas 
+                WHERE telephone = ? 
+                ORDER BY created_at DESC
+            ");
+            $stmt->execute([$client['telephone']]);
+            $commandes_repas = $stmt->fetchAll();
+        }
+    } else {
+        $commandes_repas = [];
+    }
+} catch(PDOException $e) {
+    $commandes_repas = [];
+}
+
+// 3. Commandes boutique sans client_id mais avec le même téléphone
+if (!empty($client['telephone'])) {
+    $stmt = $pdo->prepare("
+        SELECT *, 'boutique' as type_commande 
+        FROM commandes 
+        WHERE (client_id IS NULL OR client_id = 0)
+        AND telephone = ? 
+        ORDER BY created_at DESC
+    ");
+    $stmt->execute([$client['telephone']]);
+    $commandes_boutique_sans_id = $stmt->fetchAll();
+} else {
+    $commandes_boutique_sans_id = [];
+}
+
+// 4. Commandes repas sans client_id mais avec le même téléphone
+$commandes_repas_sans_id = [];
+if (!empty($client['telephone'])) {
+    try {
+        $stmt = $pdo->query("SHOW TABLES LIKE 'commandes_repas'");
+        if ($stmt->rowCount() > 0) {
+            $stmt = $pdo->prepare("
+                SELECT *, 'repas' as type_commande 
+                FROM commandes_repas 
+                WHERE (client_id IS NULL OR client_id = 0)
+                AND telephone = ? 
+                ORDER BY created_at DESC
+            ");
+            $stmt->execute([$client['telephone']]);
+            $commandes_repas_sans_id = $stmt->fetchAll();
+        }
+    } catch(PDOException $e) {
+        $commandes_repas_sans_id = [];
+    }
+}
+
+// Fusionner toutes les commandes
+$commandes = array_merge(
+    $commandes_boutique,
+    $commandes_repas,
+    $commandes_boutique_sans_id,
+    $commandes_repas_sans_id
+);
+
+// Supprimer les doublons
+$unique = [];
+foreach ($commandes as $c) {
+    $key = ($c['id'] ?? 0) . '_' . ($c['type_commande'] ?? 'boutique');
+    $unique[$key] = $c;
+}
+$commandes = array_values($unique);
+
+// Trier par date décroissante (la plus récente en premier)
 usort($commandes, function($a, $b) {
-    return strtotime($b['created_at']) - strtotime($a['created_at']);
+    $date_a = $a['created_at'] ?? '1970-01-01';
+    $date_b = $b['created_at'] ?? '1970-01-01';
+    return strtotime($date_b) - strtotime($date_a);
 });
 
-// Statistiques
+// ============================================
+// RÉCUPÉRER LA DERNIÈRE COMMANDE
+// ============================================
+$derniere_commande = !empty($commandes) ? $commandes[0] : null;
+
+// ============================================
+// STATISTIQUES
+// ============================================
 $nb_commandes = count($commandes);
-$points = 0;
 $total_depense = 0;
 $nb_factures = 0;
 
-// Points de fidélité
-$stmt = $pdo->prepare("SELECT points FROM fidelite WHERE client_id = ?");
-$stmt->execute([$client_id]);
-$fidelite = $stmt->fetch();
-$points = $fidelite['points'] ?? 0;
-
-// Total dépensé
+// Total dépensé (uniquement sur les commandes confirmées ou livrées)
 foreach($commandes as $c) {
-    if($c['statut'] == 'livree' || $c['statut'] == 'confirmee') {
-        $total_depense += $c['total'];
+    $statut = $c['statut'] ?? 'en_attente';
+    if ($statut == 'livree' || $statut == 'confirmee' || $statut == 'terminee') {
+        $total_depense += (float)($c['total'] ?? 0);
     }
 }
 
 // Nombre de factures
-$stmt = $pdo->prepare("
-    SELECT COUNT(*) as nb 
-    FROM factures f
-    JOIN commandes c ON c.id = f.commande_id
-    WHERE c.client_id = ? OR c.telephone = ?
-");
-$stmt->execute([$client_id, $client['telephone']]);
-$nb_factures = $stmt->fetchColumn();
+try {
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) as nb 
+        FROM factures f
+        JOIN commandes c ON c.id = f.commande_id
+        WHERE c.client_id = ? OR c.telephone = ?
+    ");
+    $stmt->execute([$client_id, $client['telephone'] ?? '']);
+    $nb_factures = $stmt->fetchColumn();
+} catch(PDOException $e) {
+    $nb_factures = 0;
+}
 
 // ============================================
 // INCLUSION DU HEADER (APRÈS LES REDIRECTIONS)
@@ -117,6 +200,17 @@ $titre_page = 'Mon compte';
 $meta_desc  = 'Gérez votre profil, vos commandes et vos points fidélité.';
 require_once '../includes/header.php';
 require_once '../includes/navbar.php';
+
+// Statuts pour l'affichage
+$statuts = [
+    'en_attente' => ['label' => 'En attente', 'class' => 'statut-en_attente'],
+    'confirmee' => ['label' => 'Confirmée', 'class' => 'statut-confirmee'],
+    'en_preparation' => ['label' => 'En préparation', 'class' => 'statut-en_preparation'],
+    'en_livraison' => ['label' => 'En livraison', 'class' => 'statut-en_livraison'],
+    'livree' => ['label' => 'Livrée', 'class' => 'statut-livree'],
+    'terminee' => ['label' => 'Terminée', 'class' => 'statut-terminee'],
+    'annulee' => ['label' => 'Annulée', 'class' => 'statut-annulee']
+];
 ?>
 
 <style>
@@ -245,6 +339,61 @@ require_once '../includes/navbar.php';
     color: #C8922A;
     margin-right: 10px;
 }
+
+/* Carte de la dernière commande */
+.derniere-commande {
+    background: #FEFBF5;
+    border-radius: 16px;
+    padding: 20px 25px;
+    margin-bottom: 30px;
+    border: 1px solid rgba(200,146,42,0.15);
+    border-left: 4px solid #C8922A;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+.derniere-commande .info {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.derniere-commande .info .numero {
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: #0D0D0D;
+}
+.derniere-commande .info .numero span {
+    color: #C8922A;
+}
+.derniere-commande .info .date {
+    font-size: 0.85rem;
+    color: #8A99AA;
+}
+.derniere-commande .info .type {
+    font-size: 0.7rem;
+    padding: 2px 10px;
+    border-radius: 12px;
+    background: rgba(200,146,42,0.1);
+    color: #C8922A;
+    display: inline-block;
+}
+.derniere-commande .total {
+    text-align: right;
+}
+.derniere-commande .total .prix {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #C8922A;
+}
+.derniere-commande .total .label {
+    font-size: 0.65rem;
+    color: #8A99AA;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
 .commandes-table {
     width: 100%;
     border-collapse: collapse;
@@ -277,6 +426,7 @@ require_once '../includes/navbar.php';
 .statut-en_preparation { background: #CCE5FF; color: #004085; }
 .statut-en_livraison { background: #E8D5F5; color: #6A1B9A; }
 .statut-livree { background: #D4EDDA; color: #155724; }
+.statut-terminee { background: #D4EDDA; color: #155724; }
 .statut-annulee { background: #F8D7DA; color: #721C24; }
 .btn-voir {
     background: none;
@@ -332,6 +482,22 @@ require_once '../includes/navbar.php';
 .info-profil strong {
     color: #C8922A;
 }
+.badge-type {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.6rem;
+    font-weight: 600;
+    margin-left: 5px;
+}
+.badge-boutique {
+    background: #D1ECF1;
+    color: #0C5460;
+}
+.badge-repas {
+    background: #FFF3CD;
+    color: #856404;
+}
 .empty-state {
     text-align: center;
     padding: 50px 20px;
@@ -368,6 +534,13 @@ require_once '../includes/navbar.php';
     .info-profil .info-row {
         grid-template-columns: 1fr;
     }
+    .derniere-commande {
+        flex-direction: column;
+        text-align: center;
+    }
+    .derniere-commande .total {
+        text-align: center;
+    }
 }
 @media (max-width: 600px) {
     .commandes-table {
@@ -397,10 +570,6 @@ require_once '../includes/navbar.php';
             <div class="stat-card">
                 <div class="number"><?= $nb_commandes ?></div>
                 <div class="label">Commandes</div>
-            </div>
-            <div class="stat-card">
-                <div class="number"><?= $points ?></div>
-                <div class="label">Points</div>
             </div>
             <div class="stat-card">
                 <div class="number"><?= number_format($total_depense, 0, ',', ' ') ?></div>
@@ -436,11 +605,6 @@ require_once '../includes/navbar.php';
                 </a>
             </div>
             <div class="menu-item">
-                <a href="mes_points.php">
-                    <i class="bi bi-star"></i> Points fidélité
-                </a>
-            </div>
-            <div class="menu-item">
                 <a href="mon_profil.php">
                     <i class="bi bi-person"></i> Mon profil
                 </a>
@@ -453,14 +617,56 @@ require_once '../includes/navbar.php';
         </aside>
         
         <main class="compte-content">
+            
+            <!-- ============================================
+            DERNIÈRE COMMANDE - EN ÉVIDENCE
+            ============================================ -->
+            <?php if($derniere_commande): 
+                $type_label = ($derniere_commande['type_commande'] ?? 'boutique') == 'repas' ? '🍽️ Repas' : '🛍️ Boutique';
+                $type_class = ($derniere_commande['type_commande'] ?? 'boutique') == 'repas' ? 'badge-repas' : 'badge-boutique';
+                $statut_key = $derniere_commande['statut'] ?? 'en_attente';
+                $statut_info = $statuts[$statut_key] ?? ['label' => $statut_key, 'class' => 'statut-en_attente'];
+            ?>
+            <div class="derniere-commande">
+                <div class="info">
+                    <div class="numero">
+                        📦 Dernière commande : <span>#<?= htmlspecialchars($derniere_commande['numero_commande'] ?? '#'.str_pad($derniere_commande['id'], 6, '0', STR_PAD_LEFT)) ?></span>
+                        <span class="badge-type <?= $type_class ?>"><?= $type_label ?></span>
+                    </div>
+                    <div class="date">
+                        <i class="bi bi-calendar3"></i> <?= date('d/m/Y à H:i', strtotime($derniere_commande['created_at'] ?? 'now')) ?>
+                    </div>
+                    <div>
+                        <span class="statut <?= $statut_info['class'] ?>">
+                            <?= $statut_info['label'] ?>
+                        </span>
+                    </div>
+                </div>
+                <div class="total">
+                    <div class="prix"><?= number_format($derniere_commande['total'] ?? 0, 0, ',', ' ') ?> FCFA</div>
+                    <div class="label">Total de la commande</div>
+                    <a href="commande_detail.php?id=<?= $derniere_commande['id'] ?>&type=<?= $derniere_commande['type_commande'] ?? 'boutique' ?>" 
+                       class="btn-voir" style="margin-top:5px;display:inline-block;">
+                        <i class="bi bi-eye"></i> Voir le détail
+                    </a>
+                </div>
+            </div>
+            <?php endif; ?>
+            
+            <!-- ============================================
+            LISTE DES DERNIÈRES COMMANDES
+            ============================================ -->
             <h2 class="section-title"><i class="bi bi-clock-history"></i> Mes dernières commandes</h2>
             
             <?php if(empty($commandes)): ?>
                 <div class="empty-state">
                     <i class="bi bi-inbox"></i>
                     <p>Vous n'avez pas encore passé de commande.</p>
-                    <a href="<?= SITE_URL ?>/boutique/catalogue.php" class="btn-boutique">
-                        <i class="bi bi-bag"></i> Découvrir la boutique
+                    <a href="menu.php" class="btn-boutique" style="margin-right:10px;">
+                        <i class="bi bi-bag"></i> Commander un repas
+                    </a>
+                    <a href="../boutique/catalogue.php" class="btn-boutique">
+                        <i class="bi bi-shop"></i> Voir la boutique
                     </a>
                 </div>
             <?php else: ?>
@@ -469,35 +675,36 @@ require_once '../includes/navbar.php';
                         <tr>
                             <th>N° commande</th>
                             <th>Date</th>
+                            <th>Type</th>
                             <th>Montant</th>
                             <th>Statut</th>
                             <th style="text-align:center;">Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach($commandes as $c): ?>
+                        <?php 
+                        // Afficher les 10 dernières commandes
+                        $afficher = array_slice($commandes, 0, 10);
+                        foreach($afficher as $c): 
+                            $type_label = ($c['type_commande'] ?? 'boutique') == 'repas' ? '🍽️ Repas' : '🛍️ Boutique';
+                            $type_class = ($c['type_commande'] ?? 'boutique') == 'repas' ? 'badge-repas' : 'badge-boutique';
+                            $statut_key = $c['statut'] ?? 'en_attente';
+                            $statut_info = $statuts[$statut_key] ?? ['label' => $statut_key, 'class' => 'statut-en_attente'];
+                        ?>
                         <tr>
                             <td><strong><?= htmlspecialchars($c['numero_commande'] ?? '#'.str_pad($c['id'], 6, '0', STR_PAD_LEFT)) ?></strong></td>
                             <td><?= date('d/m/Y', strtotime($c['created_at'] ?? 'now')) ?></td>
+                            <td>
+                                <span class="badge-type <?= $type_class ?>"><?= $type_label ?></span>
+                            </td>
                             <td style="color:#C8922A;font-weight:600;"><?= number_format($c['total'] ?? 0, 0, ',', ' ') ?> FCFA</td>
                             <td>
-                                <?php 
-                                $statuts = [
-                                    'en_attente' => 'En attente',
-                                    'confirmee' => 'Confirmée',
-                                    'en_preparation' => 'En préparation',
-                                    'en_livraison' => 'En livraison',
-                                    'livree' => 'Livrée',
-                                    'annulee' => 'Annulée'
-                                ];
-                                $statut_key = $c['statut'] ?? 'en_attente';
-                                ?>
-                                <span class="statut statut-<?= $statut_key ?>">
-                                    <?= $statuts[$statut_key] ?? $statut_key ?>
+                                <span class="statut <?= $statut_info['class'] ?>">
+                                    <?= $statut_info['label'] ?>
                                 </span>
                             </td>
                             <td style="text-align:center;">
-                                <a href="commande_detail.php?id=<?= $c['id'] ?>" class="btn-voir">
+                                <a href="commande_detail.php?id=<?= $c['id'] ?>&type=<?= $c['type_commande'] ?? 'boutique' ?>" class="btn-voir">
                                     <i class="bi bi-eye"></i>
                                 </a>
                             </td>
@@ -506,14 +713,18 @@ require_once '../includes/navbar.php';
                     </tbody>
                 </table>
                 
-                <?php if(count($commandes) >= 10): ?>
+                <?php if(count($commandes) > 10): ?>
                     <div style="text-align: center; margin-top: 20px;">
-                        <a href="mes_commandes.php" class="btn-voir">Voir toutes mes commandes →</a>
+                        <a href="mes_commandes.php" class="btn-voir" style="font-size:0.9rem;">
+                            Voir toutes mes commandes (<?= count($commandes) ?>) →
+                        </a>
                     </div>
                 <?php endif; ?>
             <?php endif; ?>
             
-            <!-- Informations du profil -->
+            <!-- ============================================
+            INFORMATIONS DU PROFIL
+            ============================================ -->
             <div class="info-profil">
                 <h3><i class="bi bi-person-circle"></i> Informations du compte</h3>
                 <div class="info-row">
@@ -525,7 +736,12 @@ require_once '../includes/navbar.php';
                         <p><strong>Téléphone :</strong> <?= htmlspecialchars($client['telephone'] ?? 'Non renseigné') ?></p>
                         <p><strong>Adresse :</strong> <?= htmlspecialchars($client['adresse_complete'] ?? 'Non renseignée') ?></p>
                     </div>
-                </div> 
+                </div>
+                <div style="margin-top:15px;">
+                    <a href="mon_profil.php" class="btn-voir">
+                        <i class="bi bi-pencil"></i> Modifier mes informations
+                    </a>
+                </div>
             </div>
         </main>
     </div>

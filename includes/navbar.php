@@ -15,11 +15,40 @@ if (isset($_SESSION['panier']) && is_array($_SESSION['panier'])) {
     }
 }
 $page_actuelle = basename($_SERVER['PHP_SELF']);
-?>
 
-<?php
 // ============================================
-// ALERTE : un client est connecté sur CE MÊME navigateur en même temps que l'admin
+// ✅ VÉRIFICATION ADMIN DISCRÈTE (sans afficher le bandeau)
+// ============================================
+$est_admin_connecte = false;
+$admin_nom = '';
+
+// Vérifier la session admin sans interférer avec la session publique
+$old_session_name = session_name();
+$old_session_id = session_id();
+session_write_close();
+
+session_name('ADMIN_SESSION');
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+if (isset($_SESSION['admin_id']) && !empty($_SESSION['admin_id'])) {
+    $est_admin_connecte = true;
+    $admin_nom = $_SESSION['admin_nom'] ?? 'Admin';
+}
+
+// Restaurer la session publique
+session_write_close();
+if (!empty($old_session_name)) {
+    session_name($old_session_name);
+} else {
+    session_name('PUBLIC_SESSION');
+}
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// ============================================
+// ALERTE : client connecté en parallèle (pour le bandeau admin)
 // ============================================
 $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] ?? 'un client') : null;
 ?>
@@ -27,7 +56,7 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
 <?php if (!empty($est_admin_connecte)): ?>
 <div class="admin-mode-bar">
     <i class="bi bi-shield-lock-fill"></i>
-    <span>Mode Administrateur — Vous naviguez en tant qu'<strong>Awa Doumbia</strong></span>
+    <span>Mode Administrateur — Vous naviguez en tant qu'<strong><?= htmlspecialchars($admin_nom) ?></strong></span>
     <?php if ($client_en_parallele): ?>
         <span class="admin-mode-warning">
             <i class="bi bi-exclamation-triangle-fill"></i>
@@ -322,6 +351,7 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
     border: 2px solid #0D0D0D;
 }
 
+/* ===== BOUTON CONNEXION / ADMIN ===== */
 .nav-connexion {
     display: flex;
     align-items: center;
@@ -330,22 +360,54 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
     font-size: 0.75rem;
     font-weight: 600;
     letter-spacing: 0.5px;
-    background: linear-gradient(135deg, #C8922A, #E8B55A);
-    color: #0D0D0D !important;
     padding: 0 18px;
     height: 36px;
     border-radius: 30px;
     text-decoration: none;
     transition: all 0.3s;
     white-space: nowrap;
+}
+
+/* ✅ BOUTON CONNEXION NORMAL */
+.nav-connexion.normal {
+    background: linear-gradient(135deg, #C8922A, #E8B55A);
+    color: #0D0D0D !important;
     box-shadow: 0 4px 14px rgba(200,146,42,0.25);
 }
-.nav-connexion:hover {
+.nav-connexion.normal:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 22px rgba(200,146,42,0.4);
     color: #fff !important;
 }
-.nav-connexion i { font-size: 0.9rem; }
+.nav-connexion.normal i { font-size: 0.9rem; }
+
+/* ✅ BOUTON ADMIN (quand connecté) */
+.nav-connexion.admin {
+    background: rgba(200,146,42,0.12);
+    border: 1.5px solid rgba(200,146,42,0.4);
+    color: #C8922A !important;
+}
+.nav-connexion.admin:hover {
+    background: rgba(200,146,42,0.2);
+    border-color: #C8922A;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 22px rgba(200,146,42,0.15);
+    color: #C8922A !important;
+}
+.nav-connexion.admin .admin-badge {
+    background: #C8922A;
+    color: #0D0D0D;
+    font-size: 0.5rem;
+    font-weight: 700;
+    padding: 1px 8px;
+    border-radius: 20px;
+    margin-left: 2px;
+    text-transform: uppercase;
+}
+.nav-connexion.admin i { 
+    font-size: 0.9rem;
+    color: #C8922A;
+}
 
 .nav-burger {
     display: none;
@@ -400,6 +462,7 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
         border: none;
     }
     .nav-panier-text { display: none; }
+    .nav-connexion.admin .admin-badge { display: none; }
 }
 @media (max-width: 600px) {
     .nav-search { flex: 1; }
@@ -443,7 +506,7 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
                         <g opacity="0.85">
                             <line x1="92" y1="68" x2="78" y2="58" stroke="url(#g1)" stroke-width="0.9"/>
                             <line x1="90" y1="72" x2="87" y2="66" stroke="url(#g1)" stroke-width="0.8"/>
-                            <line x1="87" y1="74" x2="84" y2="68" stroke="url(#g1)" stroke-width="0.8"/>
+                            <line x1="87" y1="74" x2="84" y2="66" stroke="url(#g1)" stroke-width="0.8"/>
                             <line x1="84" y1="75" x2="81" y2="69" stroke="url(#g1)" stroke-width="0.8"/>
                             <line x1="81" y1="74" x2="79" y2="69" stroke="url(#g1)" stroke-width="0.8"/>
                         </g>
@@ -509,13 +572,21 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
                 <?php endif; ?>
             </a>
 
-            <?php if(isset($_SESSION['client_id'])): ?>
-                <a href="<?= SITE_URL ?>/client/mon_compte.php" class="nav-connexion">
+            <?php if($est_admin_connecte): ?>
+                <!-- ✅ ADMIN CONNECTÉ : Bouton "Admin" avec badge -->
+                <a href="<?= SITE_URL ?>/admin/dashboard.php" class="nav-connexion admin" title="Accéder à l'administration">
+                    <i class="bi bi-person-circle"></i>
+                    <span>Admin <span class="admin-badge">⚡</span></span>
+                </a>
+            <?php elseif(isset($_SESSION['client_id'])): ?>
+                <!-- Client connecté -->
+                <a href="<?= SITE_URL ?>/client/mon_compte.php" class="nav-connexion normal">
                     <i class="bi bi-person-check"></i>
                     <span>Compte</span>
                 </a>
             <?php else: ?>
-                <a href="<?= SITE_URL ?>/client/connexion.php" class="nav-connexion">
+                <!-- Utilisateur non connecté -->
+                <a href="<?= SITE_URL ?>/client/connexion.php" class="nav-connexion normal">
                     <i class="bi bi-person"></i>
                     <span>Connexion</span>
                 </a>

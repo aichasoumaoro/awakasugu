@@ -2,6 +2,7 @@
 session_name('PUBLIC_SESSION');
 session_start();
 $titre_page = 'Boutique - IBA Design';
+
 require_once '../includes/header.php';
 require_once '../includes/navbar.php';
 
@@ -17,7 +18,54 @@ try {
     die("Erreur : " . $e->getMessage());
 }
 
-// Fonctions pour les vidéos
+// ============================================
+// RÉCUPÉRATION DES CATÉGORIES
+// ============================================
+
+$categories_masonry = [];
+$stmt = $pdo->query("SELECT * FROM categories WHERE type = 'boutique' AND parent_id IS NULL ORDER BY ordre");
+$categories_masonry = $stmt->fetchAll();
+
+if (empty($categories_masonry)) {
+    $categories_masonry = [
+        ['id' => 1, 'nom' => 'Abayas'],
+        ['id' => 2, 'nom' => 'Foulards & Turbans'],
+        ['id' => 3, 'nom' => 'Sacs'],
+        ['id' => 4, 'nom' => 'Chaussures'],
+        ['id' => 5, 'nom' => 'Prêt-à-porter'],
+    ];
+}
+
+$subcategories_data = [];
+$stmt = $pdo->query("SELECT * FROM categories WHERE type = 'boutique' AND parent_id IS NOT NULL ORDER BY parent_id, ordre");
+$all_subs = $stmt->fetchAll();
+
+foreach ($all_subs as $sub) {
+    $parent_id = $sub['parent_id'];
+    if (!isset($subcategories_data[$parent_id])) {
+        $subcategories_data[$parent_id] = [];
+    }
+    // Filtrer pour enlever "Accessoires" (id=34)
+    if ($parent_id == 3 && $sub['id'] == 34) {
+        continue;
+    }
+    // Filtrer pour enlever "Ballerines" (id=42) et "Sandales" (id=43)
+    if ($parent_id == 4 && ($sub['id'] == 42 || $sub['id'] == 43)) {
+        continue;
+    }
+    $subcategories_data[$parent_id][] = $sub;
+}
+
+if (empty($subcategories_data)) {
+    $subcategories_data = [
+        1 => [['id' => 11, 'nom' => 'Abayas Bijoux'], ['id' => 12, 'nom' => 'Abayas Bibi'], ['id' => 13, 'nom' => 'Abayas Stars'], ['id' => 14, 'nom' => 'Abayas Enfant']],
+        2 => [['id' => 21, 'nom' => 'Foulards'], ['id' => 22, 'nom' => 'Turbants'], ['id' => 23, 'nom' => 'Voiles']],
+        3 => [['id' => 31, 'nom' => 'Sacs à main'], ['id' => 32, 'nom' => 'Porte-monnaie'], ['id' => 33, 'nom' => 'Sacs complets']],
+        4 => [['id' => 41, 'nom' => 'Talons'], ['id' => 44, 'nom' => 'Fermées']],
+        5 => [['id' => 51, 'nom' => 'Robes'], ['id' => 52, 'nom' => 'Ensembles'], ['id' => 53, 'nom' => 'Vestes'], ['id' => 54, 'nom' => 'Jupes']],
+    ];
+}
+
 function getYoutubeId($url) {
     preg_match('/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&]+)/', $url, $matches);
     return $matches[1] ?? '';
@@ -37,49 +85,129 @@ $tri = isset($_GET['tri']) ? $_GET['tri'] : 'newest';
 $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
 $per_page = 12;
 
-// ============================================
-// CATÉGORIES AVEC LEURS SOUS-CATÉGORIES
-// ============================================
+$produits = [];
+$total_products = 0;
+$total_pages = 0;
 
-$categories_masonry = [
-    ['id' => 1, 'nom' => 'Abayas', 'img' => 'abayas.jpg'],
-    ['id' => 2, 'nom' => 'Foulards & Turbans', 'img' => 'foulards.jpg'],
-    ['id' => 3, 'nom' => 'Sacs & Accessoires', 'img' => 'sacs.jpg'],
-    ['id' => 4, 'nom' => 'Chaussures', 'img' => 'chaussures.jpg'],
-    ['id' => 5, 'nom' => 'Prêt-à-porter', 'img' => 'pret-a-porter.jpg'],
-];
+// ============================================
+// REQUÊTE PRINCIPALE - Récupérer tous les produits
+// ============================================
+$sql = "SELECT p.* FROM produits p WHERE p.est_visible = 1";
+$params = [];
 
-$subcategories_data = [
-    1 => [ // Abayas
-        ['id' => 11, 'nom' => 'Abayas Bijoux', 'prix' => '35 000 – 50 000 FCFA'],
-        ['id' => 12, 'nom' => 'Abayas Bibi', 'prix' => '50 000 – 80 000 FCFA'],
-        ['id' => 13, 'nom' => 'Abayas Stars', 'prix' => '90 000 – 150 000 FCFA'],
-        ['id' => 14, 'nom' => 'Abayas Enfant', 'prix' => 'Dès 25 000 FCFA'],
-    ],
-    2 => [ // Foulards & Turbans
-        ['id' => 21, 'nom' => 'Foulards', 'prix' => 'Dès 5 000 FCFA'],
-        ['id' => 22, 'nom' => 'Turbants', 'prix' => 'Dès 8 000 FCFA'],
-        ['id' => 23, 'nom' => 'Voiles', 'prix' => 'Dès 6 000 FCFA'],
-    ],
-    3 => [ // Sacs & Accessoires
-        ['id' => 31, 'nom' => 'Sacs à main', 'prix' => 'Dès 15 000 FCFA'],
-        ['id' => 32, 'nom' => 'Porte-monnaie', 'prix' => 'Dès 8 000 FCFA'],
-        ['id' => 33, 'nom' => 'Sacs complets', 'prix' => 'Dès 25 000 FCFA'],
-        ['id' => 34, 'nom' => 'Accessoires', 'prix' => 'Dès 3 000 FCFA'],
-    ],
-    4 => [ // Chaussures
-        ['id' => 41, 'nom' => 'Talons', 'prix' => 'Dès 18 000 FCFA'],
-        ['id' => 42, 'nom' => 'Ballerines', 'prix' => 'Dès 12 000 FCFA'],
-        ['id' => 43, 'nom' => 'Sandales', 'prix' => 'Dès 10 000 FCFA'],
-        ['id' => 44, 'nom' => 'Fermées', 'prix' => 'Dès 15 000 FCFA'],
-    ],
-    5 => [ // Prêt-à-porter
-        ['id' => 51, 'nom' => 'Robes', 'prix' => 'Dès 20 000 FCFA'],
-        ['id' => 52, 'nom' => 'Ensembles', 'prix' => 'Dès 35 000 FCFA'],
-        ['id' => 53, 'nom' => 'Vestes', 'prix' => 'Dès 25 000 FCFA'],
-        ['id' => 54, 'nom' => 'Jupes', 'prix' => 'Dès 15 000 FCFA'],
-    ],
-];
+if ($categorie_id > 0) {
+    if ($sous_categorie_id > 0) {
+        // Filtrer les catégories exclues
+        if ($sous_categorie_id != 34 && $sous_categorie_id != 42 && $sous_categorie_id != 43) {
+            $sql .= " AND p.categorie_id = ?";
+            $params[] = $sous_categorie_id;
+        }
+    } else {
+        $sub_ids = [];
+        if (isset($subcategories_data[$categorie_id])) {
+            foreach ($subcategories_data[$categorie_id] as $sub) {
+                $sub_ids[] = $sub['id'];
+            }
+        }
+        if (!empty($sub_ids)) {
+            $placeholders = implode(',', array_fill(0, count($sub_ids), '?'));
+            $sql .= " AND p.categorie_id IN ($placeholders)";
+            foreach ($sub_ids as $sub_id) {
+                $params[] = $sub_id;
+            }
+        } else {
+            $sql .= " AND p.categorie_id = ?";
+            $params[] = $categorie_id;
+        }
+    }
+}
+
+if (!empty($search)) {
+    $sql .= " AND (p.nom LIKE ? OR p.description LIKE ?)";
+    $params[] = "%$search%";
+    $params[] = "%$search%";
+}
+
+switch ($tri) {
+    case 'price_asc':
+        $sql .= " ORDER BY p.prix ASC";
+        break;
+    case 'price_desc':
+        $sql .= " ORDER BY p.prix DESC";
+        break;
+    default:
+        $sql .= " ORDER BY p.created_at DESC";
+}
+
+$count_sql = "SELECT COUNT(*) FROM produits p WHERE p.est_visible = 1";
+$count_params = [];
+
+if ($categorie_id > 0) {
+    if ($sous_categorie_id > 0) {
+        if ($sous_categorie_id != 34 && $sous_categorie_id != 42 && $sous_categorie_id != 43) {
+            $count_sql .= " AND p.categorie_id = ?";
+            $count_params[] = $sous_categorie_id;
+        }
+    } else {
+        $sub_ids = [];
+        if (isset($subcategories_data[$categorie_id])) {
+            foreach ($subcategories_data[$categorie_id] as $sub) {
+                $sub_ids[] = $sub['id'];
+            }
+        }
+        if (!empty($sub_ids)) {
+            $placeholders = implode(',', array_fill(0, count($sub_ids), '?'));
+            $count_sql .= " AND p.categorie_id IN ($placeholders)";
+            foreach ($sub_ids as $sub_id) {
+                $count_params[] = $sub_id;
+            }
+        } else {
+            $count_sql .= " AND p.categorie_id = ?";
+            $count_params[] = $categorie_id;
+        }
+    }
+}
+
+if (!empty($search)) {
+    $count_sql .= " AND (p.nom LIKE ? OR p.description LIKE ?)";
+    $count_params[] = "%$search%";
+    $count_params[] = "%$search%";
+}
+
+$stmt_count = $pdo->prepare($count_sql);
+$stmt_count->execute($count_params);
+$total_products = $stmt_count->fetchColumn();
+$total_pages = ceil($total_products / $per_page);
+
+$offset = ($page - 1) * $per_page;
+$sql .= " LIMIT " . (int)$per_page . " OFFSET " . (int)$offset;
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
+$produits = $stmt->fetchAll();
+
+// ============================================
+// RÉCUPÉRER LES PRODUITS EN PROMOTION POUR LA SECTION
+// ============================================
+$produits_promo = [];
+try {
+    $stmt = $pdo->query("
+        SELECT DISTINCT p.* 
+        FROM produits p
+        WHERE p.est_visible = 1 
+        AND p.est_promo = 1 
+        AND p.prix_promo IS NOT NULL 
+        AND p.prix_promo > 0 
+        AND p.prix_promo < p.prix
+        ORDER BY ((p.prix - p.prix_promo) / p.prix * 100) DESC
+        LIMIT 4
+    ");
+    $produits_promo = $stmt->fetchAll();
+} catch(PDOException $e) {
+    $produits_promo = [];
+    error_log("Erreur récupération promotions: " . $e->getMessage());
+}
+
+$videos_recents = $pdo->query("SELECT * FROM videos WHERE est_active = 1 ORDER BY created_at DESC LIMIT 4")->fetchAll();
 
 $categorie_nom = '';
 if ($categorie_id > 0) {
@@ -104,220 +232,131 @@ if ($sous_categorie_id > 0) {
 }
 
 // ============================================
-// RÉCUPÉRATION DES PRODUITS DEPUIS produits_abayas
+// FONCTION POUR L'IMAGE DES PRODUITS
 // ============================================
-
-$produits = [];
-$total_products = 0;
-$total_pages = 0;
-
-// Vérifier si la table produits_abayas existe
-try {
-    $test = $pdo->query("SELECT 1 FROM produits_abayas LIMIT 1");
-    $table_exists = true;
-} catch(PDOException $e) {
-    $table_exists = false;
-}
-
-if ($table_exists) {
-    // Utiliser la table produits_abayas
-    $sql = "SELECT * FROM produits_abayas WHERE est_visible = 1";
-    $params = [];
-
-    if ($categorie_id > 0) {
-        if ($sous_categorie_id > 0) {
-            $sql .= " AND sous_categorie_id = ?";
-            $params[] = $sous_categorie_id;
-        } else {
-            $sql .= " AND categorie_id = ?";
-            $params[] = $categorie_id;
-        }
-    }
-
-    if (!empty($search)) {
-        $sql .= " AND (nom LIKE ? OR description LIKE ?)";
-        $params[] = "%$search%";
-        $params[] = "%$search%";
-    }
-
-    switch ($tri) {
-        case 'price_asc':
-            $sql .= " ORDER BY prix ASC";
-            break;
-        case 'price_desc':
-            $sql .= " ORDER BY prix DESC";
-            break;
-        default:
-            $sql .= " ORDER BY created_at DESC";
-    }
-
-    // Comptage
-    $count_sql = "SELECT COUNT(*) FROM produits_abayas WHERE est_visible = 1";
-    $count_params = [];
-
-    if ($categorie_id > 0) {
-        if ($sous_categorie_id > 0) {
-            $count_sql .= " AND sous_categorie_id = ?";
-            $count_params[] = $sous_categorie_id;
-        } else {
-            $count_sql .= " AND categorie_id = ?";
-            $count_params[] = $categorie_id;
-        }
-    }
-
-    if (!empty($search)) {
-        $count_sql .= " AND (nom LIKE ? OR description LIKE ?)";
-        $count_params[] = "%$search%";
-        $count_params[] = "%$search%";
-    }
-
-    $stmt_count = $pdo->prepare($count_sql);
-    $stmt_count->execute($count_params);
-    $total_products = $stmt_count->fetchColumn();
-    $total_pages = ceil($total_products / $per_page);
-
-    $offset = ($page - 1) * $per_page;
-    $sql .= " LIMIT " . (int)$per_page . " OFFSET " . (int)$offset;
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $produits = $stmt->fetchAll();
-    
-} else {
-    // Fallback sur la table produits
-    $sql = "SELECT * FROM produits WHERE est_visible = 1";
-    $params = [];
-
-    if ($categorie_id > 0) {
-        if ($sous_categorie_id > 0) {
-            $sql .= " AND categorie_id = ?";
-            $params[] = $sous_categorie_id;
-        } else {
-            $sub_ids = [];
-            if (isset($subcategories_data[$categorie_id])) {
-                foreach ($subcategories_data[$categorie_id] as $sub) {
-                    $sub_ids[] = $sub['id'];
-                }
-            }
-            if (!empty($sub_ids)) {
-                $placeholders = implode(',', array_fill(0, count($sub_ids), '?'));
-                $sql .= " AND (categorie_id = ? OR categorie_id IN ($placeholders))";
-                $params[] = $categorie_id;
-                foreach ($sub_ids as $sub_id) {
-                    $params[] = $sub_id;
-                }
-            } else {
-                $sql .= " AND categorie_id = ?";
-                $params[] = $categorie_id;
-            }
-        }
-    }
-
-    if (!empty($search)) {
-        $sql .= " AND (nom LIKE ? OR description LIKE ?)";
-        $params[] = "%$search%";
-        $params[] = "%$search%";
-    }
-
-    switch ($tri) {
-        case 'price_asc':
-            $sql .= " ORDER BY prix ASC";
-            break;
-        case 'price_desc':
-            $sql .= " ORDER BY prix DESC";
-            break;
-        default:
-            $sql .= " ORDER BY created_at DESC";
-    }
-
-    $count_sql = "SELECT COUNT(*) FROM produits WHERE est_visible = 1";
-    $count_params = [];
-
-    if ($categorie_id > 0) {
-        if ($sous_categorie_id > 0) {
-            $count_sql .= " AND categorie_id = ?";
-            $count_params[] = $sous_categorie_id;
-        } else {
-            $sub_ids = [];
-            if (isset($subcategories_data[$categorie_id])) {
-                foreach ($subcategories_data[$categorie_id] as $sub) {
-                    $sub_ids[] = $sub['id'];
-                }
-            }
-            if (!empty($sub_ids)) {
-                $placeholders = implode(',', array_fill(0, count($sub_ids), '?'));
-                $count_sql .= " AND (categorie_id = ? OR categorie_id IN ($placeholders))";
-                $count_params[] = $categorie_id;
-                foreach ($sub_ids as $sub_id) {
-                    $count_params[] = $sub_id;
-                }
-            } else {
-                $count_sql .= " AND categorie_id = ?";
-                $count_params[] = $categorie_id;
-            }
-        }
-    }
-
-    if (!empty($search)) {
-        $count_sql .= " AND (nom LIKE ? OR description LIKE ?)";
-        $count_params[] = "%$search%";
-        $count_params[] = "%$search%";
-    }
-
-    $stmt_count = $pdo->prepare($count_sql);
-    $stmt_count->execute($count_params);
-    $total_products = $stmt_count->fetchColumn();
-    $total_pages = ceil($total_products / $per_page);
-
-    $offset = ($page - 1) * $per_page;
-    $sql .= " LIMIT " . (int)$per_page . " OFFSET " . (int)$offset;
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $produits = $stmt->fetchAll();
-}
-
-// Récupérer les vidéos récentes pour l'accueil
-$videos_recents = $pdo->query("SELECT * FROM videos WHERE est_active = 1 ORDER BY created_at DESC LIMIT 4")->fetchAll();
-
-// ============================================
-// FONCTION POUR RÉCUPÉRER L'IMAGE
-// ============================================
-
 function getProductImage($image) {
     if (empty($image)) {
-        return 'https://placehold.co/400x500/F5F5F5/C8922A?text=Abaya';
+        return 'https://placehold.co/400x500/F5F5F5/C8922A?text=Produit';
     }
     
-    $paths = [
-        '../uploads/abayas/' . $image,
-        '../uploads/produits/abayas/' . $image,
-        '../uploads/produits/' . $image,
-        'uploads/abayas/' . $image,
-        'uploads/produits/abayas/' . $image,
-        'uploads/produits/' . $image,
+    $image = trim($image);
+    $image_name = pathinfo($image, PATHINFO_FILENAME);
+    $extension = pathinfo($image, PATHINFO_EXTENSION);
+    
+    $dossiers = [
+        'uploads/produits/voile/',
+        '../uploads/produits/voile/',
+        'uploads/produits/pret a porter femme/',
+        '../uploads/produits/pret a porter femme/',
+        'uploads/produits/les tallons/',
+        '../uploads/produits/les tallons/',
+        'uploads/produits/fermés/',
+        '../uploads/produits/fermés/',
+        'uploads/produits/les turbants/',
+        '../uploads/produits/les turbants/',
+        'uploads/produits/les foulards/',
+        '../uploads/produits/les foulards/',
+        'uploads/produits/les foullards/',
+        '../uploads/produits/les foullards/',
+        'uploads/produits/port-monaie/',
+        '../uploads/produits/port-monaie/',
+        'uploads/produits/sacs a mains/',
+        '../uploads/produits/sacs a mains/',
+        'uploads/produits/ensemble tallons sacs/',
+        '../uploads/produits/ensemble tallons sacs/',
+        'uploads/produits/abayas/',
+        '../uploads/produits/abayas/',
+        'uploads/produits/abayas pour enfants/',
+        '../uploads/produits/abayas pour enfants/',
+        'uploads/produits/',
+        '../uploads/produits/',
     ];
     
-    foreach ($paths as $path) {
-        if (file_exists($path)) {
-            return $path;
+    $extensions = ['', '.jpeg', '.jpg', '.png', '.gif', '.webp'];
+    
+    if (!empty($extension)) {
+        $extensions = array_merge([$extension], $extensions);
+    }
+    
+    foreach ($dossiers as $dossier) {
+        foreach ($extensions as $ext) {
+            $test_path = $dossier . $image_name . $ext;
+            if (file_exists($test_path)) {
+                return $test_path;
+            }
         }
     }
     
-    return 'https://placehold.co/400x500/F5F5F5/C8922A?text=' . urlencode(str_replace('.jpeg', '', $image));
+    return 'https://placehold.co/400x500/F5F5F5/C8922A?text=' . urlencode($image_name);
 }
 
-// ============================================
-// FONCTION POUR LE NOM DE LA SOUS-CATÉGORIE
-// ============================================
-
-function getSousCategorieNom($id, $subcategories_data) {
-    foreach ($subcategories_data as $cat_id => $subs) {
-        foreach ($subs as $sub) {
-            if ($sub['id'] == $id) {
-                return $sub['nom'];
-            }
+function getCategorieNom($id, $categories) {
+    foreach ($categories as $cat) {
+        if ($cat['id'] == $id) {
+            return $cat['nom'];
         }
     }
     return 'Collection';
+}
+
+// ============================================
+// FONCTION POUR L'IMAGE DES CATÉGORIES
+// ============================================
+function getCategoryImage($cat) {
+    $nom = $cat['nom'];
+    
+    $image_map = [
+        'Abayas' => 'abayas',
+        'Abayas Enfant' => 'enfant_abayas',
+        'Foulards & Turbans' => 'foulards',
+        'Foulards' => 'foulards',
+        'Turbants' => 'turbants',
+        'Voiles' => 'voiles',
+        'Sacs' => 'sacs',
+        'Sacs à main' => 'sacs',
+        'Porte-monnaie' => 'portemonnaie',
+        'Sacs complets' => 'sacs',
+        'Chaussures' => 'chaussures',
+        'Talons' => 'talons',
+        'Fermées' => 'fermees',
+        'Prêt-à-porter' => 'pret-a-porter',
+        'Robes' => 'robes',
+        'Ensembles' => 'ensembles',
+        'Vestes' => 'vestes',
+        'Jupes' => 'jupes',
+    ];
+    
+    $image_name = $image_map[$nom] ?? 'default';
+    
+    $dossiers = [
+        '../uploads/produits/port-monaie/',
+        'uploads/produits/port-monaie/',
+        '../uploads/produits/sacs a mains/',
+        'uploads/produits/sacs a mains/',
+        '../uploads/produits/ensemble tallons sacs/',
+        'uploads/produits/ensemble tallons sacs/',
+        '../uploads/produits/ensemble/',
+        'uploads/produits/ensemble/',
+        '../assets/images/categories/',
+        'assets/images/categories/',
+        '../uploads/categories/',
+        'uploads/categories/',
+        '../images/categories/',
+        'images/categories/',
+    ];
+    
+    $extensions = ['', '.jpg', '.jpeg', '.png', '.gif'];
+    
+    foreach ($dossiers as $dossier) {
+        foreach ($extensions as $ext) {
+            $test_path = $dossier . $image_name . $ext;
+            if (file_exists($test_path)) {
+                return $test_path;
+            }
+        }
+    }
+    
+    return 'https://placehold.co/200x200/C8922A/FFF?text=' . urlencode(substr($nom, 0, 1));
 }
 ?>
 
@@ -330,8 +369,10 @@ function getSousCategorieNom($id, $subcategories_data) {
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Jost:wght@300;400;500;600;700;800&display=swap');
+        
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Jost', sans-serif; background: #F8F7F5; color: #1A1A1A; }
+        
         .banner {
             background: linear-gradient(135deg, #0D0D0D 0%, #1A1A1A 50%, #0D0D0D 100%);
             padding: 70px 20px 60px;
@@ -339,7 +380,9 @@ function getSousCategorieNom($id, $subcategories_data) {
         }
         .banner h1 { font-size: 2.8rem; color: #C8922A; font-weight: 700; }
         .banner p { color: rgba(255,255,255,0.5); margin-top: 12px; }
+        
         .container { max-width: 1300px; margin: 0 auto; padding: 0 20px 60px; }
+        
         .search-wrapper { max-width: 500px; margin: -30px auto 50px; }
         .search-form {
             display: flex;
@@ -357,6 +400,7 @@ function getSousCategorieNom($id, $subcategories_data) {
             font-weight: 700;
             cursor: pointer;
         }
+        
         .categories-grid {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
@@ -374,6 +418,7 @@ function getSousCategorieNom($id, $subcategories_data) {
         }
         .cat-img img { width: 100%; height: 100%; object-fit: cover; }
         .cat-name { font-size: 0.9rem; font-weight: 600; color: #1A1A1A; }
+        
         .section-head {
             margin-bottom: 35px;
             display: flex;
@@ -384,6 +429,7 @@ function getSousCategorieNom($id, $subcategories_data) {
         .section-title { font-family: 'Playfair Display', serif; font-size: 1.8rem; font-weight: 700; color: #0D0D0D; }
         .section-title em { color: #C8922A; font-style: italic; }
         .section-link { font-size: 0.8rem; font-weight: 600; color: #C8922A; text-decoration: none; }
+        
         .subcat-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -404,7 +450,118 @@ function getSousCategorieNom($id, $subcategories_data) {
         .subcat-card-name { font-size: 0.85rem; font-weight: 700; color: #1A1A1A; }
         .subcat-card-price { font-size: 0.7rem; color: #C8922A; margin-top: 5px; display: block; }
         
-        /* Section vidéos */
+        /* ===== SECTION PROMOTIONS ===== */
+        .promo-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 25px;
+            margin-bottom: 60px;
+        }
+        .promo-card {
+            background: #FFFFFF;
+            border-radius: 16px;
+            overflow: hidden;
+            transition: all 0.3s;
+            text-decoration: none;
+            border: 1px solid #F0F0F0;
+            position: relative;
+        }
+        .promo-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 25px rgba(0,0,0,0.08);
+        }
+        .promo-image {
+            position: relative;
+            height: 220px;
+            overflow: hidden;
+            background: #F8F8F8;
+        }
+        .promo-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.5s;
+        }
+        .promo-card:hover .promo-image img {
+            transform: scale(1.03);
+        }
+        .promo-badge-red {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            background: #E74C3C;
+            color: white;
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 4px 14px;
+            border-radius: 20px;
+            box-shadow: 0 4px 10px rgba(231,76,60,0.3);
+            z-index: 2;
+            animation: pulse-badge 2s infinite;
+        }
+        @keyframes pulse-badge {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        .promo-info {
+            padding: 14px;
+            text-align: center;
+        }
+        .promo-name {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: #1A1A1A;
+            margin-bottom: 4px;
+        }
+        .promo-prices {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .promo-price-new {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #E74C3C;
+        }
+        .promo-price-old {
+            font-size: 0.75rem;
+            color: #8A99AA;
+            text-decoration: line-through;
+        }
+        .btn-promo {
+            display: inline-block;
+            background: #C8922A;
+            color: white;
+            padding: 6px 16px;
+            border-radius: 30px;
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: background 0.3s;
+        }
+        .btn-promo:hover {
+            background: #9A6E1A;
+            color: white;
+        }
+        .promo-empty {
+            text-align: center;
+            padding: 40px;
+            background: white;
+            border-radius: 16px;
+            border: 1px solid #F0EBE3;
+            grid-column: 1/-1;
+        }
+        .promo-empty i {
+            font-size: 2.5rem;
+            color: #CCC;
+        }
+        .promo-empty p {
+            margin-top: 10px;
+            color: #8A99AA;
+        }
+        
         .videos-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -480,6 +637,7 @@ function getSousCategorieNom($id, $subcategories_data) {
         .shop-layout { display: flex; gap: 45px; }
         .sidebar { width: 270px; flex-shrink: 0; }
         .content { flex: 1; }
+        
         .sidebar-title {
             font-size: 1rem;
             font-weight: 700;
@@ -500,6 +658,7 @@ function getSousCategorieNom($id, $subcategories_data) {
             transition: all 0.25s;
         }
         .sidebar-list a:hover, .sidebar-list a.active { background: rgba(200,146,42,0.1); color: #C8922A; transform: translateX(5px); }
+        
         .filters-bar {
             display: flex;
             justify-content: space-between;
@@ -517,103 +676,234 @@ function getSousCategorieNom($id, $subcategories_data) {
             cursor: pointer;
         }
         .count { font-size: 0.8rem; color: #888; background: #F0F0F0; padding: 6px 18px; border-radius: 40px; }
-        .products-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+        
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 28px;
+        }
+        
         .product-card {
-            background: white;
-            border-radius: 20px;
+            background: #FFFFFF;
+            border-radius: 16px;
             overflow: hidden;
             text-decoration: none;
-            transition: all 0.4s;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+            transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.06);
+            border: 1px solid #F0EDE8;
+            position: relative;
         }
-        .product-card:hover { transform: translateY(-10px); box-shadow: 0 25px 45px rgba(0,0,0,0.12); }
+        
+        .product-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.12);
+            border-color: rgba(200,146,42,0.2);
+        }
+        
         .product-img {
             position: relative;
             aspect-ratio: 3/4;
             overflow: hidden;
             background: #F5F3F0;
         }
-        .product-img img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s; }
-        .product-card:hover .product-img img { transform: scale(1.08); }
+        
+        .product-img img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.5s ease;
+        }
+        
+        .product-card:hover .product-img img {
+            transform: scale(1.05);
+        }
+        
+        .product-badge-promo {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: #E74C3C;
+            color: white;
+            font-size: 0.55rem;
+            font-weight: 700;
+            padding: 4px 12px;
+            border-radius: 20px;
+            z-index: 5;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 4px 12px rgba(231,76,60,0.3);
+        }
+        
         .product-overlay {
             position: absolute;
             bottom: 0;
             left: 0;
             right: 0;
-            background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
-            padding: 25px 20px;
-            transform: translateY(100%);
-            transition: transform 0.35s;
+            padding: 40px 18px 18px;
+            background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.4s ease;
             display: flex;
-            gap: 12px;
+            gap: 10px;
         }
-        .product-card:hover .product-overlay { transform: translateY(0); }
+        
+        .product-card:hover .product-overlay {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
         .btn-overlay {
             flex: 1;
-            padding: 10px;
-            border-radius: 40px;
-            font-size: 0.75rem;
+            padding: 10px 8px;
+            border-radius: 30px;
+            font-size: 0.65rem;
             font-weight: 700;
             text-align: center;
             text-decoration: none;
-            transition: all 0.25s;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
         }
-        .btn-view { background: white; color: #1A1A1A; }
-        .btn-view:hover { background: #C8922A; color: white; }
-        .btn-buy { background: #C8922A; color: white; }
-        .btn-buy:hover { background: #9A6E1A; }
-        .product-info { padding: 18px; text-align: center; }
-        .product-title { font-size: 0.88rem; font-weight: 600; color: #1A1A1A; margin-bottom: 5px; }
-
-        /* STYLE POUR LE PRIX PROMOTIONNEL */
-        .product-price {
+        
+        .btn-view {
+            background: rgba(255,255,255,0.95);
+            color: #1A1A1A;
+        }
+        .btn-view:hover {
+            background: #C8922A;
+            color: white;
+            transform: translateY(-2px);
+        }
+        
+        .btn-buy {
+            background: #C8922A;
+            color: white;
+        }
+        .btn-buy:hover {
+            background: #9A6E1A;
+            color: white;
+            transform: translateY(-2px);
+        }
+        
+        .product-info {
+            padding: 16px 18px 20px;
+            text-align: center;
+            background: #FFFFFF;
+        }
+        
+        .product-title {
             font-size: 0.95rem;
-            font-weight: 700;
+            font-weight: 600;
+            color: #1A1A1A;
+            margin-bottom: 2px;
+            font-family: 'Playfair Display', serif;
+            transition: color 0.3s ease;
+        }
+        
+        .product-card:hover .product-title {
             color: #C8922A;
         }
+        
+        .product-category {
+            font-size: 0.6rem;
+            color: #C8922A;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            font-weight: 500;
+            display: block;
+            margin-bottom: 6px;
+        }
+        
+        .product-price {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #C8922A;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        
         .product-price .old-price {
             font-size: 0.75rem;
-            color: #999;
+            color: #B0B0B0;
             text-decoration: line-through;
             font-weight: 400;
-            margin-right: 8px;
         }
+        
         .product-price .promo-badge {
             display: inline-block;
             background: #E74C3C;
             color: white;
-            font-size: 0.6rem;
+            font-size: 0.5rem;
             font-weight: 700;
             padding: 2px 8px;
             border-radius: 20px;
-            margin-left: 5px;
         }
-        .product-badge-promo {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: #E74C3C;
+        
+        .product-divider {
+            width: 30px;
+            height: 2px;
+            background: #C8922A;
+            margin: 6px auto 8px;
+            border-radius: 2px;
+            opacity: 0.5;
+            transition: width 0.3s ease;
+        }
+        
+        .product-card:hover .product-divider {
+            width: 50px;
+            opacity: 1;
+        }
+        
+        .empty-state { text-align: center; padding: 80px; background: white; border-radius: 24px; border: 1px solid #F0EBE3; }
+        .empty-state i { font-size: 4rem; color: #C8922A; margin-bottom: 20px; }
+        .empty-state h3 { font-family: 'Playfair Display', serif; color: #1A1A1A; margin-bottom: 10px; }
+        .empty-state p { color: #999; }
+        .empty-state .btn-retour { 
+            display: inline-block; 
+            margin-top: 15px; 
+            color: #C8922A; 
+            font-weight: 600;
+            text-decoration: none;
+            padding: 10px 30px;
+            border: 2px solid #C8922A;
+            border-radius: 30px;
+            transition: all 0.3s ease;
+        }
+        .empty-state .btn-retour:hover {
+            background: #C8922A;
             color: white;
-            font-size: 0.65rem;
-            font-weight: 700;
-            padding: 4px 12px;
-            border-radius: 20px;
-            z-index: 5;
-            box-shadow: 0 2px 10px rgba(231,76,60,0.3);
-            text-transform: uppercase;
         }
-
-        .empty-state { text-align: center; padding: 70px; background: white; border-radius: 24px; }
-        .empty-state i { font-size: 3rem; color: #C8922A; margin-bottom: 15px; }
+        
         .breadcrumb { margin-bottom: 30px; font-size: 0.8rem; color: #999; }
         .breadcrumb a { color: #999; text-decoration: none; }
         .breadcrumb a:hover { color: #C8922A; }
         .breadcrumb span { color: #C8922A; font-weight: 500; }
-        .pagination { display: flex; justify-content: center; gap: 10px; margin-top: 50px; }
-        .pagination a, .pagination span { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 50%; text-decoration: none; color: #666; background: white; border: 1px solid #E0E0E0; transition: all 0.25s; }
-        .pagination a:hover, .pagination .active { background: #C8922A; color: white; border-color: #C8922A; }
         
-        /* Modal vidéo */
+        .pagination { display: flex; justify-content: center; gap: 10px; margin-top: 50px; }
+        .pagination a, .pagination span {
+            width: 40px; height: 40px;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 50%;
+            text-decoration: none;
+            color: #666;
+            background: white;
+            border: 1px solid #E0E0E0;
+            transition: all 0.25s;
+        }
+        .pagination a:hover, .pagination .active {
+            background: #C8922A;
+            color: white;
+            border-color: #C8922A;
+        }
+        
         .video-modal {
             display: none;
             position: fixed;
@@ -665,19 +955,25 @@ function getSousCategorieNom($id, $subcategories_data) {
             .products-grid { grid-template-columns: repeat(2, 1fr); }
             .categories-grid { grid-template-columns: repeat(3, 1fr); }
             .subcat-grid { grid-template-columns: repeat(2, 1fr); }
+            .promo-grid { grid-template-columns: repeat(2, 1fr); }
             .videos-grid { grid-template-columns: repeat(2, 1fr); }
         }
+        
         @media (max-width: 800px) {
             .shop-layout { flex-direction: column; }
             .sidebar { width: 100%; }
             .sidebar-list { display: flex; flex-wrap: wrap; gap: 8px; }
             .sidebar-list li { margin-bottom: 0; }
         }
+        
         @media (max-width: 600px) {
             .products-grid { grid-template-columns: 1fr; }
             .categories-grid { grid-template-columns: repeat(2, 1fr); }
             .subcat-grid { grid-template-columns: 1fr; }
+            .promo-grid { grid-template-columns: 1fr; }
             .videos-grid { grid-template-columns: 1fr; }
+            .banner h1 { font-size: 2rem; }
+            .section-title { font-size: 1.4rem; }
         }
     </style>
 </head>
@@ -698,16 +994,17 @@ function getSousCategorieNom($id, $subcategories_data) {
                 <input type="hidden" name="sous_categorie" value="<?= $sous_categorie_id ?>">
             <?php endif; ?>
             <input type="text" name="search" placeholder="Rechercher un produit..." value="<?= htmlspecialchars($search) ?>">
-            <button type="submit">Rechercher</button>
+            <button type="submit"><i class="bi bi-search"></i> Rechercher</button>
         </form>
     </div>
 
     <?php if ($categorie_id == 0 && empty($search)): ?>
+        <!-- Catégories principales -->
         <div class="categories-grid">
             <?php foreach ($categories_masonry as $cat): ?>
                 <a href="?categorie=<?= $cat['id'] ?>" class="cat-card">
                     <div class="cat-img">
-                        <img src="<?= SITE_URL ?>/assets/images/categories/<?= $cat['img'] ?>" 
+                        <img src="<?= getCategoryImage($cat) ?>" 
                              alt="<?= htmlspecialchars($cat['nom']) ?>"
                              onerror="this.src='https://placehold.co/200x200/C8922A/FFF?text=<?= urlencode(substr($cat['nom'], 0, 1)) ?>'">
                     </div>
@@ -716,7 +1013,8 @@ function getSousCategorieNom($id, $subcategories_data) {
             <?php endforeach; ?>
         </div>
 
-        <!-- Section Abayas -->
+        <!-- Abayas -->
+        <?php if (isset($subcategories_data[1])): ?>
         <div class="section-head">
             <div>
                 <h2 class="section-title">Nos <em>abayas</em></h2>
@@ -726,29 +1024,51 @@ function getSousCategorieNom($id, $subcategories_data) {
         <div class="subcat-grid">
             <?php foreach ($subcategories_data[1] as $sub): ?>
                 <a href="?categorie=1&sous_categorie=<?= $sub['id'] ?>" class="subcat-card">
-                    <div class="subcat-card-name"><?= $sub['nom'] ?></div>
-                    <div class="subcat-card-price"><?= $sub['prix'] ?></div>
+                    <div class="subcat-card-name"><?= htmlspecialchars($sub['nom']) ?></div>
+                    <div class="subcat-card-price">Collection exclusive</div>
                 </a>
             <?php endforeach; ?>
         </div>
+        <?php endif; ?>
 
-        <!-- Section Sacs & Accessoires -->
+        <!-- Foulards & Turbans -->
+        <?php if (isset($subcategories_data[2])): ?>
         <div class="section-head">
             <div>
-                <h2 class="section-title">Nos <em>sacs & accessoires</em></h2>
+                <h2 class="section-title">Nos <em>foulards & turbans</em></h2>
+            </div>
+            <a href="?categorie=2" class="section-link">Voir toutes →</a>
+        </div>
+        <div class="subcat-grid">
+            <?php foreach ($subcategories_data[2] as $sub): ?>
+                <a href="?categorie=2&sous_categorie=<?= $sub['id'] ?>" class="subcat-card">
+                    <div class="subcat-card-name"><?= htmlspecialchars($sub['nom']) ?></div>
+                    <div class="subcat-card-price">Collection exclusive</div>
+                </a>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+
+        <!-- Sacs -->
+        <?php if (isset($subcategories_data[3])): ?>
+        <div class="section-head">
+            <div>
+                <h2 class="section-title">Nos <em>sacs</em></h2>
             </div>
             <a href="?categorie=3" class="section-link">Voir toutes →</a>
         </div>
         <div class="subcat-grid">
             <?php foreach ($subcategories_data[3] as $sub): ?>
                 <a href="?categorie=3&sous_categorie=<?= $sub['id'] ?>" class="subcat-card">
-                    <div class="subcat-card-name"><?= $sub['nom'] ?></div>
-                    <div class="subcat-card-price"><?= $sub['prix'] ?></div>
+                    <div class="subcat-card-name"><?= htmlspecialchars($sub['nom']) ?></div>
+                    <div class="subcat-card-price">Collection exclusive</div>
                 </a>
             <?php endforeach; ?>
         </div>
+        <?php endif; ?>
 
-        <!-- Section Chaussures -->
+        <!-- Chaussures -->
+        <?php if (isset($subcategories_data[4])): ?>
         <div class="section-head">
             <div>
                 <h2 class="section-title">Nos <em>chaussures</em></h2>
@@ -758,14 +1078,72 @@ function getSousCategorieNom($id, $subcategories_data) {
         <div class="subcat-grid">
             <?php foreach ($subcategories_data[4] as $sub): ?>
                 <a href="?categorie=4&sous_categorie=<?= $sub['id'] ?>" class="subcat-card">
-                    <div class="subcat-card-name"><?= $sub['nom'] ?></div>
-                    <div class="subcat-card-price"><?= $sub['prix'] ?></div>
+                    <div class="subcat-card-name"><?= htmlspecialchars($sub['nom']) ?></div>
+                    <div class="subcat-card-price">Collection exclusive</div>
                 </a>
             <?php endforeach; ?>
         </div>
+        <?php endif; ?>
 
-        <!-- Section Vidéos Awa Doumbia -->
-        <div class="section-head" style="margin-top: 40px;">
+        <!-- Prêt-à-porter -->
+        <?php if (isset($subcategories_data[5])): ?>
+        <div class="section-head">
+            <div>
+                <h2 class="section-title">Nos <em>prêt-à-porter</em></h2>
+            </div>
+            <a href="?categorie=5" class="section-link">Voir toutes →</a>
+        </div>
+        <div class="subcat-grid">
+            <?php foreach ($subcategories_data[5] as $sub): ?>
+                <a href="?categorie=5&sous_categorie=<?= $sub['id'] ?>" class="subcat-card">
+                    <div class="subcat-card-name"><?= htmlspecialchars($sub['nom']) ?></div>
+                    <div class="subcat-card-price">Collection exclusive</div>
+                </a>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+
+        <!-- ===== SECTION PROMOTIONS ===== -->
+        <div class="section-head" style="margin-top: 20px;">
+            <div>
+                <h2 class="section-title">🔥 Nos <em>promotions</em></h2>
+                <p style="font-size: 0.85rem; color: #8A99AA; margin-top: 5px;">Profitez des offres spéciales du moment</p>
+            </div>
+            <a href="promotions.php" class="section-link">Voir toutes les promos →</a>
+        </div>
+        
+        <?php if(!empty($produits_promo)): ?>
+        <div class="promo-grid">
+            <?php foreach($produits_promo as $p): 
+                $reduction = round((($p['prix'] - $p['prix_promo']) / $p['prix']) * 100);
+                $img = getProductImage($p['image_principale'] ?? '');
+            ?>
+            <a href="produit.php?id=<?= $p['id'] ?>" class="promo-card">
+                <div class="promo-image">
+                    <img src="<?= $img ?>" alt="<?= htmlspecialchars($p['nom']) ?>" loading="lazy" onerror="this.src='https://placehold.co/400x500/F5F5F5/C8922A?text=<?= urlencode($p['nom'])?>'">
+                    <div class="promo-badge-red">-<?= $reduction ?>%</div>
+                </div>
+                <div class="promo-info">
+                    <div class="promo-name"><?= htmlspecialchars($p['nom']) ?></div>
+                    <div class="promo-prices">
+                        <span class="promo-price-new"><?= number_format($p['prix_promo'], 0, ',', ' ') ?> FCFA</span>
+                        <span class="promo-price-old"><?= number_format($p['prix'], 0, ',', ' ') ?> FCFA</span>
+                    </div>
+                    <span class="btn-promo">Profiter</span>
+                </div>
+            </a>
+            <?php endforeach; ?>
+        </div>
+        <?php else: ?>
+        <div class="promo-empty">
+            <i class="bi bi-tag"></i>
+            <p>Aucune promotion en cours pour le moment.</p>
+            <a href="catalogue.php" style="color:#C8922A;font-weight:600;text-decoration:none;">Voir tous les produits →</a>
+        </div>
+        <?php endif; ?>
+
+        <!-- Vidéos -->
+        <div class="section-head" style="margin-top: 20px;">
             <div>
                 <h2 class="section-title">Les vidéos d'<em>Awa Doumbia</em></h2>
                 <p style="font-size: 0.85rem; color: #8A99AA; margin-top: 5px;">Découvrez les actualités et conseils de notre ambassadrice</p>
@@ -830,26 +1208,43 @@ function getSousCategorieNom($id, $subcategories_data) {
             <?php endforeach; ?>
         </div>
         <?php else: ?>
-        <div style="text-align: center; padding: 40px; background: white; border-radius: 20px;">
+        <div style="text-align: center; padding: 40px; background: white; border-radius: 20px; border: 1px solid #F0EBE3;">
             <i class="bi bi-camera-reels" style="font-size: 2rem; color: #C8922A;"></i>
             <p style="margin-top: 10px; color: #8A99AA;">Bientôt des vidéos exclusives !</p>
         </div>
         <?php endif; ?>
 
     <?php else: ?>
+        <!-- ===== PAGE CATÉGORIE AVEC PRODUITS ===== -->
         <div class="breadcrumb">
-            <a href="catalogue.php">Accueil</a> > <span><?= htmlspecialchars($categorie_nom) ?></span>
-            <?php if ($sous_categorie_id > 0): ?> > <span><?= htmlspecialchars($sub_nom_affiché) ?></span><?php endif; ?>
+            <a href="catalogue.php"><i class="bi bi-house"></i> Accueil</a> 
+            <i class="bi bi-chevron-right" style="font-size: 0.6rem; margin: 0 8px;"></i>
+            <span><?= htmlspecialchars($categorie_nom) ?></span>
+            <?php if ($sous_categorie_id > 0): ?> 
+                <i class="bi bi-chevron-right" style="font-size: 0.6rem; margin: 0 8px;"></i>
+                <span><?= htmlspecialchars($sub_nom_affiché) ?></span>
+            <?php endif; ?>
         </div>
 
         <div class="shop-layout">
             <div class="sidebar">
-                <div class="sidebar-title"><?= htmlspecialchars($categorie_nom) ?></div>
+                <div class="sidebar-title">
+                    <i class="bi bi-grid-3x3-gap-fill" style="color: #C8922A;"></i> 
+                    <?= htmlspecialchars($categorie_nom) ?>
+                </div>
                 <ul class="sidebar-list">
-                    <li><a href="?categorie=<?= $categorie_id ?>" class="<?= ($sous_categorie_id == 0) ? 'active' : '' ?>">Tous les produits</a></li>
+                    <li>
+                        <a href="?categorie=<?= $categorie_id ?>" class="<?= ($sous_categorie_id == 0) ? 'active' : '' ?>">
+                            <i class="bi bi-grid"></i> Tous les produits
+                        </a>
+                    </li>
                     <?php if (isset($subcategories_data[$categorie_id])): ?>
                         <?php foreach ($subcategories_data[$categorie_id] as $sub): ?>
-                            <li><a href="?categorie=<?= $categorie_id ?>&sous_categorie=<?= $sub['id'] ?>" class="<?= ($sous_categorie_id == $sub['id']) ? 'active' : '' ?>"><?= $sub['nom'] ?></a></li>
+                            <li>
+                                <a href="?categorie=<?= $categorie_id ?>&sous_categorie=<?= $sub['id'] ?>" class="<?= ($sous_categorie_id == $sub['id']) ? 'active' : '' ?>">
+                                    <i class="bi bi-tag"></i> <?= htmlspecialchars($sub['nom']) ?>
+                                </a>
+                            </li>
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </ul>
@@ -862,61 +1257,77 @@ function getSousCategorieNom($id, $subcategories_data) {
                         <option value="?<?= http_build_query(array_merge($_GET, ['tri' => 'price_asc', 'page' => 1])) ?>" <?= $tri == 'price_asc' ? 'selected' : '' ?>>💰 Prix croissant</option>
                         <option value="?<?= http_build_query(array_merge($_GET, ['tri' => 'price_desc', 'page' => 1])) ?>" <?= $tri == 'price_desc' ? 'selected' : '' ?>>💰 Prix décroissant</option>
                     </select>
-                    <div class="count"><?= $total_products ?> produits</div>
+                    <div class="count"><i class="bi bi-box-seam"></i> <?= $total_products ?> produits</div>
                 </div>
 
                 <?php if (empty($produits)): ?>
                     <div class="empty-state">
                         <i class="bi bi-box-seam"></i>
-                        <p>Aucun produit trouvé dans cette catégorie</p>
-                        <a href="catalogue.php" style="color: #C8922A;">← Retour à la boutique</a>
+                        <h3>Aucun produit trouvé</h3>
+                        <p>Dans cette catégorie pour le moment</p>
+                        <a href="catalogue.php" class="btn-retour">← Retour à la boutique</a>
                     </div>
                 <?php else: ?>
                     <div class="products-grid">
                         <?php foreach ($produits as $p): ?>
                             <?php
-                            // Récupérer l'image
                             $img = getProductImage($p['image_principale'] ?? '');
                             
-                            // Déterminer le prix
+                            // ============================================
+                            // VÉRIFICATION DE LA PROMOTION
+                            // ============================================
                             $prix_affiché = $p['prix'];
                             $prix_ancien = null;
                             $est_promo = false;
                             
-                            if (!empty($p['prix_promo']) && $p['prix_promo'] > 0 && $p['prix_promo'] < $p['prix']) {
+                            // Vérifier si le produit est en promotion
+                            if (isset($p['est_promo']) && $p['est_promo'] == 1 && 
+                                isset($p['prix_promo']) && $p['prix_promo'] > 0 && 
+                                $p['prix_promo'] < $p['prix']) {
                                 $prix_affiché = $p['prix_promo'];
                                 $prix_ancien = $p['prix'];
                                 $est_promo = true;
                             }
                             
-                            // Récupérer le nom de la sous-catégorie
-                            $sous_cat_nom = '';
-                            if (!empty($p['sous_categorie_id'])) {
-                                $sous_cat_nom = getSousCategorieNom($p['sous_categorie_id'], $subcategories_data);
+                            $cat_nom = '';
+                            if (!empty($p['categorie_id'])) {
+                                $cat_nom = getCategorieNom($p['categorie_id'], $categories_masonry);
+                            }
+                            
+                            $pourcentage_promo = 0;
+                            if ($est_promo && $prix_ancien > 0) {
+                                $pourcentage_promo = round((1 - $prix_affiché / $prix_ancien) * 100);
                             }
                             ?>
                             <div class="product-card">
                                 <div class="product-img">
-                                    <img src="<?= $img ?>" alt="<?= htmlspecialchars($p['nom']) ?>">
+                                    <img src="<?= $img ?>" alt="<?= htmlspecialchars($p['nom']) ?>" loading="lazy">
                                     
                                     <?php if ($est_promo): ?>
-                                        <div class="product-badge-promo">-<?= round((1 - $p['prix_promo'] / $p['prix']) * 100) ?>%</div>
+                                        <div class="product-badge-promo">-<?= $pourcentage_promo ?>%</div>
                                     <?php endif; ?>
                                     
                                     <div class="product-overlay">
-                                        <a href="produit.php?id=<?= $p['id'] ?>" class="btn-overlay btn-view">Voir détails</a>
-                                        <a href="commande_directe.php?id=<?= $p['id'] ?>" class="btn-overlay btn-buy">Acheter</a>
+                                        <a href="produit.php?id=<?= $p['id'] ?>" class="btn-overlay btn-view">
+                                            <i class="bi bi-eye"></i> Détails
+                                        </a>
+                                        <a href="commande_directe.php?id=<?= $p['id'] ?>" class="btn-overlay btn-buy">
+                                            <i class="bi bi-cart-plus"></i> Acheter
+                                        </a>
                                     </div>
                                 </div>
+                                
                                 <div class="product-info">
                                     <div class="product-title"><?= htmlspecialchars($p['nom']) ?></div>
-                                    <?php if ($sous_cat_nom): ?>
-                                        <div style="font-size: 0.7rem; color: #999; margin-bottom: 5px;"><?= htmlspecialchars($sous_cat_nom) ?></div>
+                                    <?php if ($cat_nom): ?>
+                                        <span class="product-category"><?= htmlspecialchars($cat_nom) ?></span>
                                     <?php endif; ?>
+                                    
+                                    <div class="product-divider"></div>
                                     <div class="product-price">
                                         <?php if ($est_promo): ?>
                                             <span class="old-price"><?= number_format($prix_ancien, 0, ',', ' ') ?> FCFA</span>
-                                            <span><?= number_format($prix_affiché, 0, ',', ' ') ?> FCFA</span>
+                                            <span style="color:#E74C3C;font-weight:700;"><?= number_format($prix_affiché, 0, ',', ' ') ?> FCFA</span>
                                             <span class="promo-badge">Promo</span>
                                         <?php else: ?>
                                             <?= number_format($prix_affiché, 0, ',', ' ') ?> FCFA

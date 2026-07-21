@@ -1,1332 +1,2175 @@
 <?php
 // ============================================
-// RESTAURANT SOFIA — Menu Vitrine Premium
-// Awa Doumbia | Bamako, Mali
+// MENU COMPLET - RESTAURANT SOFIA
 // ============================================
 
-// Connexion BDD AVANT header pour éviter tout conflit
-$host = 'localhost'; $dbname = 'awakasugu_db'; $user = 'root'; $pass = '';
+session_name('PUBLIC_SESSION');
+session_start();
+
+require_once '../includes/maintenance_check.php';
+
+$titre_page = 'Menu - Restaurant Sofia';
+$meta_desc = 'Découvrez le menu complet du Restaurant Sofia par Awa Ka Sugu.';
+
+$host = 'localhost';
+$dbname = 'awakasugu_db';
+$user = 'root';
+$pass = '';
+
 try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $user, $pass);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch(PDOException $e) { die("Erreur BDD : " . $e->getMessage()); }
-
-// Catégories
-try {
-    $categories = $pdo->query("SELECT * FROM categories_restaurant ORDER BY ordre ASC")->fetchAll();
-} catch(Exception $e) {
-    $categories = [
-        ['id'=>1,'nom'=>'Cuisine Malienne','icone'=>'🇲🇱'],
-        ['id'=>2,'nom'=>'Cuisine Européenne','icone'=>'🌍'],
-        ['id'=>3,'nom'=>'Desserts & Pâtisserie','icone'=>'🍰'],
-        ['id'=>4,'nom'=>'Boissons','icone'=>'🥤'],
-        ['id'=>5,'nom'=>'Boulangerie','icone'=>'🥖'],
-    ];
+} catch(PDOException $e) {
+    // Pas de base
 }
 
-// Tous les plats visibles
+// ============================================
+// RÉCUPÉRER TOUS LES PLATS DE LA BASE DE DONNÉES
+// ============================================
 try {
-    $plats = $pdo->query("SELECT * FROM plats WHERE est_visible=1 ORDER BY est_plat_du_jour DESC, categorie_id ASC, id DESC")->fetchAll();
-} catch(Exception $e) { $plats = []; }
-
-// Plat du jour
-try {
-    $plat_jour = $pdo->query("SELECT * FROM plats WHERE est_plat_du_jour=1 AND est_visible=1 LIMIT 1")->fetch();
-} catch(Exception $e) { $plat_jour = null; }
-if(!$plat_jour && !empty($plats)) $plat_jour = $plats[0];
-
-// Regrouper plats par catégorie
-$plats_par_cat = [];
-foreach($plats as $p) {
-    $plats_par_cat[$p['categorie_id'] ?? 0][] = $p;
+    // Récupérer tous les plats visibles
+    $stmt = $pdo->query("SELECT * FROM plats WHERE est_visible = 1 ORDER BY id");
+    $tous_les_plats = $stmt->fetchAll();
+    
+    // Récupérer les gâteaux
+    $stmt = $pdo->query("SELECT * FROM plats WHERE est_visible = 1 AND (categorie = 'Dessert' OR nom LIKE '%Gâteau%' OR nom LIKE '%Cupcake%') ORDER BY id");
+    $gateaux = $stmt->fetchAll();
+    
+    // Récupérer le plat du jour
+    $plat_du_jour = $pdo->query("SELECT * FROM plats WHERE est_plat_du_jour = 1 AND est_visible = 1 LIMIT 1")->fetch();
+    
+} catch(PDOException $e) {
+    $tous_les_plats = [];
+    $gateaux = [];
+    $plat_du_jour = null;
 }
 
-$titre_page = 'Restaurant Sofia — Cuisine d\'Exception';
-$meta_desc  = 'Restaurant Sofia à Bamako : cuisine malienne authentique, européenne, pâtisserie artisanale. Réservez votre table.';
+// ============================================
+// FONCTION SIMPLIFIÉE POUR LES IMAGES
+// ============================================
+function getImageUrl($nom_plat, $photo_bdd) {
+    if(!empty($photo_bdd)) {
+        return 'images/' . $photo_bdd;
+    }
+    return 'https://placehold.co/400x300/C8922A/FFF?text=' . urlencode($nom_plat);
+}
+
+// ============================================
+// TRAITEMENT RÉSERVATION
+// ============================================
+$reservation_success = false;
+$reservation_error = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reserver'])) {
+    $nom = trim($_POST['nom'] ?? '');
+    $telephone = trim($_POST['telephone'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $date = trim($_POST['date'] ?? '');
+    $heure = trim($_POST['heure'] ?? '');
+    $personnes = (int)($_POST['personnes'] ?? 1);
+    $message = trim($_POST['message'] ?? '');
+
+    if (empty($nom) || empty($telephone) || empty($date) || empty($heure)) {
+        $reservation_error = 'Veuillez remplir tous les champs obligatoires.';
+    } else {
+        try {
+            $stmt = $pdo->prepare("
+                INSERT INTO reservations (nom_client, telephone, date_reservation, heure_reservation, nb_personnes, notes, statut, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'en_attente', NOW())
+            ");
+            $stmt->execute([$nom, $telephone, $date, $heure, $personnes, $message]);
+            $reservation_success = true;
+            header('Location: reservation.php?success=1');
+            exit;
+        } catch(PDOException $e) {
+            $reservation_error = 'Erreur lors de la réservation. Veuillez réessayer.';
+        }
+    }
+}
+
+// ✅ INCLURE HEADER APRÈS TOUS LES TRAITEMENTS
 require_once '../includes/header.php';
+require_once '../includes/navbar.php';
 ?>
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Restaurant Sofia — Cuisine d'Exception | Bamako</title>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
-<style>
-/* =============================================
-   RESTAURANT SOFIA — DESIGN VITRINE PREMIUM
-   ============================================= */
-:root {
-    --gold: #C8922A;
-    --gold-l: #E8B55A;
-    --gold-d: #9A6E1A;
-    --noir: #0D0B08;
-    --noir2: #1A1612;
-    --creme: #FBF8F3;
-    --blanc: #FFFFFF;
-    --gris: #6B6B6B;
-}
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-html{scroll-behavior:smooth;}
-body{font-family:'Jost',sans-serif;background:var(--creme);color:var(--noir);overflow-x:hidden;}
-::-webkit-scrollbar{width:6px;}
-::-webkit-scrollbar-thumb{background:var(--gold);border-radius:10px;}
-a{text-decoration:none;transition:all 0.3s;}
-img{display:block;max-width:100%;}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Menu - Restaurant Sofia</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* ============================================
+           STYLES PRINCIPAUX
+           ============================================ */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Jost', sans-serif; background: #FAF8F5; color: #1A2C3E; overflow-x: hidden; }
 
-/* ===== NAVBAR RESTAURANT ===== */
-.resto-nav {
-    position: fixed;
-    top: 0; left: 0; right: 0;
-    z-index: 9999;
-    background: rgba(13,11,8,0.96);
-    backdrop-filter: blur(20px);
-    border-bottom: 1px solid rgba(200,146,42,0.15);
-    height: 68px;
-    display: flex;
-    align-items: center;
-    padding: 0 40px;
-    justify-content: space-between;
-    transition: all 0.4s;
-}
-.resto-nav.scrolled {
-    box-shadow: 0 4px 30px rgba(0,0,0,0.5);
-    border-bottom-color: rgba(200,146,42,0.3);
-}
-.resto-brand {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-.resto-brand-icon {
-    width: 42px; height: 42px;
-    background: linear-gradient(135deg, var(--gold), var(--gold-l));
-    border-radius: 12px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.3rem;
-    box-shadow: 0 4px 15px rgba(200,146,42,0.3);
-}
-.resto-brand-name {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.4rem;
-    font-weight: 700;
-    color: #fff;
-}
-.resto-brand-name span { color: var(--gold); font-style: italic; }
-.resto-links {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    list-style: none;
-}
-.resto-links a {
-    font-family: 'Jost', sans-serif;
-    font-size: 0.78rem;
-    font-weight: 600;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    color: rgba(255,255,255,0.7);
-    padding: 8px 16px;
-    border-radius: 6px;
-    transition: all 0.25s;
-    position: relative;
-}
-.resto-links a::after {
-    content: '';
-    position: absolute;
-    bottom: 4px; left: 16px; right: 16px;
-    height: 1.5px;
-    background: var(--gold);
-    transform: scaleX(0);
-    transition: transform 0.25s;
-}
-.resto-links a:hover, .resto-links a.active { color: var(--gold); }
-.resto-links a:hover::after, .resto-links a.active::after { transform: scaleX(1); }
-.resto-accueil-link {
-    font-size: 0.72rem !important;
-    color: rgba(255,255,255,0.4) !important;
-}
-.btn-reserver {
-    background: linear-gradient(135deg, var(--gold), var(--gold-l));
-    color: var(--noir) !important;
-    font-weight: 700 !important;
-    padding: 10px 22px !important;
-    border-radius: 8px !important;
-    box-shadow: 0 4px 14px rgba(200,146,42,0.35);
-}
-.btn-reserver:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(200,146,42,0.45);
-}
-.btn-reserver::after { display: none !important; }
-.nav-burger {
-    display: none;
-    background: none;
-    border: 1px solid rgba(255,255,255,0.15);
-    color: #fff;
-    font-size: 1.4rem;
-    padding: 6px 10px;
-    border-radius: 8px;
-    cursor: pointer;
-}
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(60px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes scaleIn {
+            from { opacity: 0; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes glowPulse {
+            0%, 100% { box-shadow: 0 0 20px rgba(200,146,42,0.15); }
+            50% { box-shadow: 0 0 50px rgba(200,146,42,0.3); }
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-15px); }
+        }
 
-/* ===== HERO ===== */
-.hero {
-    position: relative;
-    height: 100vh;
-    min-height: 680px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-}
-.hero-bg {
-    position: absolute;
-    inset: 0;
-    background: url('https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=1920&q=80') center/cover no-repeat;
-    filter: blur(3px) brightness(0.35);
-    transform: scale(1.05);
-    animation: bgzoom 20s ease-in-out infinite alternate;
-}
-@keyframes bgzoom {
-    from { transform: scale(1.05); }
-    to   { transform: scale(1.12); }
-}
-.hero-overlay {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(to bottom, rgba(13,11,8,0.3) 0%, rgba(13,11,8,0.7) 60%, var(--noir) 100%);
-}
-.hero-content {
-    position: relative;
-    z-index: 2;
-    text-align: center;
-    padding: 0 20px;
-    max-width: 800px;
-}
-.hero-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 0.7rem;
-    letter-spacing: 4px;
-    text-transform: uppercase;
-    color: var(--gold);
-    background: rgba(200,146,42,0.1);
-    border: 1px solid rgba(200,146,42,0.25);
-    padding: 8px 22px;
-    border-radius: 30px;
-    margin-bottom: 28px;
-    animation: fadeInDown 0.8s ease both;
-}
-.hero-tag::before, .hero-tag::after {
-    content: '✦';
-    font-size: 0.5rem;
-    opacity: 0.7;
-}
-.hero-titre {
-    font-family: 'Playfair Display', serif;
-    font-size: clamp(3rem, 8vw, 5.5rem);
-    font-weight: 800;
-    color: #fff;
-    line-height: 1.05;
-    margin-bottom: 20px;
-    animation: fadeInUp 0.9s ease 0.2s both;
-}
-.hero-titre .gold { color: var(--gold); font-style: italic; }
-.hero-sous {
-    font-size: 0.88rem;
-    letter-spacing: 4px;
-    text-transform: uppercase;
-    color: rgba(255,255,255,0.45);
-    margin-bottom: 20px;
-    animation: fadeInUp 0.9s ease 0.3s both;
-}
-.hero-desc {
-    font-size: 1.05rem;
-    color: rgba(255,255,255,0.6);
-    line-height: 1.8;
-    max-width: 560px;
-    margin: 0 auto 40px;
-    animation: fadeInUp 0.9s ease 0.4s both;
-}
-.hero-btns {
-    display: flex;
-    gap: 14px;
-    justify-content: center;
-    flex-wrap: wrap;
-    animation: fadeInUp 0.9s ease 0.55s both;
-}
-.btn-hero-or {
-    display: inline-flex;
-    align-items: center;
-    gap: 9px;
-    background: linear-gradient(135deg, var(--gold), var(--gold-l));
-    color: var(--noir);
-    font-family: 'Jost', sans-serif;
-    font-size: 0.85rem;
-    font-weight: 700;
-    letter-spacing: 1px;
-    padding: 15px 34px;
-    border-radius: 50px;
-    box-shadow: 0 8px 24px rgba(200,146,42,0.35);
-    transition: all 0.3s;
-}
-.btn-hero-or:hover { transform: translateY(-3px); box-shadow: 0 12px 32px rgba(200,146,42,0.5); color: var(--noir); }
-.btn-hero-ghost {
-    display: inline-flex;
-    align-items: center;
-    gap: 9px;
-    background: transparent;
-    color: #fff;
-    font-family: 'Jost', sans-serif;
-    font-size: 0.85rem;
-    font-weight: 600;
-    letter-spacing: 1px;
-    padding: 15px 34px;
-    border-radius: 50px;
-    border: 1px solid rgba(255,255,255,0.25);
-    transition: all 0.3s;
-}
-.btn-hero-ghost:hover { border-color: var(--gold); color: var(--gold); }
+        .animate-fade-up {
+            opacity: 0;
+            transform: translateY(40px);
+            transition: all 0.8s cubic-bezier(0.22, 0.61, 0.36, 1);
+        }
+        .animate-fade-up.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
 
-/* Stats hero */
-.hero-stats {
-    position: absolute;
-    bottom: 40px; left: 0; right: 0;
-    z-index: 2;
-    display: flex;
-    justify-content: center;
-    gap: 60px;
-    animation: fadeInUp 1s ease 0.8s both;
-}
-.hero-stat strong {
-    display: block;
-    font-family: 'Playfair Display', serif;
-    font-size: 2rem;
-    font-weight: 700;
-    color: var(--gold);
-    line-height: 1;
-}
-.hero-stat span {
-    font-size: 0.68rem;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: rgba(255,255,255,0.35);
-    margin-top: 4px;
-    display: block;
-}
+        /* ============================================
+           HERO
+           ============================================ */
+        .hero-restaurant {
+            position: relative;
+            min-height: 80vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            overflow: hidden;
+            background: linear-gradient(160deg, #0D0D0D 0%, #1A1510 40%, #0D0D0D 100%);
+        }
+        .hero-restaurant::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(200,146,42,0.08) 0%, transparent 60%),
+                radial-gradient(circle at 80% 50%, rgba(200,146,42,0.04) 0%, transparent 60%);
+            z-index: 1;
+        }
+        .hero-restaurant .floating-elements {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            overflow: hidden;
+        }
+        .hero-restaurant .floating-elements span {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            background: rgba(200,146,42,0.2);
+            border-radius: 50%;
+            animation: float 10s ease-in-out infinite;
+        }
+        .hero-restaurant .floating-elements span:nth-child(1) { top: 10%; left: 5%; animation-delay: 0s; width: 8px; height: 8px; }
+        .hero-restaurant .floating-elements span:nth-child(2) { top: 20%; left: 15%; animation-delay: 1.2s; }
+        .hero-restaurant .floating-elements span:nth-child(3) { top: 35%; left: 30%; animation-delay: 2.4s; }
+        .hero-restaurant .floating-elements span:nth-child(4) { top: 55%; left: 45%; animation-delay: 0.6s; width: 10px; height: 10px; }
+        .hero-restaurant .floating-elements span:nth-child(5) { top: 70%; left: 60%; animation-delay: 1.8s; }
+        .hero-restaurant .floating-elements span:nth-child(6) { top: 85%; left: 75%; animation-delay: 3s; }
+        .hero-restaurant .floating-elements span:nth-child(7) { top: 15%; left: 85%; animation-delay: 0.9s; }
+        .hero-restaurant .floating-elements span:nth-child(8) { top: 65%; left: 10%; animation-delay: 2.1s; }
+        .hero-restaurant .floating-elements span:nth-child(9) { top: 90%; left: 35%; animation-delay: 2.7s; }
+        .hero-restaurant .floating-elements span:nth-child(10) { top: 45%; left: 90%; animation-delay: 0.3s; }
 
-/* ===== PLAT DU JOUR BANDEAU ===== */
-.plat-jour-banner {
-    background: linear-gradient(135deg, var(--noir), var(--noir2));
-    border-top: 2px solid var(--gold);
-    padding: 36px 40px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 24px;
-    flex-wrap: wrap;
-}
-.plj-left { display: flex; align-items: center; gap: 20px; }
-.plj-badge {
-    background: linear-gradient(135deg, var(--gold), var(--gold-l));
-    color: var(--noir);
-    font-size: 0.68rem;
-    font-weight: 700;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    padding: 6px 16px;
-    border-radius: 20px;
-    display: block;
-    margin-bottom: 8px;
-}
-.plj-nom {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.6rem;
-    font-weight: 700;
-    color: #fff;
-    margin-bottom: 4px;
-}
-.plj-desc {
-    font-size: 0.85rem;
-    color: rgba(255,255,255,0.45);
-}
-.plj-right { display: flex; align-items: center; gap: 20px; }
-.plj-prix {
-    font-family: 'Playfair Display', serif;
-    font-size: 2.2rem;
-    font-weight: 700;
-    color: var(--gold);
-    white-space: nowrap;
-}
-.btn-plj {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: linear-gradient(135deg, var(--gold), var(--gold-l));
-    color: var(--noir);
-    font-family: 'Jost', sans-serif;
-    font-size: 0.8rem;
-    font-weight: 700;
-    padding: 12px 26px;
-    border-radius: 8px;
-    transition: all 0.3s;
-    white-space: nowrap;
-}
-.btn-plj:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(200,146,42,0.4); color: var(--noir); }
+        .hero-restaurant .container {
+            position: relative;
+            z-index: 2;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        .hero-restaurant .badge {
+            display: inline-block;
+            background: rgba(200,146,42,0.15);
+            backdrop-filter: blur(10px);
+            color: #C8922A;
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 5px;
+            text-transform: uppercase;
+            padding: 8px 28px;
+            border-radius: 50px;
+            margin-bottom: 25px;
+            border: 1px solid rgba(200,146,42,0.15);
+            animation: fadeInUp 1s ease;
+        }
+        .hero-restaurant h1 {
+            font-family: 'Playfair Display', serif;
+            font-size: 4.5rem;
+            font-weight: 800;
+            color: #FFFFFF;
+            margin-bottom: 15px;
+            animation: fadeInUp 1s ease 0.2s both;
+            text-shadow: 0 4px 30px rgba(0,0,0,0.3);
+            line-height: 1.05;
+        }
+        .hero-restaurant h1 .highlight {
+            color: #C8922A;
+            position: relative;
+            display: inline-block;
+        }
+        .hero-restaurant h1 .highlight::after {
+            content: '';
+            position: absolute;
+            bottom: 5px;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, #C8922A, #E8B55A);
+            border-radius: 4px;
+        }
+        .hero-restaurant .subtitle {
+            font-size: 1.15rem;
+            color: rgba(255,255,255,0.5);
+            max-width: 550px;
+            margin: 0 auto 30px;
+            line-height: 1.8;
+            animation: fadeInUp 1s ease 0.4s both;
+            font-weight: 300;
+            letter-spacing: 0.5px;
+        }
+        .hero-restaurant .subtitle strong {
+            color: #C8922A;
+            font-weight: 600;
+        }
+        .hero-restaurant .deco {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            animation: fadeInUp 1s ease 0.6s both;
+            margin-bottom: 35px;
+        }
+        .hero-restaurant .deco .line {
+            width: 60px;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #C8922A, transparent);
+        }
+        .hero-restaurant .deco .dot {
+            width: 8px;
+            height: 8px;
+            background: #C8922A;
+            border-radius: 50%;
+            animation: glowPulse 2s infinite;
+        }
+        .hero-restaurant .btn-hero {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            background: linear-gradient(135deg, #C8922A, #E8B55A);
+            color: #1A1A1A;
+            padding: 16px 48px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 1rem;
+            transition: all 0.4s ease;
+            animation: fadeInUp 1s ease 0.8s both;
+            box-shadow: 0 8px 40px rgba(200,146,42,0.25);
+            position: relative;
+            overflow: hidden;
+        }
+        .hero-restaurant .btn-hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.6s;
+        }
+        .hero-restaurant .btn-hero:hover::before {
+            left: 100%;
+        }
+        .hero-restaurant .btn-hero:hover {
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: 0 12px 50px rgba(200,146,42,0.4);
+            color: #FFFFFF;
+        }
 
-/* ===== CONTAINER ===== */
-.container { max-width: 1300px; margin: 0 auto; padding: 0 40px; }
+        .container-custom { max-width: 1300px; margin: 0 auto; padding: 0 20px; }
 
-/* ===== ONGLETS CATÉGORIES ===== */
-.menu-section { padding: 80px 0; }
-.menu-header { text-align: center; margin-bottom: 56px; }
-.menu-header-tag {
-    font-size: 0.68rem;
-    letter-spacing: 4px;
-    text-transform: uppercase;
-    color: var(--gold);
-    margin-bottom: 12px;
-    display: block;
-}
-.menu-header-titre {
-    font-family: 'Playfair Display', serif;
-    font-size: clamp(2rem, 4vw, 3rem);
-    font-weight: 700;
-    color: var(--noir);
-    margin-bottom: 12px;
-}
-.menu-header-titre em { color: var(--gold); font-style: italic; }
-.menu-header-desc { font-size: 0.92rem; color: var(--gris); max-width: 480px; margin: 0 auto; line-height: 1.7; }
+        /* ============================================
+           NAVIGATION RAPIDE
+           ============================================ */
+        .quick-nav {
+            background: rgba(255,255,255,0.97);
+            backdrop-filter: blur(15px);
+            border-radius: 16px;
+            padding: 10px 16px;
+            margin: 20px 0 30px;
+            border: 1px solid rgba(200,146,42,0.08);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px;
+            justify-content: center;
+            box-shadow: 0 4px 30px rgba(0,0,0,0.05);
+            position: sticky;
+            top: 75px;
+            z-index: 99;
+            transition: all 0.3s ease;
+        }
+        .quick-nav.scrolled {
+            box-shadow: 0 8px 40px rgba(0,0,0,0.1);
+            border-color: rgba(200,146,42,0.15);
+        }
+        .quick-nav a {
+            color: #5A6B7A;
+            text-decoration: none;
+            font-size: 0.65rem;
+            font-weight: 500;
+            padding: 5px 14px;
+            border-radius: 30px;
+            transition: all 0.3s ease;
+            border: 1px solid transparent;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            position: relative;
+        }
+        .quick-nav a::after {
+            content: '';
+            position: absolute;
+            bottom: 2px;
+            left: 50%;
+            width: 0;
+            height: 2px;
+            background: #C8922A;
+            transition: all 0.3s ease;
+            transform: translateX(-50%);
+            border-radius: 2px;
+        }
+        .quick-nav a:hover::after {
+            width: 50%;
+        }
+        .quick-nav a:hover {
+            background: rgba(200,146,42,0.08);
+            color: #C8922A;
+            transform: translateY(-2px);
+        }
+        .quick-nav a i { font-size: 0.8rem; color: #C8922A; }
 
-/* Tabs catégories */
-.cat-tabs {
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-bottom: 52px;
-}
-.cat-tab {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-family: 'Jost', sans-serif;
-    font-size: 0.82rem;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    padding: 11px 22px;
-    border-radius: 40px;
-    border: 1.5px solid #E0DAD0;
-    background: #fff;
-    color: var(--gris);
-    cursor: pointer;
-    transition: all 0.28s;
-}
-.cat-tab:hover { border-color: var(--gold); color: var(--gold); }
-.cat-tab.active {
-    background: linear-gradient(135deg, var(--gold), var(--gold-l));
-    color: var(--noir);
-    border-color: transparent;
-    box-shadow: 0 6px 18px rgba(200,146,42,0.3);
-}
-.cat-tab .tab-icone { font-size: 1.1rem; }
-.cat-tab .tab-count {
-    background: rgba(0,0,0,0.12);
-    font-size: 0.65rem;
-    font-weight: 700;
-    padding: 2px 8px;
-    border-radius: 10px;
-}
+        /* ============================================
+           CATÉGORIE - AVEC IMAGES
+           ============================================ */
+        .menu-category {
+            margin-bottom: 50px;
+        }
+        .menu-category .header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 25px;
+            padding-bottom: 12px;
+            border-bottom: 3px solid #C8922A;
+            position: relative;
+        }
+        .menu-category .header::after {
+            content: '';
+            position: absolute;
+            bottom: -3px;
+            left: 0;
+            width: 30%;
+            height: 3px;
+            background: linear-gradient(90deg, #E8B55A, transparent);
+            border-radius: 0 0 3px 0;
+        }
+        .menu-category .header .cat-icon {
+            width: 46px;
+            height: 46px;
+            border-radius: 12px;
+            overflow: hidden;
+            flex-shrink: 0;
+            border: 2px solid rgba(200,146,42,0.15);
+        }
+        .menu-category .header .cat-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .menu-category .header h2 {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.6rem;
+            color: #1A2C3E;
+            flex: 1;
+        }
+        .menu-category .header .count {
+            font-size: 0.7rem;
+            color: #8A99AA;
+            background: #F0F2F5;
+            padding: 2px 14px;
+            border-radius: 20px;
+            font-weight: 500;
+        }
 
-/* ===== GRILLE PLATS ===== */
-.cat-section { display: none; }
-.cat-section.active { display: block; animation: fadeIn 0.4s ease; }
-@keyframes fadeIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+        /* ============================================
+           GRILLE PRODUITS - IMAGES EN OBJECT FIT COVER
+           ============================================ */
+        .menu-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+            gap: 25px;
+        }
 
-.cat-section-header {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    margin-bottom: 32px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid #EDE8DF;
-}
-.cat-section-icon { font-size: 2rem; }
-.cat-section-nom {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.7rem;
-    font-weight: 700;
-    color: var(--noir);
-}
-.cat-section-count { font-size: 0.78rem; color: var(--gris); margin-top: 3px; }
+        .menu-item {
+            background: #FFFFFF;
+            border-radius: 20px;
+            overflow: hidden;
+            border: 1px solid #EEEAE5;
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.02);
+            position: relative;
+        }
+        .menu-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, #C8922A, #E8B55A, #C8922A);
+            transform: scaleX(0);
+            transition: transform 0.5s ease;
+            z-index: 2;
+        }
+        .menu-item:hover::before {
+            transform: scaleX(1);
+        }
+        .menu-item:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 25px 55px rgba(0,0,0,0.08);
+            border-color: rgba(200,146,42,0.12);
+        }
 
-.plats-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 24px;
-}
+        .menu-item .item-image {
+            width: 100%;
+            height: 220px;
+            overflow: hidden;
+            background: #F8F6F4;
+            position: relative;
+        }
+        .menu-item .item-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.7s ease;
+        }
+        .menu-item:hover .item-image img {
+            transform: scale(1.08);
+        }
+        .menu-item .item-image .badge-plat {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: rgba(200,146,42,0.9);
+            color: #fff;
+            font-size: 0.5rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            padding: 3px 12px;
+            border-radius: 20px;
+            letter-spacing: 0.5px;
+            backdrop-filter: blur(4px);
+        }
+        .menu-item .item-image .badge-plat.populaire {
+            background: linear-gradient(135deg, #E74C3C, #C0392B);
+        }
+        .menu-item .item-image .badge-plat.nouveau {
+            background: linear-gradient(135deg, #27AE60, #1A7A4A);
+        }
+        .menu-item .item-image .badge-plat.sofia {
+            background: linear-gradient(135deg, #C8922A, #9A6E1A);
+        }
 
-/* ===== CARTE PLAT ===== */
-.plat-card {
-    background: #fff;
-    border-radius: 18px;
-    overflow: hidden;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.06);
-    transition: all 0.38s;
-    border: 1px solid #F0EBE0;
-    display: flex;
-    flex-direction: column;
-}
-.plat-card:hover {
-    transform: translateY(-8px);
-    box-shadow: 0 24px 50px rgba(0,0,0,0.12);
-    border-color: transparent;
-}
-.plat-img-wrap {
-    position: relative;
-    height: 220px;
-    overflow: hidden;
-    background: linear-gradient(135deg, #F5F0E8, #EDE8D8);
-}
-.plat-img-wrap img {
-    width: 100%; height: 100%;
-    object-fit: cover;
-    transition: transform 0.6s ease;
-}
-.plat-card:hover .plat-img-wrap img { transform: scale(1.07); }
-.plat-placeholder {
-    width: 100%; height: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    background: linear-gradient(135deg, #1A1612, #2A2218);
-}
-.plat-placeholder span { font-size: 3.5rem; opacity: 0.6; }
-.plat-placeholder p {
-    font-family: 'Playfair Display', serif;
-    font-size: 0.85rem;
-    color: rgba(200,146,42,0.5);
-    letter-spacing: 1px;
-}
-.plat-badge-jour {
-    position: absolute;
-    top: 12px; left: 12px;
-    background: linear-gradient(135deg, var(--gold), var(--gold-l));
-    color: var(--noir);
-    font-size: 0.6rem;
-    font-weight: 700;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    padding: 5px 12px;
-    border-radius: 20px;
-    box-shadow: 0 4px 10px rgba(200,146,42,0.4);
-}
-.plat-badge-dispo {
-    position: absolute;
-    top: 12px; right: 12px;
-    background: rgba(231,76,60,0.9);
-    color: #fff;
-    font-size: 0.6rem;
-    font-weight: 700;
-    padding: 5px 12px;
-    border-radius: 20px;
-}
+        .menu-item .item-body {
+            padding: 16px 18px 18px;
+        }
+        .menu-item .item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 6px;
+            gap: 10px;
+        }
+        .menu-item .item-name {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #1A2C3E;
+            flex: 1;
+            transition: color 0.3s ease;
+        }
+        .menu-item:hover .item-name {
+            color: #C8922A;
+        }
+        .menu-item .item-price {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #C8922A;
+            white-space: nowrap;
+        }
+        .menu-item .item-desc {
+            font-size: 0.78rem;
+            color: #8A99AA;
+            line-height: 1.5;
+            margin-bottom: 12px;
+            min-height: 36px;
+        }
+        .menu-item .item-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            border-top: 1px solid #F0F2F5;
+            padding-top: 12px;
+        }
 
-/* Infos sous la photo — séparées */
-.plat-body { padding: 18px 18px 0; flex: 1; }
-.plat-nom {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.05rem;
-    font-weight: 700;
-    color: var(--noir);
-    margin-bottom: 6px;
-    line-height: 1.3;
-}
-.plat-desc {
-    font-size: 0.78rem;
-    color: var(--gris);
-    line-height: 1.6;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-.plat-meta {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-top: 10px;
-    font-size: 0.72rem;
-    color: #bbb;
-}
-.plat-meta i { color: var(--gold); }
+        /* ============================================
+           BOUTON COMMANDER
+           ============================================ */
+        .btn-order {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: linear-gradient(135deg, #C8922A, #E8B55A);
+            color: #1A1A1A;
+            padding: 7px 20px;
+            border-radius: 30px;
+            text-decoration: none;
+            font-size: 0.7rem;
+            font-weight: 700;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-order::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.4s;
+        }
+        .btn-order:hover::before {
+            left: 100%;
+        }
+        .btn-order:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(200,146,42,0.3);
+            color: #FFFFFF;
+        }
 
-/* Prix SÉPARÉ du reste */
-.plat-footer {
-    padding: 14px 18px 18px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    border-top: 1px solid #F5F0E8;
-    margin-top: 14px;
-}
-.plat-prix {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.2rem;
-    font-weight: 700;
-    color: var(--gold);
-}
-.plat-prix span {
-    font-family: 'Jost', sans-serif;
-    font-size: 0.72rem;
-    font-weight: 500;
-    color: var(--gris);
-    margin-left: 3px;
-}
-.btn-commander {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: var(--noir);
-    color: #fff;
-    font-family: 'Jost', sans-serif;
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.8px;
-    text-transform: uppercase;
-    padding: 9px 18px;
-    border-radius: 8px;
-    transition: all 0.28s;
-}
-.btn-commander:hover {
-    background: linear-gradient(135deg, var(--gold), var(--gold-l));
-    color: var(--noir);
-    transform: translateY(-1px);
-}
+        /* ============================================
+           PLAT DU JOUR
+           ============================================ */
+        .plat-jour-section {
+            background: linear-gradient(135deg, #1A1A1A 0%, #2D2D2D 100%);
+            border-radius: 24px;
+            padding: 45px 50px;
+            margin: 20px 0 40px;
+            border: 2px solid rgba(200,146,42,0.25);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            gap: 45px;
+            align-items: center;
+            box-shadow: 0 10px 50px rgba(200,146,42,0.08);
+        }
+        .plat-jour-section::before {
+            content: '⭐';
+            position: absolute;
+            top: -40px;
+            right: -40px;
+            font-size: 12rem;
+            opacity: 0.04;
+        }
+        .plat-jour-section .badge-jour {
+            position: absolute;
+            top: 15px;
+            left: 25px;
+            background: linear-gradient(135deg, #C8922A, #E8B55A);
+            color: #1A1A1A;
+            font-size: 0.6rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            padding: 5px 20px;
+            border-radius: 30px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .plat-jour-section .badge-jour i {
+            font-size: 0.8rem;
+        }
+        .plat-jour-image {
+            flex: 0 0 280px;
+            height: 280px;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 3px solid rgba(200,146,42,0.25);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+        }
+        .plat-jour-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.5s ease;
+        }
+        .plat-jour-image img:hover {
+            transform: scale(1.05);
+        }
+        .plat-jour-image .no-image {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #2D2D2D;
+            color: rgba(255,255,255,0.15);
+            font-size: 4rem;
+        }
+        .plat-jour-info { flex: 1; }
+        .plat-jour-info .label {
+            display: inline-block;
+            background: rgba(200,146,42,0.12);
+            color: #C8922A;
+            font-size: 0.65rem;
+            font-weight: 600;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            padding: 4px 16px;
+            border-radius: 20px;
+            margin-bottom: 12px;
+        }
+        .plat-jour-info h2 {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.4rem;
+            color: #FFFFFF;
+            margin-bottom: 8px;
+        }
+        .plat-jour-info .desc {
+            color: rgba(255,255,255,0.6);
+            font-size: 1rem;
+            line-height: 1.7;
+            margin-bottom: 15px;
+            max-width: 500px;
+        }
+        .plat-jour-info .price {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: #C8922A;
+            margin-bottom: 18px;
+        }
+        .btn-commander-platjour {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: linear-gradient(135deg, #C8922A, #E8B55A);
+            color: #1A1A1A;
+            padding: 12px 35px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-commander-platjour::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.4s;
+        }
+        .btn-commander-platjour:hover::before {
+            left: 100%;
+        }
+        .btn-commander-platjour:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 35px rgba(200,146,42,0.35);
+            color: #FFFFFF;
+        }
 
-/* ===== SECTION ESPACE ENFANTS ===== */
-.enfants-section {
-    background: linear-gradient(135deg, #1A1612, #0D0B08);
-    padding: 80px 0;
-    position: relative;
-    overflow: hidden;
-}
-.enfants-section::before {
-    content: '';
-    position: absolute;
-    top: -60px; right: -60px;
-    width: 300px; height: 300px;
-    background: radial-gradient(circle, rgba(200,146,42,0.1), transparent 70%);
-    border-radius: 50%;
-}
-.enfants-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 60px;
-    align-items: center;
-}
-.enfants-texte .tag {
-    font-size: 0.68rem;
-    letter-spacing: 4px;
-    text-transform: uppercase;
-    color: var(--gold);
-    margin-bottom: 16px;
-    display: block;
-}
-.enfants-texte h2 {
-    font-family: 'Playfair Display', serif;
-    font-size: clamp(1.8rem, 3.5vw, 2.6rem);
-    font-weight: 700;
-    color: #fff;
-    margin-bottom: 18px;
-}
-.enfants-texte h2 em { color: var(--gold); font-style: italic; }
-.enfants-texte p {
-    font-size: 0.9rem;
-    color: rgba(255,255,255,0.5);
-    line-height: 1.8;
-    margin-bottom: 28px;
-}
-.enfants-features {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 14px;
-    margin-bottom: 32px;
-}
-.enfants-feat {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    background: rgba(200,146,42,0.06);
-    border: 1px solid rgba(200,146,42,0.12);
-    border-radius: 12px;
-    padding: 14px;
-}
-.enfants-feat .ico { font-size: 1.6rem; flex-shrink: 0; }
-.enfants-feat h4 { font-size: 0.85rem; font-weight: 600; color: #fff; margin-bottom: 3px; }
-.enfants-feat p { font-size: 0.75rem; color: rgba(255,255,255,0.4); margin: 0; line-height: 1.5; }
-.enfants-visuel {
-    position: relative;
-    border-radius: 24px;
-    overflow: hidden;
-    height: 420px;
-    background: linear-gradient(135deg, #2A2218, #1A1612);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 20px;
-}
-.enfants-visuel .big-emoji { font-size: 6rem; }
-.enfants-visuel p {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.4rem;
-    color: rgba(200,146,42,0.5);
-    font-style: italic;
-}
+        /* ============================================
+           GÂTEAUX
+           ============================================ */
+        .gateaux-section {
+            padding: 60px 0;
+            background: linear-gradient(135deg, #FFF9F0 0%, #FDF5E6 50%, #FFF9F0 100%);
+            border-radius: 30px;
+            margin: 30px 0 50px;
+            position: relative;
+            overflow: hidden;
+        }
+        .gateaux-section::before {
+            content: '🎂';
+            position: absolute;
+            top: -80px;
+            right: -60px;
+            font-size: 18rem;
+            opacity: 0.03;
+        }
+        .gateaux-section .header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 30px;
+            padding: 0 30px;
+        }
+        .gateaux-section .header .cat-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 14px;
+            overflow: hidden;
+            flex-shrink: 0;
+            border: 2px solid rgba(200,146,42,0.15);
+        }
+        .gateaux-section .header .cat-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .gateaux-section .header h2 {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.8rem;
+            color: #1A2C3E;
+            flex: 1;
+        }
+        .gateaux-section .header .count {
+            font-size: 0.7rem;
+            color: #8A99AA;
+            background: #F0F2F5;
+            padding: 3px 14px;
+            border-radius: 20px;
+            font-weight: 500;
+        }
+        .gateaux-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 25px;
+            padding: 0 30px;
+        }
+        .gateau-item {
+            background: #FFFFFF;
+            border-radius: 20px;
+            overflow: hidden;
+            border: 1px solid #EEEAE5;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.02);
+            position: relative;
+        }
+        .gateau-item:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 25px 50px rgba(0,0,0,0.08);
+            border-color: rgba(200,146,42,0.15);
+        }
+        .gateau-item .gateau-image {
+            height: 200px;
+            overflow: hidden;
+            background: #F8F6F4;
+            position: relative;
+        }
+        .gateau-item .gateau-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.6s ease;
+        }
+        .gateau-item:hover .gateau-image img {
+            transform: scale(1.06);
+        }
+        .gateau-item .gateau-image .badge-plat {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: rgba(200,146,42,0.9);
+            color: #fff;
+            font-size: 0.5rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            padding: 3px 14px;
+            border-radius: 20px;
+            letter-spacing: 0.5px;
+            backdrop-filter: blur(4px);
+        }
+        .gateau-item .gateau-image .badge-plat.populaire {
+            background: linear-gradient(135deg, #E74C3C, #C0392B);
+        }
+        .gateau-item .gateau-image .badge-plat.nouveau {
+            background: linear-gradient(135deg, #27AE60, #1A7A4A);
+        }
+        .gateau-item .gateau-image .badge-plat.sofia {
+            background: linear-gradient(135deg, #C8922A, #9A6E1A);
+        }
+        .gateau-item .gateau-body {
+            padding: 18px 20px 20px;
+        }
+        .gateau-item .gateau-body h3 {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #1A2C3E;
+            margin-bottom: 4px;
+        }
+        .gateau-item .gateau-body .desc {
+            font-size: 0.78rem;
+            color: #8A99AA;
+            line-height: 1.5;
+            margin-bottom: 12px;
+            min-height: 40px;
+        }
+        .gateau-item .gateau-body .prix {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #C8922A;
+            margin-bottom: 12px;
+        }
+        .gateau-item .gateau-body .prix strong {
+            font-size: 1.1rem;
+        }
+        .btn-commander-gateau {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            background: linear-gradient(135deg, #C8922A, #E8B55A);
+            color: #1A1A1A;
+            padding: 8px 20px;
+            border-radius: 30px;
+            text-decoration: none;
+            font-size: 0.7rem;
+            font-weight: 700;
+            transition: all 0.3s;
+            width: 100%;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-commander-gateau::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.4s;
+        }
+        .btn-commander-gateau:hover::before {
+            left: 100%;
+        }
+        .btn-commander-gateau:hover {
+            background: linear-gradient(135deg, #9A6E1A, #C8922A);
+            color: #FFFFFF;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(200,146,42,0.3);
+        }
 
-/* ===== SECTION RÉSERVATION ===== */
-.resa-section {
-    background: var(--creme);
-    padding: 80px 0;
-}
-.resa-card {
-    background: var(--noir);
-    border-radius: 24px;
-    padding: 60px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 60px;
-    align-items: center;
-    position: relative;
-    overflow: hidden;
-}
-.resa-card::before {
-    content: '';
-    position: absolute;
-    top: -80px; right: -80px;
-    width: 320px; height: 320px;
-    background: radial-gradient(circle, rgba(200,146,42,0.12), transparent 70%);
-    border-radius: 50%;
-}
-.resa-texte .tag { font-size: 0.68rem; letter-spacing: 3px; text-transform: uppercase; color: var(--gold); margin-bottom: 14px; display: block; }
-.resa-texte h2 { font-family: 'Playfair Display', serif; font-size: 2.2rem; font-weight: 700; color: #fff; margin-bottom: 16px; }
-.resa-texte p { font-size: 0.9rem; color: rgba(255,255,255,0.5); line-height: 1.8; margin-bottom: 28px; }
-.resa-info { display: flex; flex-direction: column; gap: 12px; }
-.resa-info-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 0.88rem;
-    color: rgba(255,255,255,0.6);
-}
-.resa-info-item i { color: var(--gold); font-size: 1rem; width: 18px; }
-.resa-form { position: relative; z-index: 1; }
-.resa-form .form-group { margin-bottom: 16px; }
-.resa-form label { font-size: 0.72rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,0.4); margin-bottom: 7px; display: block; }
-.resa-form input,
-.resa-form select,
-.resa-form textarea {
-    width: 100%;
-    background: rgba(255,255,255,0.06);
-    border: 1.5px solid rgba(255,255,255,0.1);
-    border-radius: 10px;
-    padding: 12px 16px;
-    font-family: 'Jost', sans-serif;
-    font-size: 0.88rem;
-    color: #fff;
-    transition: all 0.28s;
-    outline: none;
-}
-.resa-form input::placeholder,
-.resa-form textarea::placeholder { color: rgba(255,255,255,0.25); }
-.resa-form input:focus,
-.resa-form select:focus,
-.resa-form textarea:focus { border-color: var(--gold); background: rgba(200,146,42,0.06); }
-.resa-form select option { background: var(--noir); color: #fff; }
-.resa-form .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.btn-resa {
-    width: 100%;
-    background: linear-gradient(135deg, var(--gold), var(--gold-l));
-    color: var(--noir);
-    font-family: 'Jost', sans-serif;
-    font-size: 0.85rem;
-    font-weight: 700;
-    letter-spacing: 1px;
-    padding: 14px;
-    border-radius: 10px;
-    border: none;
-    cursor: pointer;
-    transition: all 0.3s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 9px;
-    box-shadow: 0 6px 18px rgba(200,146,42,0.3);
-    margin-top: 6px;
-}
-.btn-resa:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(200,146,42,0.45); }
+        /* ============================================
+           ESPACE ENFANTS
+           ============================================ */
+        .jeux-section {
+            background: linear-gradient(135deg, #1A1A1A 0%, #2D2D2D 100%);
+            border-radius: 24px;
+            margin: 30px 0 50px;
+            overflow: hidden;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            border: 1px solid rgba(200,146,42,0.12);
+            position: relative;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+        }
+        .jeux-section .jeux-image {
+            height: 100%;
+            min-height: 280px;
+            overflow: hidden;
+            position: relative;
+        }
+        .jeux-section .jeux-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.6s ease;
+        }
+        .jeux-section:hover .jeux-image img {
+            transform: scale(1.05);
+        }
+        .jeux-section .jeux-image .overlay-jeux {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 25px;
+            background: linear-gradient(to top, rgba(0,0,0,0.6), transparent);
+        }
+        .jeux-section .jeux-image .overlay-jeux .tag {
+            color: #C8922A;
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        .jeux-section .jeux-content {
+            padding: 40px 35px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+            z-index: 1;
+        }
+        .jeux-section .jeux-content .label {
+            font-size: 0.7rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #C8922A;
+            font-weight: 600;
+            display: inline-block;
+            background: rgba(200,146,42,0.12);
+            padding: 4px 16px;
+            border-radius: 20px;
+            margin-bottom: 10px;
+            align-self: flex-start;
+        }
+        .jeux-section .jeux-content h2 {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.2rem;
+            color: #FFFFFF;
+            margin-bottom: 8px;
+        }
+        .jeux-section .jeux-content p {
+            color: rgba(255,255,255,0.5);
+            font-size: 0.9rem;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+        .jeux-section .jeux-features {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin: 5px 0 15px;
+        }
+        .jeux-section .jeux-features .feature {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: rgba(255,255,255,0.4);
+            font-size: 0.8rem;
+        }
+        .jeux-section .jeux-features .feature i {
+            color: #27AE60;
+            font-size: 1.1rem;
+        }
+        .jeux-section .jeux-prix {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .jeux-section .jeux-prix .price {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: #C8922A;
+        }
+        .jeux-section .jeux-prix .price small {
+            font-size: 1rem;
+            color: rgba(255,255,255,0.4);
+            font-weight: 400;
+        }
 
-/* ===== SECTION INFOS PRATIQUES ===== */
-.infos-section {
-    background: #fff;
-    padding: 70px 0;
-    border-top: 1px solid #EDE8DF;
-}
-.infos-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 40px; }
-.info-card { text-align: center; padding: 30px 20px; }
-.info-icon {
-    width: 64px; height: 64px;
-    background: rgba(200,146,42,0.08);
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.6rem; margin: 0 auto 18px;
-    border: 1px solid rgba(200,146,42,0.15);
-}
-.info-title { font-family: 'Playfair Display', serif; font-size: 1.15rem; font-weight: 700; color: var(--noir); margin-bottom: 10px; }
-.info-text { font-size: 0.85rem; color: var(--gris); line-height: 1.7; }
+        /* ============================================
+           RÉSERVATION
+           ============================================ */
+        .reservation-section {
+            background: linear-gradient(135deg, #1A1A1A 0%, #2D2D2D 100%);
+            border-radius: 24px;
+            padding: 45px 50px;
+            margin: 30px 0 50px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            border: 1px solid rgba(200,146,42,0.12);
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+        }
+        .reservation-left { position: relative; z-index: 1; }
+        .reservation-left .label {
+            font-size: 0.7rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #C8922A;
+            font-weight: 600;
+            display: inline-block;
+            background: rgba(200,146,42,0.12);
+            padding: 4px 16px;
+            border-radius: 20px;
+            margin-bottom: 10px;
+        }
+        .reservation-left h2 {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.2rem;
+            color: #FFFFFF;
+            margin-bottom: 10px;
+        }
+        .reservation-left h2 span { color: #C8922A; }
+        .reservation-left p {
+            color: rgba(255,255,255,0.5);
+            font-size: 0.9rem;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        .reservation-left .infos {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .reservation-left .info-item {
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 12px 16px;
+            border: 1px solid rgba(255,255,255,0.05);
+            transition: all 0.3s ease;
+        }
+        .reservation-left .info-item:hover {
+            background: rgba(255,255,255,0.08);
+            border-color: rgba(200,146,42,0.1);
+        }
+        .reservation-left .info-item i {
+            color: #C8922A;
+            font-size: 1.2rem;
+            display: block;
+            margin-bottom: 5px;
+        }
+        .reservation-left .info-item .val {
+            color: #fff;
+            font-weight: 500;
+            font-size: 0.85rem;
+        }
+        .reservation-left .info-item .lbl {
+            color: rgba(255,255,255,0.3);
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
 
-/* ===== FOOTER RESTO ===== */
-.resto-footer {
-    background: var(--noir);
-    border-top: 1px solid rgba(200,146,42,0.15);
-    padding: 40px;
-    text-align: center;
-}
-.resto-footer-logo {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--gold);
-    margin-bottom: 10px;
-}
-.resto-footer p { font-size: 0.8rem; color: rgba(255,255,255,0.3); }
-.resto-footer a { color: var(--gold); }
+        .reservation-right { position: relative; z-index: 1; }
+        .reservation-right .form-group {
+            margin-bottom: 14px;
+        }
+        .reservation-right .form-group label {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: rgba(255,255,255,0.6);
+            margin-bottom: 4px;
+        }
+        .reservation-right .form-control {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1.5px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            font-family: 'Jost', sans-serif;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+        }
+        .reservation-right .form-control:focus {
+            outline: none;
+            border-color: #C8922A;
+            background: rgba(255,255,255,0.08);
+            box-shadow: 0 0 0 3px rgba(200,146,42,0.1);
+        }
+        .reservation-right .form-control::placeholder {
+            color: rgba(255,255,255,0.3);
+        }
+        .reservation-right .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+        }
+        .btn-reserver {
+            width: 100%;
+            background: linear-gradient(135deg, #C8922A, #E8B55A);
+            color: #1A1A1A;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-reserver::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+            transition: left 0.4s;
+        }
+        .btn-reserver:hover::before {
+            left: 100%;
+        }
+        .btn-reserver:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 35px rgba(200,146,42,0.3);
+            color: #FFFFFF;
+        }
 
-/* ===== VIDE ===== */
-.plats-vide {
-    grid-column: 1/-1;
-    text-align: center;
-    padding: 60px 20px;
-    color: #ccc;
-}
-.plats-vide i { font-size: 3rem; display: block; margin-bottom: 14px; }
-.plats-vide p { font-size: 0.9rem; }
+        .alert-success-reserv {
+            background: rgba(39,174,96,0.15);
+            border-left: 4px solid #27AE60;
+            color: #27AE60;
+            padding: 12px 16px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .alert-error-reserv {
+            background: rgba(231,76,60,0.15);
+            border-left: 4px solid #E74C3C;
+            color: #E74C3C;
+            padding: 12px 16px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
 
-/* ===== ANIMATIONS ===== */
-@keyframes fadeInDown {from{opacity:0;transform:translateY(-20px)}to{opacity:1;transform:translateY(0)}}
-@keyframes fadeInUp   {from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+        /* ============================================
+           GALERIE
+           ============================================ */
+        .galerie-section {
+            margin: 40px 0 60px;
+        }
+        .galerie-section .header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 3px solid #C8922A;
+        }
+        .galerie-section .header .cat-icon {
+            width: 46px;
+            height: 46px;
+            border-radius: 12px;
+            overflow: hidden;
+            flex-shrink: 0;
+            border: 2px solid rgba(200,146,42,0.15);
+        }
+        .galerie-section .header .cat-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .galerie-section .header h2 {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.6rem;
+            color: #1A2C3E;
+            flex: 1;
+        }
+        .galerie-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+            gap: 15px;
+        }
+        .galerie-item {
+            border-radius: 14px;
+            overflow: hidden;
+            aspect-ratio: 1/1;
+            border: 2px solid #EEEAE5;
+            transition: all 0.4s ease;
+            cursor: pointer;
+            position: relative;
+        }
+        .galerie-item:hover {
+            transform: scale(1.04);
+            border-color: #C8922A;
+            box-shadow: 0 10px 35px rgba(0,0,0,0.1);
+            z-index: 2;
+        }
+        .galerie-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.5s ease;
+        }
+        .galerie-item:hover img {
+            transform: scale(1.05);
+        }
 
-/* ===== RESPONSIVE ===== */
-@media(max-width:1100px){.plats-grid{grid-template-columns:repeat(3,1fr);}}
-@media(max-width:900px){
-    .resto-nav{padding:0 20px;}
-    .resto-links{display:none;}
-    .nav-burger{display:block;}
-    .plats-grid{grid-template-columns:repeat(2,1fr);}
-    .enfants-grid,.resa-card{grid-template-columns:1fr;gap:36px;}
-    .resa-card{padding:36px 24px;}
-    .infos-grid{grid-template-columns:1fr 1fr;}
-    .hero-stats{gap:30px;}
-    .plat-jour-banner{flex-direction:column;align-items:flex-start;gap:16px;}
-}
-@media(max-width:600px){
-    .container{padding:0 16px;}
-    .plats-grid{grid-template-columns:1fr 1fr;gap:14px;}
-    .hero-stats{display:none;}
-    .cat-tabs{gap:6px;}
-    .cat-tab{padding:9px 14px;font-size:0.76rem;}
-    .infos-grid{grid-template-columns:1fr;}
-    .enfants-features{grid-template-columns:1fr;}
-    .resa-form .form-row{grid-template-columns:1fr;}
-}
-@media(max-width:420px){
-    .plats-grid{grid-template-columns:1fr;}
-}
-</style>
+        /* ============================================
+           FOOTER INFOS
+           ============================================ */
+        .footer-infos {
+            background: #0D0D0D;
+            border-radius: 24px;
+            padding: 30px 40px;
+            margin: 30px 0 40px;
+            text-align: center;
+            border: 1px solid rgba(200,146,42,0.1);
+        }
+        .footer-infos p {
+            color: rgba(255,255,255,0.5);
+            font-size: 0.9rem;
+            line-height: 1.6;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .footer-infos p strong {
+            color: #C8922A;
+        }
+        .footer-infos .contact-row {
+            display: flex;
+            justify-content: center;
+            gap: 25px;
+            flex-wrap: wrap;
+            margin-top: 15px;
+        }
+        .footer-infos .contact-row span {
+            color: rgba(255,255,255,0.4);
+            font-size: 0.8rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: color 0.3s ease;
+        }
+        .footer-infos .contact-row span:hover {
+            color: rgba(255,255,255,0.7);
+        }
+        .footer-infos .contact-row span i {
+            color: #C8922A;
+        }
+        .footer-infos .copyright {
+            color: rgba(255,255,255,0.12);
+            font-size: 0.65rem;
+            margin-top: 15px;
+            letter-spacing: 1px;
+        }
 
-<!-- ===== NAVBAR ===== -->
-<nav class="resto-nav" id="restoNav">
-    <a href="../index.php" class="resto-brand">
-        <div class="resto-brand-icon">🍽️</div>
-        <div class="resto-brand-name">Resto<span>Sofia</span></div>
-    </a>
-    <ul class="resto-links" id="restoLinks">
-        <li><a href="../index.php" class="resto-accueil-link"><i class="bi bi-house"></i> Accueil principal</a></li>
-        <li><a href="#accueil" class="active">Accueil</a></li>
-        <li><a href="#menu">Menu</a></li>
-        <li><a href="#gateaux">Gâteaux</a></li>
-        <li><a href="#jeux">Jeux</a></li>
-        <li><a href="#reservation" class="btn-reserver"><i class="bi bi-calendar-check"></i> Réserver</a></li>
-    </ul>
-    <button class="nav-burger" id="navBurger" onclick="toggleNav()">
-        <i class="bi bi-list"></i>
-    </button>
-</nav>
+        /* ============================================
+           RESPONSIVE
+           ============================================ */
+        @media (max-width: 992px) {
+            .hero-restaurant h1 { font-size: 3.5rem; }
+            .reservation-section { grid-template-columns: 1fr; padding: 30px 25px; }
+            .jeux-section { grid-template-columns: 1fr; }
+            .jeux-section .jeux-image { min-height: 200px; }
+            .gateaux-grid { grid-template-columns: repeat(2, 1fr); }
+            .plat-jour-section { flex-direction: column; text-align: center; padding: 30px 25px; }
+            .plat-jour-image { flex: 0 0 220px; height: 220px; width: 100%; max-width: 320px; }
+            .plat-jour-info .desc { max-width: 100%; }
+        }
+        @media (max-width: 768px) {
+            .hero-restaurant h1 { font-size: 2.8rem; }
+            .hero-restaurant .subtitle { font-size: 1rem; }
+            .menu-grid { grid-template-columns: 1fr 1fr; }
+            .gateaux-grid { grid-template-columns: 1fr 1fr; }
+            .galerie-grid { grid-template-columns: repeat(3, 1fr); }
+            .quick-nav a { font-size: 0.55rem; padding: 4px 8px; }
+            .reservation-left .infos { grid-template-columns: 1fr; }
+            .reservation-right .form-row { grid-template-columns: 1fr; }
+            .menu-item .item-image { height: 160px; }
+            .footer-infos .contact-row { gap: 12px; flex-direction: column; align-items: center; }
+            .jeux-section .jeux-features { gap: 12px; }
+            .jeux-section .jeux-prix { flex-direction: column; align-items: flex-start; }
+            .gateau-item .gateau-image { height: 160px; }
+            .plat-jour-section .badge-jour { top: 10px; left: 15px; font-size: 0.5rem; padding: 4px 14px; }
+        }
+        @media (max-width: 500px) {
+            .hero-restaurant h1 { font-size: 2.2rem; }
+            .menu-grid { grid-template-columns: 1fr; max-width: 320px; margin: 0 auto; }
+            .gateaux-grid { grid-template-columns: 1fr; max-width: 320px; margin: 0 auto; }
+            .galerie-grid { grid-template-columns: repeat(2, 1fr); }
+            .hero-restaurant .btn-hero { padding: 14px 32px; font-size: 0.9rem; }
+            .quick-nav { top: 65px; padding: 6px 10px; }
+            .quick-nav a { font-size: 0.5rem; padding: 3px 6px; }
+            .reservation-section { padding: 20px 16px; }
+            .gateaux-section .header, .gateaux-grid { padding: 0 16px; }
+            .jeux-section .jeux-content .price { font-size: 2rem; }
+            .plat-jour-section { padding: 24px 18px; }
+            .plat-jour-info h2 { font-size: 1.6rem; }
+            .plat-jour-info .price { font-size: 1.8rem; }
+        }
+    </style>
+</head>
+<body>
 
-<!-- ===== HERO ===== -->
-<section class="hero" id="accueil">
-    <div class="hero-bg"></div>
-    <div class="hero-overlay"></div>
-    <div class="hero-content">
-        <div class="hero-tag">Restaurant Sofia</div>
-        <h1 class="hero-titre">
-            L'Art de la <span class="gold" id="typed-text"></span>
-        </h1>
-        <p class="hero-sous">✦ Cuisine Malienne & Internationale ✦</p>
-        <p class="hero-desc">
-            Découvrez une expérience culinaire unique au cœur de Bamako.
-            Des saveurs authentiques, des plats généreux et un cadre chaleureux.
-        </p>
-        <div class="hero-btns">
-            <a href="#menu" class="btn-hero-or">
-                <i class="bi bi-menu-button-wide"></i> Voir Notre Menu
-            </a>
-            <a href="#reservation" class="btn-hero-ghost">
-                <i class="bi bi-calendar-check"></i> Réserver une table
-            </a>
-        </div>
+<!-- ============================================
+     FLASH MESSAGE
+     ============================================ -->
+<?php 
+if (isset($_SESSION['message_success'])): ?>
+    <div style="background: #D4EDDA; color: #0A3622; padding: 12px 20px; text-align: center; border-bottom: 2px solid #27AE60;">
+        <i class="bi bi-check-circle-fill"></i> <?= htmlspecialchars($_SESSION['message_success']) ?>
     </div>
-    <div class="hero-stats">
-        <div class="hero-stat">
-            <strong><?= count($plats) ?>+</strong>
-            <span>Plats au menu</span>
-        </div>
-        <div class="hero-stat">
-            <strong><?= count($categories) ?></strong>
-            <span>Catégories</span>
-        </div>
-        <div class="hero-stat">
-            <strong>5★</strong>
-            <span>Note clients</span>
-        </div>
-        <div class="hero-stat">
-            <strong>2 000F</strong>
-            <span>Espace enfants</span>
-        </div>
-    </div>
-</section>
-
-<!-- ===== PLAT DU JOUR ===== -->
-<?php if($plat_jour): ?>
-<div class="plat-jour-banner">
-    <div class="plj-left">
-        <div style="font-size:3rem;">🌟</div>
-        <div>
-            <span class="plj-badge">✦ Plat du jour</span>
-            <div class="plj-nom"><?= htmlspecialchars($plat_jour['nom']) ?></div>
-            <div class="plj-desc"><?= htmlspecialchars(mb_substr($plat_jour['description'] ?? '', 0, 80)) ?>...</div>
-        </div>
-    </div>
-    <div class="plj-right">
-        <div class="plj-prix"><?= number_format($plat_jour['prix'], 0, ',', ' ') ?> FCFA</div>
-        <a href="commande_repas.php?plat_id=<?= $plat_jour['id'] ?>" class="btn-plj">
-            <i class="bi bi-cart-plus"></i> Commander maintenant
-        </a>
-    </div>
-</div>
+    <?php unset($_SESSION['message_success']); ?>
 <?php endif; ?>
 
-<!-- ===== MENU PAR CATÉGORIES ===== -->
-<section class="menu-section" id="menu">
+<?php if (isset($_SESSION['message_error'])): ?>
+    <div style="background: #F8D7DA; color: #721C24; padding: 12px 20px; text-align: center; border-bottom: 2px solid #E74C3C;">
+        <i class="bi bi-exclamation-triangle-fill"></i> <?= htmlspecialchars($_SESSION['message_error']) ?>
+    </div>
+    <?php unset($_SESSION['message_error']); ?>
+<?php endif; ?>
+
+<!-- ============================================
+     HERO
+     ============================================ -->
+<section class="hero-restaurant">
+    <div class="floating-elements">
+        <span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span><span></span>
+    </div>
     <div class="container">
-        <div class="menu-header">
-            <span class="menu-header-tag">Notre sélection</span>
-            <h2 class="menu-header-titre">Notre <em>Menu</em></h2>
-            <p class="menu-header-desc">Cuisine malienne authentique, spécialités européennes et pâtisserie artisanale — préparés avec passion chaque jour.</p>
+        <div class="badge">Restaurant Sofia</div>
+        <h1>
+            L'art de la <span class="highlight">gastronomie</span><br>
+            à la malienne
+        </h1>
+        <p class="subtitle">
+            Découvrez une cuisine généreuse et variée, préparée avec passion 
+            par <strong>Awa Doumbia</strong>.
+        </p>
+        <div class="deco">
+            <span class="line"></span>
+            <span class="dot"></span>
+            <span class="line"></span>
         </div>
-
-        <!-- Onglets catégories -->
-        <div class="cat-tabs" id="catTabs">
-            <button class="cat-tab active" onclick="showCat('all', this)">
-                <span class="tab-icone">🍽️</span>
-                Tout voir
-                <span class="tab-count"><?= count($plats) ?></span>
-            </button>
-            <?php foreach($categories as $cat):
-                $count_cat = count($plats_par_cat[$cat['id']] ?? []);
-                if($count_cat == 0) continue;
-            ?>
-            <button class="cat-tab" onclick="showCat(<?= $cat['id'] ?>, this)">
-                <span class="tab-icone"><?= $cat['icone'] ?? '🍽️' ?></span>
-                <?= htmlspecialchars($cat['nom']) ?>
-                <span class="tab-count"><?= $count_cat ?></span>
-            </button>
-            <?php endforeach; ?>
-        </div>
-
-        <!-- Section "Tout voir" -->
-        <div class="cat-section active" id="cat-all">
-            <?php foreach($categories as $cat):
-                $plats_cat = $plats_par_cat[$cat['id']] ?? [];
-                if(empty($plats_cat)) continue;
-            ?>
-            <div class="cat-section-header">
-                <span class="cat-section-icon"><?= $cat['icone'] ?? '🍽️' ?></span>
-                <div>
-                    <div class="cat-section-nom"><?= htmlspecialchars($cat['nom']) ?></div>
-                    <div class="cat-section-count"><?= count($plats_cat) ?> plat<?= count($plats_cat) > 1 ? 's' : '' ?></div>
-                </div>
-            </div>
-            <div class="plats-grid" style="margin-bottom:48px;">
-                <?php foreach($plats_cat as $p): echo renderPlatCard($p); endforeach; ?>
-            </div>
-            <?php endforeach; ?>
-
-            <!-- Plats sans catégorie -->
-            <?php if(!empty($plats_par_cat[0]) || !empty($plats_par_cat[''])): 
-                $sans_cat = array_merge($plats_par_cat[0] ?? [], $plats_par_cat[''] ?? []);
-                if(!empty($sans_cat)):
-            ?>
-            <div class="cat-section-header">
-                <span class="cat-section-icon">🍽️</span>
-                <div>
-                    <div class="cat-section-nom">Autres spécialités</div>
-                    <div class="cat-section-count"><?= count($sans_cat) ?> plat<?= count($sans_cat) > 1 ? 's' : '' ?></div>
-                </div>
-            </div>
-            <div class="plats-grid" style="margin-bottom:48px;">
-                <?php foreach($sans_cat as $p): echo renderPlatCard($p); endforeach; ?>
-            </div>
-            <?php endif; endif; ?>
-
-            <?php if(empty($plats)): ?>
-            <div class="plats-vide">
-                <i class="bi bi-cup-hot"></i>
-                <p>Aucun plat disponible pour le moment.<br>Revenez bientôt !</p>
-            </div>
-            <?php endif; ?>
-        </div>
-
-        <!-- Sections par catégorie -->
-        <?php foreach($categories as $cat):
-            $plats_cat = $plats_par_cat[$cat['id']] ?? [];
-            if(empty($plats_cat)) continue;
-        ?>
-        <div class="cat-section" id="cat-<?= $cat['id'] ?>">
-            <div class="cat-section-header">
-                <span class="cat-section-icon"><?= $cat['icone'] ?? '🍽️' ?></span>
-                <div>
-                    <div class="cat-section-nom"><?= htmlspecialchars($cat['nom']) ?></div>
-                    <div class="cat-section-count"><?= count($plats_cat) ?> plat<?= count($plats_cat) > 1 ? 's' : '' ?></div>
-                </div>
-            </div>
-            <div class="plats-grid">
-                <?php foreach($plats_cat as $p): echo renderPlatCard($p); endforeach; ?>
-            </div>
-        </div>
-        <?php endforeach; ?>
-
+        <a href="#reservation" class="btn-hero">
+            <i class="bi bi-calendar-check"></i> Réserver une table
+        </a>
     </div>
 </section>
 
-<!-- ===== ESPACE ENFANTS ===== -->
-<section class="enfants-section" id="jeux">
-    <div class="container">
-        <div class="enfants-grid">
-            <div class="enfants-texte">
-                <span class="tag">✦ Espace dédié</span>
-                <h2>L'Espace <em>Enfants</em></h2>
-                <p>
-                    Restaurant Sofia pense à toute la famille ! Un espace de jeux sécurisé
-                    et animé attend vos enfants pendant que vous savourez votre repas.
-                    Jeux interactifs, animation et menu enfant dès 2 000 FCFA.
-                </p>
-                <div class="enfants-features">
-                    <div class="enfants-feat">
-                        <div class="ico">🎮</div>
-                        <div>
-                            <h4>Jeux interactifs</h4>
-                            <p>Consoles, jeux de société et activités créatives</p>
-                        </div>
+<div class="container-custom">
+
+    <!-- ============================================
+         NAVIGATION RAPIDE
+         ============================================ -->
+    <nav class="quick-nav" id="quickNav">
+        <a href="#plat-jour"><i class="bi bi-star-fill" style="color:#C8922A;"></i> Plat du jour</a>
+        <a href="#shawarmas"><i class="bi bi-bag"></i> Shawarmas</a>
+        <a href="#tacos"><i class="bi bi-bag"></i> Tacos</a>
+        <a href="#sandwichs"><i class="bi bi-bag"></i> Sandwichs</a>
+        <a href="#burgers"><i class="bi bi-bag"></i> Burgers</a>
+        <a href="#specialites"><i class="bi bi-star"></i> Spécialités</a>
+        <a href="#pizzas"><i class="bi bi-pizza"></i> Pizzas</a>
+        <a href="#plats"><i class="bi bi-egg-fried"></i> Plats</a>
+        <a href="#box"><i class="bi bi-box"></i> Box</a>
+        <a href="#boissons"><i class="bi bi-cup-straw"></i> Boissons</a>
+        <a href="#gateaux"><i class="bi bi-cake"></i> Gâteaux</a>
+        <a href="#jeux"><i class="bi bi-controller"></i> Enfants</a>
+        <a href="#reservation"><i class="bi bi-calendar-check"></i> Réserver</a>
+        <a href="#galerie"><i class="bi bi-images"></i> Galerie</a>
+    </nav>
+
+    <!-- ============================================
+         PLAT DU JOUR
+         ============================================ -->
+    <?php if($plat_du_jour): ?>
+    <div class="plat-jour-section animate-fade-up" id="plat-jour">
+        <span class="badge-jour"><i class="bi bi-star-fill"></i> Plat du jour</span>
+        <div class="plat-jour-image">
+            <?php if(!empty($plat_du_jour['photo'])): ?>
+                <img src="images/<?= htmlspecialchars($plat_du_jour['photo']) ?>" alt="<?= htmlspecialchars($plat_du_jour['nom']) ?>">
+            <?php else: ?>
+                <div class="no-image"><i class="bi bi-image"></i></div>
+            <?php endif; ?>
+        </div>
+        <div class="plat-jour-info">
+            <span class="label">⭐ Sélection du Chef</span>
+            <h2><?= htmlspecialchars($plat_du_jour['nom']) ?></h2>
+            <p class="desc"><?= htmlspecialchars($plat_du_jour['description'] ?? '') ?></p>
+            <div class="price"><?= number_format($plat_du_jour['prix'], 0, ',', ' ') ?> FCFA</div>
+            <a href="commande_repas.php?plat_id=<?= $plat_du_jour['id'] ?>" class="btn-commander-platjour">
+                <i class="bi bi-bag-plus"></i> Commander maintenant
+            </a>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <!-- ============================================
+         SHAWARMAS - AVEC IMAGE EN ICONE
+         ============================================ -->
+    <div class="menu-category animate-fade-up" id="shawarmas">
+        <div class="header">
+            <div class="cat-icon">
+                <img src="images/Chawarma viande.jpg.jpeg" alt="Shawarmas" onerror="this.src='https://placehold.co/80x80/C8922A/FFF?text=S'">
+            </div>
+            <h2>Shawarmas</h2>
+            <span class="count">
+                <?php 
+                    $count = 0;
+                    foreach($tous_les_plats as $p) {
+                        if(strpos(strtolower($p['nom']), 'shawarma') !== false || strpos(strtolower($p['nom']), 'chawarma') !== false) $count++;
+                    }
+                    echo $count;
+                ?>
+            </span>
+        </div>
+        <div class="menu-grid">
+            <?php foreach($tous_les_plats as $p): 
+                if(strpos(strtolower($p['nom']), 'shawarma') !== false || strpos(strtolower($p['nom']), 'chawarma') !== false):
+                    $image_url = !empty($p['photo']) ? 'images/' . $p['photo'] : 'https://placehold.co/400x300/C8922A/FFF?text=' . urlencode($p['nom']);
+            ?>
+            <div class="menu-item">
+                <div class="item-image">
+                    <img src="<?= $image_url ?>" alt="<?= htmlspecialchars($p['nom']) ?>" onerror="this.src='https://placehold.co/400x300/C8922A/FFF?text=<?= urlencode($p['nom'])?>'">
+                    <?php if($p['est_plat_du_jour']): ?>
+                        <span class="badge-plat sofia">⭐ Plat du jour</span>
+                    <?php endif; ?>
+                </div>
+                <div class="item-body">
+                    <div class="item-header">
+                        <span class="item-name"><?= htmlspecialchars($p['nom']) ?></span>
+                        <span class="item-price"><?= number_format($p['prix'], 0, ',', ' ') ?> F</span>
                     </div>
-                    <div class="enfants-feat">
-                        <div class="ico">🍕</div>
-                        <div>
-                            <h4>Menu enfant</h4>
-                            <p>Plats adaptés dès 2 000 FCFA</p>
-                        </div>
-                    </div>
-                    <div class="enfants-feat">
-                        <div class="ico">🛡️</div>
-                        <div>
-                            <h4>Espace sécurisé</h4>
-                            <p>Surveillé en permanence par notre équipe</p>
-                        </div>
-                    </div>
-                    <div class="enfants-feat">
-                        <div class="ico">🎂</div>
-                        <div>
-                            <h4>Anniversaires</h4>
-                            <p>Organisation d'événements pour enfants</p>
-                        </div>
+                    <div class="item-desc"><?= htmlspecialchars($p['description'] ?? '') ?></div>
+                    <div class="item-footer">
+                        <a href="commande_repas.php?plat_id=<?= $p['id'] ?>" class="btn-order"><i class="bi bi-cart-plus"></i> Commander</a>
                     </div>
                 </div>
-                <a href="#reservation" class="btn-hero-or" style="display:inline-flex;width:fit-content;">
-                    <i class="bi bi-calendar-check"></i> Réserver avec espace enfants
+            </div>
+            <?php endif; endforeach; ?>
+        </div>
+    </div>
+
+    <!-- ============================================
+         TACOS - AVEC IMAGE EN ICONE
+         ============================================ -->
+    <div class="menu-category animate-fade-up" id="tacos">
+        <div class="header">
+            <div class="cat-icon">
+                <img src="images/tacos viande.jpg" alt="Tacos" onerror="this.src='https://placehold.co/80x80/C8922A/FFF?text=T'">
+            </div>
+            <h2>Tacos</h2>
+            <span class="count">
+                <?php 
+                    $count = 0;
+                    foreach($tous_les_plats as $p) {
+                        if(strpos(strtolower($p['nom']), 'tacos') !== false) $count++;
+                    }
+                    echo $count;
+                ?>
+            </span>
+        </div>
+        <div class="menu-grid">
+            <?php foreach($tous_les_plats as $p): 
+                if(strpos(strtolower($p['nom']), 'tacos') !== false):
+                    $image_url = !empty($p['photo']) ? 'images/' . $p['photo'] : 'https://placehold.co/400x300/C8922A/FFF?text=' . urlencode($p['nom']);
+            ?>
+            <div class="menu-item">
+                <div class="item-image">
+                    <img src="<?= $image_url ?>" alt="<?= htmlspecialchars($p['nom']) ?>" onerror="this.src='https://placehold.co/400x300/C8922A/FFF?text=<?= urlencode($p['nom'])?>'">
+                    <?php if($p['est_plat_du_jour']): ?>
+                        <span class="badge-plat sofia">⭐ Plat du jour</span>
+                    <?php endif; ?>
+                </div>
+                <div class="item-body">
+                    <div class="item-header">
+                        <span class="item-name"><?= htmlspecialchars($p['nom']) ?></span>
+                        <span class="item-price"><?= number_format($p['prix'], 0, ',', ' ') ?> F</span>
+                    </div>
+                    <div class="item-desc"><?= htmlspecialchars($p['description'] ?? '') ?></div>
+                    <div class="item-footer">
+                        <a href="commande_repas.php?plat_id=<?= $p['id'] ?>" class="btn-order"><i class="bi bi-cart-plus"></i> Commander</a>
+                    </div>
+                </div>
+            </div>
+            <?php endif; endforeach; ?>
+        </div>
+    </div>
+
+    <!-- ============================================
+         SANDWICHS - AVEC IMAGE EN ICONE
+         ============================================ -->
+    <div class="menu-category animate-fade-up" id="sandwichs">
+        <div class="header">
+            <div class="cat-icon">
+                <img src="images/Sandwich Viande.jpg" alt="Sandwichs" onerror="this.src='https://placehold.co/80x80/C8922A/FFF?text=Sa'">
+            </div>
+            <h2>Sandwichs</h2>
+            <span class="count">
+                <?php 
+                    $count = 0;
+                    foreach($tous_les_plats as $p) {
+                        if(strpos(strtolower($p['nom']), 'sandwich') !== false || strpos(strtolower($p['nom']), 'baguettino') !== false || strpos(strtolower($p['nom']), 'club') !== false) $count++;
+                    }
+                    echo $count;
+                ?>
+            </span>
+        </div>
+        <div class="menu-grid">
+            <?php foreach($tous_les_plats as $p): 
+                if(strpos(strtolower($p['nom']), 'sandwich') !== false || strpos(strtolower($p['nom']), 'baguettino') !== false || strpos(strtolower($p['nom']), 'club') !== false):
+                    $image_url = !empty($p['photo']) ? 'images/' . $p['photo'] : 'https://placehold.co/400x300/C8922A/FFF?text=' . urlencode($p['nom']);
+            ?>
+            <div class="menu-item">
+                <div class="item-image">
+                    <img src="<?= $image_url ?>" alt="<?= htmlspecialchars($p['nom']) ?>" onerror="this.src='https://placehold.co/400x300/C8922A/FFF?text=<?= urlencode($p['nom'])?>'">
+                    <?php if($p['est_plat_du_jour']): ?>
+                        <span class="badge-plat sofia">⭐ Plat du jour</span>
+                    <?php endif; ?>
+                </div>
+                <div class="item-body">
+                    <div class="item-header">
+                        <span class="item-name"><?= htmlspecialchars($p['nom']) ?></span>
+                        <span class="item-price"><?= number_format($p['prix'], 0, ',', ' ') ?> F</span>
+                    </div>
+                    <div class="item-desc"><?= htmlspecialchars($p['description'] ?? '') ?></div>
+                    <div class="item-footer">
+                        <a href="commande_repas.php?plat_id=<?= $p['id'] ?>" class="btn-order"><i class="bi bi-cart-plus"></i> Commander</a>
+                    </div>
+                </div>
+            </div>
+            <?php endif; endforeach; ?>
+        </div>
+    </div>
+
+    <!-- ============================================
+         BURGERS - AVEC IMAGE EN ICONE
+         ============================================ -->
+    <div class="menu-category animate-fade-up" id="burgers">
+        <div class="header">
+            <div class="cat-icon">
+                <img src="images/Hamburger Viande.jpg" alt="Burgers" onerror="this.src='https://placehold.co/80x80/C8922A/FFF?text=B'">
+            </div>
+            <h2>Burgers</h2>
+            <span class="count">
+                <?php 
+                    $count = 0;
+                    foreach($tous_les_plats as $p) {
+                        if(strpos(strtolower($p['nom']), 'burger') !== false || strpos(strtolower($p['nom']), 'hamburger') !== false) $count++;
+                    }
+                    echo $count;
+                ?>
+            </span>
+        </div>
+        <div class="menu-grid">
+            <?php foreach($tous_les_plats as $p): 
+                if(strpos(strtolower($p['nom']), 'burger') !== false || strpos(strtolower($p['nom']), 'hamburger') !== false):
+                    $image_url = !empty($p['photo']) ? 'images/' . $p['photo'] : 'https://placehold.co/400x300/C8922A/FFF?text=' . urlencode($p['nom']);
+            ?>
+            <div class="menu-item">
+                <div class="item-image">
+                    <img src="<?= $image_url ?>" alt="<?= htmlspecialchars($p['nom']) ?>" onerror="this.src='https://placehold.co/400x300/C8922A/FFF?text=<?= urlencode($p['nom'])?>'">
+                    <?php if($p['est_plat_du_jour']): ?>
+                        <span class="badge-plat sofia">⭐ Plat du jour</span>
+                    <?php endif; ?>
+                </div>
+                <div class="item-body">
+                    <div class="item-header">
+                        <span class="item-name"><?= htmlspecialchars($p['nom']) ?></span>
+                        <span class="item-price"><?= number_format($p['prix'], 0, ',', ' ') ?> F</span>
+                    </div>
+                    <div class="item-desc"><?= htmlspecialchars($p['description'] ?? '') ?></div>
+                    <div class="item-footer">
+                        <a href="commande_repas.php?plat_id=<?= $p['id'] ?>" class="btn-order"><i class="bi bi-cart-plus"></i> Commander</a>
+                    </div>
+                </div>
+            </div>
+            <?php endif; endforeach; ?>
+        </div>
+    </div>
+
+    <!-- ============================================
+         SPÉCIALITÉS - AVEC IMAGE EN ICONE
+         ============================================ -->
+    <div class="menu-category animate-fade-up" id="specialites">
+        <div class="header">
+            <div class="cat-icon">
+                <img src="images/Brioche Viande.jpg" alt="Spécialités" onerror="this.src='https://placehold.co/80x80/C8922A/FFF?text=Sp'">
+            </div>
+            <h2>Spécialités Sofia</h2>
+            <span class="count">
+                <?php 
+                    $count = 0;
+                    $specialites_list = ['brioche', 'chicken rolls', 'nuggets', 'wings', 'tenders', 'kids', 'fataya'];
+                    foreach($tous_les_plats as $p) {
+                        $nom_lower = strtolower($p['nom']);
+                        foreach($specialites_list as $spec) {
+                            if(strpos($nom_lower, $spec) !== false) { $count++; break; }
+                        }
+                    }
+                    echo $count;
+                ?>
+            </span>
+        </div>
+        <div class="menu-grid">
+            <?php 
+            $specialites_list = ['brioche', 'chicken rolls', 'nuggets', 'wings', 'tenders', 'kids', 'fataya'];
+            foreach($tous_les_plats as $p): 
+                $nom_lower = strtolower($p['nom']);
+                $is_specialite = false;
+                foreach($specialites_list as $spec) {
+                    if(strpos($nom_lower, $spec) !== false) { $is_specialite = true; break; }
+                }
+                if($is_specialite):
+                    $image_url = !empty($p['photo']) ? 'images/' . $p['photo'] : 'https://placehold.co/400x300/C8922A/FFF?text=' . urlencode($p['nom']);
+            ?>
+            <div class="menu-item">
+                <div class="item-image">
+                    <img src="<?= $image_url ?>" alt="<?= htmlspecialchars($p['nom']) ?>" onerror="this.src='https://placehold.co/400x300/C8922A/FFF?text=<?= urlencode($p['nom'])?>'">
+                    <?php if($p['est_plat_du_jour']): ?>
+                        <span class="badge-plat sofia">⭐ Plat du jour</span>
+                    <?php endif; ?>
+                </div>
+                <div class="item-body">
+                    <div class="item-header">
+                        <span class="item-name"><?= htmlspecialchars($p['nom']) ?></span>
+                        <span class="item-price"><?= number_format($p['prix'], 0, ',', ' ') ?> F</span>
+                    </div>
+                    <div class="item-desc"><?= htmlspecialchars($p['description'] ?? '') ?></div>
+                    <div class="item-footer">
+                        <a href="commande_repas.php?plat_id=<?= $p['id'] ?>" class="btn-order"><i class="bi bi-cart-plus"></i> Commander</a>
+                    </div>
+                </div>
+            </div>
+            <?php endif; endforeach; ?>
+        </div>
+    </div>
+
+    <!-- ============================================
+         PIZZAS - AVEC IMAGE EN ICONE
+         ============================================ -->
+    <div class="menu-category animate-fade-up" id="pizzas">
+        <div class="header">
+            <div class="cat-icon">
+                <img src="images/Pizza Marguerite.jpg" alt="Pizzas" onerror="this.src='https://placehold.co/80x80/C8922A/FFF?text=P'">
+            </div>
+            <h2>Pizzas</h2>
+            <span class="count">
+                <?php 
+                    $count = 0;
+                    foreach($tous_les_plats as $p) {
+                        if(strpos(strtolower($p['nom']), 'pizza') !== false) $count++;
+                    }
+                    echo $count;
+                ?>
+            </span>
+        </div>
+        <div class="menu-grid">
+            <?php foreach($tous_les_plats as $p): 
+                if(strpos(strtolower($p['nom']), 'pizza') !== false):
+                    $image_url = !empty($p['photo']) ? 'images/' . $p['photo'] : 'https://placehold.co/400x300/C8922A/FFF?text=' . urlencode($p['nom']);
+            ?>
+            <div class="menu-item">
+                <div class="item-image">
+                    <img src="<?= $image_url ?>" alt="<?= htmlspecialchars($p['nom']) ?>" onerror="this.src='https://placehold.co/400x300/C8922A/FFF?text=<?= urlencode($p['nom'])?>'">
+                    <?php if($p['est_plat_du_jour']): ?>
+                        <span class="badge-plat sofia">⭐ Plat du jour</span>
+                    <?php endif; ?>
+                </div>
+                <div class="item-body">
+                    <div class="item-header">
+                        <span class="item-name"><?= htmlspecialchars($p['nom']) ?></span>
+                        <span class="item-price"><?= number_format($p['prix'], 0, ',', ' ') ?> F</span>
+                    </div>
+                    <div class="item-desc"><?= htmlspecialchars($p['description'] ?? '') ?></div>
+                    <div class="item-footer">
+                        <a href="commande_repas.php?plat_id=<?= $p['id'] ?>" class="btn-order"><i class="bi bi-cart-plus"></i> Commander</a>
+                    </div>
+                </div>
+            </div>
+            <?php endif; endforeach; ?>
+        </div>
+    </div>
+
+    <!-- ============================================
+         PLATS SOFIA - AVEC IMAGE EN ICONE
+         ============================================ -->
+    <div class="menu-category animate-fade-up" id="plats">
+        <div class="header">
+            <div class="cat-icon">
+                <img src="images/Lasagnes.jpg" alt="Plats" onerror="this.src='https://placehold.co/80x80/C8922A/FFF?text=Pl'">
+            </div>
+            <h2>Plats Sofia</h2>
+            <span class="count">
+                <?php 
+                    $count = 0;
+                    $plats_list = ['lasagnes', 'poulet mayo', 'big mag', 'steak', 'crêpe', 'croissant'];
+                    foreach($tous_les_plats as $p) {
+                        $nom_lower = strtolower($p['nom']);
+                        foreach($plats_list as $plat) {
+                            if(strpos($nom_lower, $plat) !== false) { $count++; break; }
+                        }
+                    }
+                    echo $count;
+                ?>
+            </span>
+        </div>
+        <div class="menu-grid">
+            <?php 
+            $plats_list = ['lasagnes', 'poulet mayo', 'big mag', 'steak', 'crêpe', 'croissant'];
+            foreach($tous_les_plats as $p): 
+                $nom_lower = strtolower($p['nom']);
+                $is_plat = false;
+                foreach($plats_list as $plat) {
+                    if(strpos($nom_lower, $plat) !== false) { $is_plat = true; break; }
+                }
+                if($is_plat):
+                    $image_url = !empty($p['photo']) ? 'images/' . $p['photo'] : 'https://placehold.co/400x300/C8922A/FFF?text=' . urlencode($p['nom']);
+            ?>
+            <div class="menu-item">
+                <div class="item-image">
+                    <img src="<?= $image_url ?>" alt="<?= htmlspecialchars($p['nom']) ?>" onerror="this.src='https://placehold.co/400x300/C8922A/FFF?text=<?= urlencode($p['nom'])?>'">
+                    <?php if($p['est_plat_du_jour']): ?>
+                        <span class="badge-plat sofia">⭐ Plat du jour</span>
+                    <?php endif; ?>
+                </div>
+                <div class="item-body">
+                    <div class="item-header">
+                        <span class="item-name"><?= htmlspecialchars($p['nom']) ?></span>
+                        <span class="item-price"><?= number_format($p['prix'], 0, ',', ' ') ?> F</span>
+                    </div>
+                    <div class="item-desc"><?= htmlspecialchars($p['description'] ?? '') ?></div>
+                    <div class="item-footer">
+                        <a href="commande_repas.php?plat_id=<?= $p['id'] ?>" class="btn-order"><i class="bi bi-cart-plus"></i> Commander</a>
+                    </div>
+                </div>
+            </div>
+            <?php endif; endforeach; ?>
+        </div>
+    </div>
+
+    <!-- ============================================
+         BOX SOFIA - AVEC IMAGE EN ICONE
+         ============================================ -->
+    <div class="menu-category animate-fade-up" id="box">
+        <div class="header">
+            <div class="cat-icon">
+                <img src="images/Box Petit Four.jpg" alt="Box" onerror="this.src='https://placehold.co/80x80/C8922A/FFF?text=Bx'">
+            </div>
+            <h2>Box Sofia</h2>
+            <span class="count">
+                <?php 
+                    $count = 0;
+                    foreach($tous_les_plats as $p) {
+                        if(strpos(strtolower($p['nom']), 'box') !== false) $count++;
+                    }
+                    echo $count;
+                ?>
+            </span>
+        </div>
+        <div class="menu-grid">
+            <?php foreach($tous_les_plats as $p): 
+                if(strpos(strtolower($p['nom']), 'box') !== false):
+                    $image_url = !empty($p['photo']) ? 'images/' . $p['photo'] : 'https://placehold.co/400x300/C8922A/FFF?text=' . urlencode($p['nom']);
+            ?>
+            <div class="menu-item">
+                <div class="item-image">
+                    <img src="<?= $image_url ?>" alt="<?= htmlspecialchars($p['nom']) ?>" onerror="this.src='https://placehold.co/400x300/C8922A/FFF?text=<?= urlencode($p['nom'])?>'">
+                    <?php if($p['est_plat_du_jour']): ?>
+                        <span class="badge-plat sofia">⭐ Plat du jour</span>
+                    <?php endif; ?>
+                </div>
+                <div class="item-body">
+                    <div class="item-header">
+                        <span class="item-name"><?= htmlspecialchars($p['nom']) ?></span>
+                        <span class="item-price"><?= number_format($p['prix'], 0, ',', ' ') ?> F</span>
+                    </div>
+                    <div class="item-desc"><?= htmlspecialchars($p['description'] ?? '') ?></div>
+                    <div class="item-footer">
+                        <a href="commande_repas.php?plat_id=<?= $p['id'] ?>" class="btn-order"><i class="bi bi-cart-plus"></i> Commander</a>
+                    </div>
+                </div>
+            </div>
+            <?php endif; endforeach; ?>
+        </div>
+    </div>
+
+    <!-- ============================================
+         BOISSONS - AVEC IMAGE EN ICONE
+         ============================================ -->
+    <div class="menu-category animate-fade-up" id="boissons">
+        <div class="header">
+            <div class="cat-icon">
+                <img src="images/Coca Cola.jpg" alt="Boissons" onerror="this.src='https://placehold.co/80x80/C8922A/FFF?text=B'">
+            </div>
+            <h2>Boissons</h2>
+            <span class="count">
+                <?php 
+                    $count = 0;
+                    $boissons_list = ['smoothie', 'milkshake', 'cocktail', 'mojito', 'coca', 'fanta', 'sprite', 'seven', 'ira', 'jus', 'walter', 'sunset', 'kanou'];
+                    foreach($tous_les_plats as $p) {
+                        $nom_lower = strtolower($p['nom']);
+                        foreach($boissons_list as $boisson) {
+                            if(strpos($nom_lower, $boisson) !== false) { $count++; break; }
+                        }
+                    }
+                    echo $count;
+                ?>
+            </span>
+        </div>
+        <div class="menu-grid">
+            <?php 
+            $boissons_list = ['smoothie', 'milkshake', 'cocktail', 'mojito', 'coca', 'fanta', 'sprite', 'seven', 'ira', 'jus', 'walter', 'sunset', 'kanou'];
+            foreach($tous_les_plats as $p): 
+                $nom_lower = strtolower($p['nom']);
+                $is_boisson = false;
+                foreach($boissons_list as $boisson) {
+                    if(strpos($nom_lower, $boisson) !== false) { $is_boisson = true; break; }
+                }
+                if($is_boisson):
+                    $image_url = !empty($p['photo']) ? 'images/' . $p['photo'] : 'https://placehold.co/400x300/C8922A/FFF?text=' . urlencode($p['nom']);
+            ?>
+            <div class="menu-item">
+                <div class="item-image">
+                    <img src="<?= $image_url ?>" alt="<?= htmlspecialchars($p['nom']) ?>" onerror="this.src='https://placehold.co/400x300/C8922A/FFF?text=<?= urlencode($p['nom'])?>'">
+                    <?php if($p['est_plat_du_jour']): ?>
+                        <span class="badge-plat sofia">⭐ Plat du jour</span>
+                    <?php endif; ?>
+                </div>
+                <div class="item-body">
+                    <div class="item-header">
+                        <span class="item-name"><?= htmlspecialchars($p['nom']) ?></span>
+                        <span class="item-price"><?= number_format($p['prix'], 0, ',', ' ') ?> F</span>
+                    </div>
+                    <div class="item-desc"><?= htmlspecialchars($p['description'] ?? '') ?></div>
+                    <div class="item-footer">
+                        <a href="commande_repas.php?plat_id=<?= $p['id'] ?>" class="btn-order"><i class="bi bi-cart-plus"></i> Commander</a>
+                    </div>
+                </div>
+            </div>
+            <?php endif; endforeach; ?>
+        </div>
+    </div>
+
+    <!-- ============================================
+         GÂTEAUX - AVEC IMAGE EN ICONE
+         ============================================ -->
+    <div class="gateaux-section animate-fade-up" id="gateaux">
+        <div class="header">
+            <div class="cat-icon">
+                <img src="images/Gâteau Anniversaire.jpg" alt="Gâteaux" onerror="this.src='https://placehold.co/80x80/C8922A/FFF?text=G'">
+            </div>
+            <h2>Gâteaux Événementiels</h2>
+            <span class="count"><?= count($gateaux) ?></span>
+        </div>
+        <div class="gateaux-grid">
+            <?php if(!empty($gateaux)): 
+                foreach($gateaux as $g): 
+                    $badge_class = '';
+                    $badge_text = '';
+                    $nom = $g['nom'];
+                    
+                    if(strpos($nom, 'Anniversaire') !== false) {
+                        $badge_class = 'populaire';
+                        $badge_text = '⭐ Populaire';
+                    } elseif(strpos($nom, 'Mariage') !== false) {
+                        $badge_class = 'sofia';
+                        $badge_text = '❤️ Sur mesure';
+                    } elseif(strpos($nom, 'Enfant') !== false) {
+                        $badge_class = 'nouveau';
+                        $badge_text = '🎈 Enfant';
+                    } elseif(strpos($nom, 'Hadj') !== false || strpos($nom, 'Mecque') !== false) {
+                        $badge_class = 'hadj';
+                        $badge_text = '🕋 Hadj';
+                    } elseif(strpos($nom, 'Aïd') !== false) {
+                        $badge_class = 'nouveau';
+                        $badge_text = '⭐ Aïd';
+                    } elseif(strpos($nom, 'Ramadan') !== false) {
+                        $badge_class = 'ramadan';
+                        $badge_text = '🌙 Ramadan';
+                    } elseif(strpos($nom, 'Entreprise') !== false) {
+                        $badge_class = 'entreprise';
+                        $badge_text = '🏢 Entreprise';
+                    } elseif(strpos($nom, 'Baptême') !== false) {
+                        $badge_class = 'sofia';
+                        $badge_text = '⛪ Baptême';
+                    } elseif(strpos($nom, 'Cupcakes') !== false) {
+                        $badge_class = 'nouveau';
+                        $badge_text = '🧁 Sur mesure';
+                    }
+                    
+                    $image_url = !empty($g['photo']) ? 'images/' . $g['photo'] : 'https://placehold.co/400x300/C8922A/FFF?text=' . urlencode($nom);
+            ?>
+            <div class="gateau-item">
+                <div class="gateau-image">
+                    <img src="<?= $image_url ?>" alt="<?= htmlspecialchars($nom) ?>" onerror="this.src='https://placehold.co/400x300/C8922A/FFF?text=<?= urlencode($nom)?>'">
+                    <?php if($badge_text): ?>
+                        <span class="badge-plat <?= $badge_class ?>"><?= $badge_text ?></span>
+                    <?php endif; ?>
+                </div>
+                <div class="gateau-body">
+                    <h3><?= htmlspecialchars($nom) ?></h3>
+                    <div class="desc"><?= htmlspecialchars($g['description'] ?? '') ?></div>
+                    <div class="prix">À partir de <strong><?= number_format($g['prix'], 0, ',', ' ') ?> F</strong></div>
+                    <a href="commande_gateau.php?gateau_id=<?= $g['id'] ?>" class="btn-commander-gateau">
+                        <i class="bi bi-cart-plus"></i> Commander
+                    </a>
+                </div>
+            </div>
+            <?php 
+                endforeach; 
+            else: ?>
+            <div style="grid-column:1/-1;text-align:center;padding:40px;color:#999;">
+                <i class="bi bi-cake" style="font-size:2rem;display:block;margin-bottom:10px;"></i>
+                <p>Aucun gâteau disponible pour le moment.</p>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- ============================================
+         ESPACE ENFANTS
+         ============================================ -->
+    <div class="jeux-section animate-fade-up" id="jeux">
+        <div class="jeux-image">
+            <img src="jeu.jpeg" alt="Espace Enfants Sofia" onerror="this.src='https://placehold.co/600x400/C8922A/FFF?text=Espace+Enfants'">
+            <div class="overlay-jeux">
+                <span class="tag">Espace Loisirs</span>
+            </div>
+        </div>
+        <div class="jeux-content">
+            <span class="label">Espace Loisirs</span>
+            <h2>Espace Enfants</h2>
+            <p>Un espace dédié aux enfants pour jouer et s'amuser en toute sécurité pendant que vous dégustez vos plats.</p>
+            <div class="jeux-features">
+                <div class="feature"><i class="bi bi-joystick"></i> <span>Jeux variés</span></div>
+                <div class="feature"><i class="bi bi-shield-check"></i> <span>Espace sécurisé</span></div>
+                <div class="feature"><i class="bi bi-people"></i> <span>Animations</span></div>
+            </div>
+            <div class="jeux-prix">
+                <span class="price">2 000 F <small>/ enfant</small></span>
+                <a href="reservation.php?type=jeu" class="btn-order" style="margin-top:10px;display:inline-flex;">
+                    <i class="bi bi-calendar-check"></i> Réserver
                 </a>
             </div>
-            <div class="enfants-visuel">
-                <div class="big-emoji">🎡</div>
-                <p>L'aventure commence ici !</p>
-            </div>
         </div>
     </div>
-</section>
 
-<!-- ===== INFOS PRATIQUES ===== -->
-<section class="infos-section">
-    <div class="container">
-        <div class="menu-header" style="margin-bottom:48px;">
-            <span class="menu-header-tag">Infos pratiques</span>
-            <h2 class="menu-header-titre">Nous <em>trouver</em></h2>
-        </div>
-        <div class="infos-grid">
-            <div class="info-card">
-                <div class="info-icon">📍</div>
-                <div class="info-title">Notre adresse</div>
-                <div class="info-text">
-                    Sebenikoro, face mosquée Mahi Ouattara<br>
-                    Bamako, Mali<br>
-                    <a href="https://wa.me/22374740303" style="color:var(--gold);font-weight:600;">+223 74 74 03 03</a>
+    <!-- ============================================
+         RÉSERVATION
+         ============================================ -->
+    <div class="reservation-section animate-fade-up" id="reservation">
+        <div class="reservation-left">
+            <span class="label">Réservez votre table</span>
+            <h2>Réservez chez <span>Sofia</span></h2>
+            <p>Réservez votre table pour vivre une expérience culinaire unique dans une ambiance chaleureuse.</p>
+            <div class="infos">
+                <div class="info-item">
+                    <i class="bi bi-geo-alt"></i>
+                    <div class="val">Sebenikoro, face mosquée</div>
+                    <div class="lbl">Adresse</div>
                 </div>
-            </div>
-            <div class="info-card">
-                <div class="info-icon">🕐</div>
-                <div class="info-title">Horaires d'ouverture</div>
-                <div class="info-text">
-                    Lundi — Samedi<br>
-                    <strong>8h00 — 21h00</strong><br>
-                    Dimanche sur réservation
+                <div class="info-item">
+                    <i class="bi bi-telephone"></i>
+                    <div class="val">+223 74 74 03 03</div>
+                    <div class="lbl">Téléphone</div>
                 </div>
-            </div>
-            <div class="info-card">
-                <div class="info-icon">💳</div>
-                <div class="info-title">Paiements acceptés</div>
-                <div class="info-text">
-                    🟠 Orange Money<br>
-                    💙 Wave<br>
-                    💚 Moov Money · Espèces
+                <div class="info-item">
+                    <i class="bi bi-clock"></i>
+                    <div class="val">Lun - Sam : 8h - 21h</div>
+                    <div class="lbl">Horaires</div>
+                </div>
+                <div class="info-item">
+                    <i class="bi bi-people"></i>
+                    <div class="val">Groupes acceptés</div>
+                    <div class="lbl">Capacité</div>
                 </div>
             </div>
         </div>
-    </div>
-</section>
-
-<!-- ===== RÉSERVATION ===== -->
-<section class="resa-section" id="reservation">
-    <div class="container">
-        <div class="resa-card">
-            <div class="resa-texte">
-                <span class="tag">✦ Table pour vous</span>
-                <h2>Réserver votre table</h2>
-                <p>Garantissez votre place au Restaurant Sofia. Réservation confirmée par SMS dans les 30 minutes.</p>
-                <div class="resa-info">
-                    <div class="resa-info-item"><i class="bi bi-geo-alt-fill"></i> Sebenikoro, Bamako</div>
-                    <div class="resa-info-item"><i class="bi bi-telephone-fill"></i> +223 74 74 03 03</div>
-                    <div class="resa-info-item"><i class="bi bi-tiktok"></i> @sofiaboulangerie74740303</div>
-                    <div class="resa-info-item"><i class="bi bi-clock-fill"></i> Lun–Sam : 8h – 21h</div>
-                    <div class="resa-info-item"><i class="bi bi-people-fill"></i> Privatisation disponible</div>
+        <div class="reservation-right">
+            <?php if($reservation_success): ?>
+                <div class="alert-success-reserv">
+                    <i class="bi bi-check-circle-fill"></i> Réservation confirmée ! Nous vous attendons.
                 </div>
-            </div>
-            <div class="resa-form">
-                <form action="reservation.php" method="POST">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Votre nom</label>
-                            <input type="text" name="nom" placeholder="Awa Doumbia" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Téléphone</label>
-                            <input type="tel" name="telephone" placeholder="+223 XX XX XX XX" required>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Date souhaitée</label>
-                            <input type="date" name="date_reservation" required min="<?= date('Y-m-d') ?>">
-                        </div>
-                        <div class="form-group">
-                            <label>Heure</label>
-                            <select name="heure">
-                                <option value="08:00">08h00</option>
-                                <option value="09:00">09h00</option>
-                                <option value="10:00">10h00</option>
-                                <option value="11:00">11h00</option>
-                                <option value="12:00">12h00</option>
-                                <option value="13:00">13h00</option>
-                                <option value="14:00">14h00</option>
-                                <option value="15:00">15h00</option>
-                                <option value="18:00">18h00</option>
-                                <option value="19:00">19h00</option>
-                                <option value="20:00">20h00</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Nombre de personnes</label>
-                            <select name="nb_personnes">
-                                <?php for($i=1;$i<=20;$i++): ?>
-                                <option value="<?= $i ?>"><?= $i ?> personne<?= $i>1?'s':'' ?></option>
-                                <?php endfor; ?>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Type de table</label>
-                            <select name="type_table">
-                                <option value="interieure">Salle intérieure</option>
-                                <option value="terrasse">Terrasse</option>
-                                <option value="vip">Salon VIP</option>
-                                <option value="enfants">Avec espace enfants</option>
-                            </select>
-                        </div>
+            <?php endif; ?>
+            <?php if($reservation_error): ?>
+                <div class="alert-error-reserv">
+                    <i class="bi bi-exclamation-triangle-fill"></i> <?= $reservation_error ?>
+                </div>
+            <?php endif; ?>
+            <form method="POST">
+                <div class="form-group">
+                    <label>Nom complet <span style="color:#E74C3C;">*</span></label>
+                    <input type="text" name="nom" class="form-control" placeholder="Votre nom" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Téléphone <span style="color:#E74C3C;">*</span></label>
+                        <input type="tel" name="telephone" class="form-control" placeholder="77 00 00 00" required>
                     </div>
                     <div class="form-group">
-                        <label>Message (optionnel)</label>
-                        <textarea name="message" rows="2" placeholder="Occasion spéciale, allergie, demande particulière..."></textarea>
+                        <label>Email</label>
+                        <input type="email" name="email" class="form-control" placeholder="votre@email.com">
                     </div>
-                    <button type="submit" class="btn-resa">
-                        <i class="bi bi-calendar-check"></i> Confirmer la réservation
-                    </button>
-                </form>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- ===== FOOTER RESTO ===== -->
-<footer class="resto-footer">
-    <div class="resto-footer-logo">Restaurant Sofia</div>
-    <p>
-        Une création d'<a href="https://www.tiktok.com/@awadoumbia223" target="_blank">Awa Doumbia</a> · Bamako, Mali<br>
-        © <?= date('Y') ?> Restaurant Sofia — Tous droits réservés.
-    </p>
-</footer>
-
-<?php
-// Fonction d'affichage d'une carte plat
-function renderPlatCard($p) {
-    $img_path = '../uploads/plats/' . $p['image'];
-    $has_img  = !empty($p['image']) && file_exists($img_path);
-    $prix     = number_format($p['prix'], 0, ',', ' ');
-    $nom      = htmlspecialchars($p['nom']);
-    $desc     = htmlspecialchars($p['description'] ?? '');
-    $dispo    = $p['est_disponible_aujourd_hui'] ?? 1;
-    $plat_j   = $p['est_plat_du_jour'] ?? 0;
-    $temps    = $p['temps_preparation'] ?? 20;
-
-    ob_start();
-    ?>
-    <div class="plat-card">
-        <div class="plat-img-wrap">
-            <?php if($has_img): ?>
-                <img src="<?= $img_path ?>" alt="<?= $nom ?>" loading="lazy">
-            <?php else: ?>
-                <div class="plat-placeholder">
-                    <span>🍽️</span>
-                    <p><?= mb_substr($nom, 0, 18) ?></p>
                 </div>
-            <?php endif; ?>
-            <?php if($plat_j): ?>
-                <div class="plat-badge-jour">⭐ Plat du jour</div>
-            <?php endif; ?>
-            <?php if(!$dispo): ?>
-                <div class="plat-badge-dispo">Indisponible</div>
-            <?php endif; ?>
-        </div>
-        <div class="plat-body">
-            <div class="plat-nom"><?= $nom ?></div>
-            <?php if($desc): ?>
-                <div class="plat-desc"><?= $desc ?></div>
-            <?php endif; ?>
-            <div class="plat-meta">
-                <span><i class="bi bi-clock"></i> <?= $temps ?> min</span>
-            </div>
-        </div>
-        <div class="plat-footer">
-            <div class="plat-prix">
-                <?= $prix ?> <span>FCFA</span>
-            </div>
-            <?php if($dispo): ?>
-            <a href="commande_repas.php?plat_id=<?= $p['id'] ?>" class="btn-commander">
-                <i class="bi bi-cart-plus"></i> Commander
-            </a>
-            <?php else: ?>
-            <span style="font-size:0.75rem;color:#ccc;">Non disponible</span>
-            <?php endif; ?>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Date <span style="color:#E74C3C;">*</span></label>
+                        <input type="date" name="date" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Heure <span style="color:#E74C3C;">*</span></label>
+                        <input type="time" name="heure" class="form-control" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Nombre de personnes</label>
+                    <input type="number" name="personnes" class="form-control" value="1" min="1" max="20" required>
+                </div>
+                <div class="form-group">
+                    <label>Message</label>
+                    <input type="text" name="message" class="form-control" placeholder="Demandes spéciales...">
+                </div>
+                <button type="submit" name="reserver" class="btn-reserver">
+                    <i class="bi bi-calendar-check"></i> Réserver maintenant
+                </button>
+            </form>
         </div>
     </div>
-    <?php
-    return ob_get_clean();
-}
-?>
+
+    <!-- ============================================
+         GALERIE - AVEC IMAGE EN ICONE
+         ============================================ -->
+    <div class="galerie-section animate-fade-up" id="galerie">
+        <div class="header">
+            <div class="cat-icon">
+                <img src="pt2.jpeg" alt="Galerie" onerror="this.src='https://placehold.co/80x80/C8922A/FFF?text=Ga'">
+            </div>
+            <h2>Galerie Restaurant Sofia</h2>
+        </div>
+        <div class="galerie-grid" id="galerieGrid">
+            <?php for($i=2; $i<=10; $i++): ?>
+            <div class="galerie-item" onclick="openLightbox(<?= $i-2 ?>)">
+                <img src="pt<?= $i ?>.jpeg" alt="Photo Restaurant Sofia" onerror="this.src='https://placehold.co/300x300/C8922A/FFF?text=Photo'">
+            </div>
+            <?php endfor; ?>
+        </div>
+    </div>
+
+    <!-- LIGHTBOX -->
+    <div class="lightbox" id="lightbox" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.92);z-index:99999;justify-content:center;align-items:center;padding:20px;" onclick="closeLightbox()">
+        <button onclick="event.stopPropagation(); closeLightbox()" style="position:absolute;top:25px;right:35px;color:#fff;font-size:2.5rem;background:rgba(255,255,255,0.1);width:50px;height:50px;border-radius:50%;border:none;cursor:pointer;">✕</button>
+        <img id="lightboxImage" src="" alt="Agrandissement" style="max-width:90%;max-height:85%;object-fit:contain;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+    </div>
+
+    <!-- ============================================
+         FOOTER INFOS
+         ============================================ -->
+    <div class="footer-infos">
+        <p>
+            <i class="bi bi-chat-quote-fill" style="color:#C8922A;"></i>
+            Nous ne sommes pas parfaits, mais vos remarques nous aident à nous améliorer.
+            Pour toute suggestion, contactez-nous sur WhatsApp au <strong>66 74 69 85</strong>
+        </p>
+        <div class="contact-row">
+            <span><i class="bi bi-geo-alt"></i> Sebenikoro, face mosquée Mahi Ouattara</span>
+            <span><i class="bi bi-telephone"></i> +223 74 74 03 03</span>
+            <span><i class="bi bi-whatsapp"></i> +223 66 74 69 85</span>
+            <span><i class="bi bi-truck"></i> Livraison partout à Bamako</span>
+        </div>
+        <div class="copyright">
+            @sofiaboulangerie74740303 &bull; Restaurant Sofia &bull; <?= date('Y') ?>
+        </div>
+    </div>
+
+</div>
+
+<?php require_once '../includes/footer.php'; ?>
 
 <script>
-// Typed text animation
-const words = ['Table', 'Saveur', 'Partage', 'Fête'];
-let wi = 0, ci = 0, deleting = false;
-const el = document.getElementById('typed-text');
-function typeWriter() {
-    if(!el) return;
-    const word = words[wi];
-    if(!deleting) {
-        el.textContent = word.substring(0, ci + 1);
-        ci++;
-        if(ci === word.length) { deleting = true; setTimeout(typeWriter, 1800); return; }
-    } else {
-        el.textContent = word.substring(0, ci - 1);
-        ci--;
-        if(ci === 0) { deleting = false; wi = (wi + 1) % words.length; }
-    }
-    setTimeout(typeWriter, deleting ? 60 : 100);
-}
-typeWriter();
+// ============================================
+// ANIMATION AU SCROLL
+// ============================================
+document.addEventListener('DOMContentLoaded', function() {
+    const elements = document.querySelectorAll('.animate-fade-up');
+    
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('visible');
+            }
+        });
+    }, {
+        threshold: 0.15,
+        rootMargin: '0px 0px -50px 0px'
+    });
+    
+    elements.forEach(el => observer.observe(el));
 
-// Navbar scroll
-window.addEventListener('scroll', () => {
-    document.getElementById('restoNav').classList.toggle('scrolled', window.scrollY > 50);
-});
-
-// Toggle nav mobile
-function toggleNav() {
-    const links = document.getElementById('restoLinks');
-    const isOpen = links.style.display === 'flex';
-    links.style.display = isOpen ? '' : 'flex';
-    links.style.flexDirection = 'column';
-    links.style.position = 'absolute';
-    links.style.top = '68px';
-    links.style.left = '0';
-    links.style.right = '0';
-    links.style.background = '#0D0B08';
-    links.style.padding = '16px 24px';
-    links.style.borderBottom = '1px solid rgba(200,146,42,0.15)';
-}
-document.addEventListener('click', e => {
-    if(!e.target.closest('.resto-nav')) {
-        document.getElementById('restoLinks').style.display = '';
-    }
-});
-
-// Tabs catégories
-function showCat(id, btn) {
-    document.querySelectorAll('.cat-tab').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    document.querySelectorAll('.cat-section').forEach(s => s.classList.remove('active'));
-    const target = document.getElementById('cat-' + id);
-    if(target) target.classList.add('active');
-}
-
-// Smooth scroll
-document.querySelectorAll('a[href^="#"]').forEach(a => {
-    a.addEventListener('click', e => {
-        const target = document.querySelector(a.getAttribute('href'));
-        if(target) { e.preventDefault(); target.scrollIntoView({behavior:'smooth', block:'start'}); }
+    // STICKY NAV
+    const quickNav = document.getElementById('quickNav');
+    window.addEventListener('scroll', function() {
+        if (window.pageYOffset > 100) {
+            quickNav.classList.add('scrolled');
+        } else {
+            quickNav.classList.remove('scrolled');
+        }
     });
 });
+
+// ============================================
+// LIGHTBOX
+// ============================================
+const galleryImages = [];
+<?php for($i=2; $i<=10; $i++): ?>
+galleryImages.push('pt<?= $i ?>.jpeg');
+<?php endfor; ?>
+
+function openLightbox(index) {
+    const lightbox = document.getElementById('lightbox');
+    const img = document.getElementById('lightboxImage');
+    img.src = galleryImages[index] || 'https://placehold.co/800x600/C8922A/FFF?text=Photo';
+    lightbox.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+    document.getElementById('lightbox').style.display = 'none';
+    document.body.style.overflow = 'auto';
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeLightbox();
+});
 </script>
+</body>
+</html>

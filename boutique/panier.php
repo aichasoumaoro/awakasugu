@@ -50,6 +50,7 @@ if (isset($_POST['action']) && $_POST['action'] == 'ajouter') {
     
     // ✅ Récupérer les infos de couleur et taille
     $couleur_nom = '';
+    $couleur_hex = '';
     $taille_nom = '';
     
     if ($couleur_id > 0) {
@@ -67,12 +68,14 @@ if (isset($_POST['action']) && $_POST['action'] == 'ajouter') {
         $taille_nom = $taille['nom'] ?? '';
     }
 
-    $stmt = $pdo->prepare("SELECT * FROM produits WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT * FROM produits WHERE id = ? AND est_visible = 1");
     $stmt->execute([$produit_id]);
     $produit = $stmt->fetch();
 
     if ($produit) {
-        $prix = ($produit['prix_promo'] && $produit['prix_promo'] > 0) ? $produit['prix_promo'] : $produit['prix'];
+        $prix = ($produit['prix_promo'] && $produit['prix_promo'] > 0 && $produit['prix_promo'] < $produit['prix']) 
+                ? $produit['prix_promo'] 
+                : $produit['prix'];
         
         // ✅ Clé unique pour le panier (avec couleur et taille)
         $cle_panier = $produit_id . '_' . $couleur_id . '_' . $taille_id;
@@ -87,7 +90,7 @@ if (isset($_POST['action']) && $_POST['action'] == 'ajouter') {
                 'quantite' => $quantite,
                 'couleur_id' => $couleur_id,
                 'couleur_nom' => $couleur_nom,
-                'couleur_hex' => $couleur_hex ?? '',
+                'couleur_hex' => $couleur_hex,
                 'taille_id' => $taille_id,
                 'taille_nom' => $taille_nom,
                 'image' => $produit['image_principale']
