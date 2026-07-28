@@ -29,12 +29,14 @@ $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $titre = trim($_POST['titre'] ?? '');
-    $type = $_POST['type'] ?? 'youtube';
-    $url_ou_fichier = trim($_POST['url_ou_fichier'] ?? '');
     $section = $_POST['section'] ?? 'boutique';
     $produit_id = !empty($_POST['produit_id']) ? (int)$_POST['produit_id'] : null;
     $est_active = isset($_POST['est_active']) ? 1 : 0;
     $fichier_video = '';
+    
+    if (empty($titre)) {
+        $error = "Le titre est obligatoire.";
+    }
     
     // Gestion de l'upload de fichier vidéo
     if (isset($_FILES['fichier_video']) && $_FILES['fichier_video']['error'] === UPLOAD_ERR_OK) {
@@ -47,29 +49,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (in_array($ext, $allowed)) {
             $fichier_video = uniqid() . '.' . $ext;
             move_uploaded_file($_FILES['fichier_video']['tmp_name'], $upload_dir . $fichier_video);
-            $type = 'local';
         } else {
             $error = 'Format vidéo non autorisé (MP4, WEBM, OGG, MOV, AVI)';
         }
-    }
-    
-    // Si c'est une vidéo en ligne (YouTube, etc.)
-    if ($type != 'local' && empty($fichier_video)) {
-        if (empty($url_ou_fichier)) {
-            $error = "L'URL de la vidéo est obligatoire pour les vidéos en ligne.";
-        }
-    }
-    
-    if (empty($titre)) {
-        $error = "Le titre est obligatoire.";
+    } else {
+        $error = "Veuillez sélectionner un fichier vidéo.";
     }
     
     if (empty($error)) {
         $stmt = $pdo->prepare("
             INSERT INTO videos (titre, type, url_ou_fichier, fichier_video, section, produit_id, est_active, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+            VALUES (?, 'local', ?, ?, ?, ?, ?, NOW())
         ");
-        $stmt->execute([$titre, $type, $url_ou_fichier, $fichier_video, $section, $produit_id, $est_active]);
+        $stmt->execute([$titre, '', $fichier_video, $section, $produit_id, $est_active]);
         
         $success = 'Vidéo ajoutée avec succès !';
         header('refresh:2;url=videos.php');
@@ -213,46 +205,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             border: none;
             white-space: nowrap;
         }
-        .btn-secondary { background: #6c757d; color: white; padding: 10px 24px; border-radius: 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
-        .btn-secondary:hover { background: #5a6268; color: white; }
-        .btn-save { background: #C8922A; color: white; border: none; padding: 12px 30px; border-radius: 10px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; }
-        .btn-save:hover { background: #9A6E1A; }
+        .btn-secondary { background: #6c757d; color: white; padding: 10px 24px; border-radius: 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all 0.3s; }
+        .btn-secondary:hover { background: #5a6268; color: white; transform: translateY(-2px); }
+        .btn-save { 
+            background: linear-gradient(135deg, #C8922A, #E8B55A); 
+            color: #1A1A1A; 
+            border: none; 
+            padding: 14px 35px; 
+            border-radius: 12px; 
+            font-weight: 700; 
+            cursor: pointer; 
+            display: inline-flex; 
+            align-items: center; 
+            gap: 10px; 
+            transition: all 0.3s;
+            font-size: 0.95rem;
+            box-shadow: 0 4px 15px rgba(200,146,42,0.3);
+        }
+        .btn-save:hover { 
+            background: linear-gradient(135deg, #9A6E1A, #C8922A); 
+            transform: translateY(-3px);
+            box-shadow: 0 6px 25px rgba(200,146,42,0.4);
+            color: white;
+        }
 
-        .content { padding: 28px 32px; flex: 1; }
+        .content { padding: 28px 32px; flex: 1; max-width: 900px; }
 
         .form-container {
             background: white;
-            border-radius: 16px;
-            padding: 30px;
+            border-radius: 20px;
+            padding: 35px;
             border: 1px solid #E8ECF0;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.04);
         }
         
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 24px;
         }
         
         .form-group label {
             display: block;
             margin-bottom: 8px;
             font-weight: 600;
-            color: #333;
-            font-size: 0.85rem;
+            color: #1A1A1A;
+            font-size: 0.9rem;
         }
         .form-group label .required { color: #E74C3C; }
         
         .form-control, .form-select {
             width: 100%;
-            padding: 12px 15px;
-            border: 1.5px solid #E0E0E0;
-            border-radius: 10px;
+            padding: 14px 18px;
+            border: 2px solid #E8ECF0;
+            border-radius: 12px;
             font-family: 'Jost', sans-serif;
+            font-size: 0.95rem;
             transition: all 0.3s;
+            background: #F8F9FA;
         }
         
         .form-control:focus, .form-select:focus {
             outline: none;
             border-color: #C8922A;
-            box-shadow: 0 0 0 3px rgba(200,146,42,0.1);
+            background: white;
+            box-shadow: 0 0 0 4px rgba(200,146,42,0.1);
         }
         
         .row {
@@ -264,21 +279,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .checkbox-group {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
+            padding: 12px 0;
         }
         
         .checkbox-group input {
-            width: 18px;
-            height: 18px;
+            width: 20px;
+            height: 20px;
+            border-radius: 6px;
+            cursor: pointer;
         }
         .checkbox-group input:checked { accent-color: #C8922A; }
+        .checkbox-group label {
+            font-size: 0.95rem;
+            cursor: pointer;
+            margin-bottom: 0;
+        }
         
         .alert {
             padding: 15px 20px;
-            border-radius: 10px;
+            border-radius: 12px;
             margin-bottom: 20px;
             border: none;
             border-left: 4px solid;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         
         .alert-danger {
@@ -294,67 +320,126 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         .info-box {
-            background: #FFF8E7;
-            border-left: 4px solid #C8922A;
-            padding: 15px;
-            border-radius: 10px;
-            margin-top: 20px;
+            background: linear-gradient(135deg, #FFF8E7, #FFFDF5);
+            border: 1px solid rgba(200,146,42,0.2);
+            border-radius: 14px;
+            padding: 20px;
+            margin-top: 25px;
+        }
+        
+        .info-box .icon {
+            color: #C8922A;
+            font-size: 1.2rem;
+            margin-right: 10px;
         }
         
         .info-box p {
-            margin: 5px 0;
+            margin: 4px 0;
             font-size: 0.85rem;
-            color: #666;
-        }
-        
-        .type-selector {
+            color: #555;
             display: flex;
-            gap: 20px;
-            margin-bottom: 20px;
-            padding: 15px;
-            background: #F8F8F8;
-            border-radius: 12px;
+            align-items: center;
+            gap: 8px;
         }
         
-        .type-option {
-            flex: 1;
+        .upload-area {
+            border: 2px dashed #D0D5DD;
+            border-radius: 16px;
+            padding: 40px 20px;
             text-align: center;
-            cursor: pointer;
-        }
-        
-        .type-option input {
-            display: none;
-        }
-        
-        .type-option label {
-            display: block;
-            padding: 12px;
-            border-radius: 10px;
-            background: white;
-            border: 2px solid #E0E0E0;
-            cursor: pointer;
             transition: all 0.3s;
-            font-weight: 500;
+            cursor: pointer;
+            background: #FAFBFC;
         }
         
-        .type-option input:checked + label {
+        .upload-area:hover {
             border-color: #C8922A;
-            background: rgba(200,146,42,0.1);
+            background: #FFFDF5;
+        }
+        
+        .upload-area .icon-upload {
+            font-size: 3rem;
             color: #C8922A;
+            opacity: 0.5;
+        }
+        
+        .upload-area p {
+            margin-top: 10px;
+            color: #8A99AA;
+            font-size: 0.9rem;
+        }
+        
+        .upload-area .format {
+            font-size: 0.7rem;
+            color: #B0B8C4;
+            margin-top: 5px;
+        }
+        
+        .file-selected {
+            display: none;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 18px;
+            background: #F0F7FF;
+            border-radius: 12px;
+            margin-top: 10px;
+            border: 1px solid #C8922A;
+        }
+        
+        .file-selected.active {
+            display: flex;
+        }
+        
+        .file-selected i {
+            color: #27AE60;
+            font-size: 1.2rem;
+        }
+        
+        .file-selected .file-name {
+            font-weight: 500;
+            color: #1A1A1A;
+        }
+        
+        .file-selected .file-size {
+            color: #8A99AA;
+            font-size: 0.8rem;
+            margin-left: auto;
         }
         
         .video-preview {
             margin-top: 15px;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #0D0D0D;
             display: none;
+        }
+        
+        .video-preview.active {
+            display: block;
         }
         
         .video-preview video {
             width: 100%;
-            max-height: 200px;
-            border-radius: 10px;
+            max-height: 300px;
+            display: block;
         }
         
-        .info-text { font-size: 0.7rem; color: #8A99AA; margin-top: 4px; }
+        .preview-label {
+            padding: 10px 16px;
+            background: rgba(255,255,255,0.05);
+            color: rgba(255,255,255,0.5);
+            font-size: 0.7rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        
+        .form-actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
         
         @media (max-width: 1000px) {
             .main { margin-left: 0; }
@@ -364,7 +449,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             .sidebar { display: none; }
             .main { margin-left: 0; }
             .content { padding: 20px 16px; }
-            .type-selector { flex-direction: column; }
+            .form-container { padding: 20px; }
+            .upload-area { padding: 25px 15px; }
         }
     </style>
 </head>
@@ -417,7 +503,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <div class="topbar">
         <div>
-            <div class="topbar-title">➕ Ajouter une <span>vidéo</span></div>
+            <div class="topbar-title">📹 Ajouter une <span>vidéo</span></div>
             <div class="topbar-breadcrumb">Administration → Vidéos → Ajouter</div>
         </div>
         <a href="videos.php" class="btn-secondary">
@@ -428,49 +514,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="content">
 
         <?php if($error): ?>
-            <div class="alert alert-danger"><i class="bi bi-exclamation-triangle-fill"></i> <?= htmlspecialchars($error) ?></div>
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <?= htmlspecialchars($error) ?>
+            </div>
         <?php endif; ?>
         <?php if($success): ?>
-            <div class="alert alert-success"><i class="bi bi-check-circle-fill"></i> <?= htmlspecialchars($success) ?></div>
+            <div class="alert alert-success">
+                <i class="bi bi-check-circle-fill"></i>
+                <?= htmlspecialchars($success) ?>
+            </div>
         <?php endif; ?>
 
         <div class="form-container">
             <form method="POST" enctype="multipart/form-data">
+                
                 <div class="form-group">
                     <label>Titre de la vidéo <span class="required">*</span></label>
                     <input type="text" name="titre" class="form-control" required placeholder="Ex: Awa Doumbia présente sa nouvelle collection">
                 </div>
                 
-                <!-- Sélection du type de source vidéo -->
-                <div class="type-selector">
-                    <div class="type-option">
-                        <input type="radio" name="source_type" id="source_url" value="url" checked>
-                        <label for="source_url">
-                            <i class="bi bi-link"></i> Lien en ligne
-                        </label>
-                    </div>
-                    <div class="type-option">
-                        <input type="radio" name="source_type" id="source_file" value="file">
-                        <label for="source_file">
-                            <i class="bi bi-upload"></i> Fichier local
-                        </label>
-                    </div>
-                </div>
-                
-                <!-- Section pour URL (YouTube, TikTok, etc.) -->
-                <div id="url_section" class="form-group">
-                    <label>URL de la vidéo <span class="required">*</span></label>
-                    <input type="text" name="url_ou_fichier" class="form-control" placeholder="https://www.youtube.com/watch?v=...">
-                    <div class="info-text">Collez l'URL complète de la vidéo (YouTube, TikTok, Instagram, etc.)</div>
-                </div>
-                
-                <!-- Section pour upload de fichier -->
-                <div id="file_section" class="form-group" style="display: none;">
+                <!-- Upload vidéo -->
+                <div class="form-group">
                     <label>Fichier vidéo <span class="required">*</span></label>
-                    <input type="file" name="fichier_video" class="form-control" accept="video/*">
-                    <div class="info-text">Formats acceptés : MP4, WEBM, OGG, MOV, AVI (max 100MB)</div>
+                    <div class="upload-area" id="uploadArea">
+                        <i class="bi bi-cloud-upload icon-upload"></i>
+                        <p><strong>Cliquez pour sélectionner</strong> ou glissez-déposez</p>
+                        <div class="format">MP4, WEBM, OGG, MOV, AVI (max 100MB)</div>
+                    </div>
+                    <input type="file" name="fichier_video" id="fileInput" class="form-control" accept="video/*" style="display: none;" required>
+                    
+                    <div class="file-selected" id="fileSelected">
+                        <i class="bi bi-check-circle-fill"></i>
+                        <span class="file-name" id="fileName">video.mp4</span>
+                        <span class="file-size" id="fileSize">2.5 MB</span>
+                        <button type="button" onclick="removeFile()" style="background:none;border:none;color:#E74C3C;cursor:pointer;font-size:1.2rem;">
+                            <i class="bi bi-x-circle"></i>
+                        </button>
+                    </div>
+                    
                     <div class="video-preview" id="videoPreview">
-                        <video controls></video>
+                        <div class="preview-label"><i class="bi bi-eye"></i> Aperçu</div>
+                        <video id="previewVideo" controls></video>
                     </div>
                 </div>
                 
@@ -495,65 +580,99 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 </div>
                 
-                <div class="checkbox-group" style="margin-bottom: 20px;">
+                <div class="checkbox-group">
                     <input type="checkbox" name="est_active" id="active" checked>
-                    <label for="active" style="margin-bottom: 0;">✅ Active (visible sur le site)</label>
+                    <label for="active">✅ Active (visible sur le site)</label>
                 </div>
                 
                 <div class="info-box">
-                    <i class="bi bi-info-circle" style="color: #C8922A;"></i>
-                    <strong>Conseil :</strong>
-                    <p>📹 Pour une vidéo locale : choisissez "Fichier local" et sélectionnez votre vidéo</p>
-                    <p>🔗 Pour une vidéo en ligne : choisissez "Lien en ligne" et collez l'URL (YouTube, TikTok, etc.)</p>
-                    <p>🎬 La vidéo s'affichera automatiquement sur la page Vidéos de votre boutique.</p>
+                    <p><span class="icon">💡</span> <strong>Conseils :</strong></p>
+                    <p>📹 Téléchargez une vidéo au format MP4 pour une meilleure compatibilité</p>
+                    <p>🎬 La vidéo s'affichera automatiquement sur la page Vidéos de votre boutique</p>
+                    <p>🏷️ Vous pouvez associer cette vidéo à un produit spécifique</p>
                 </div>
                 
-                <button type="submit" class="btn-save">
-                    <i class="bi bi-save"></i> Enregistrer la vidéo
-                </button>
+                <div class="form-actions">
+                    <button type="submit" class="btn-save">
+                        <i class="bi bi-save"></i> Enregistrer la vidéo
+                    </button>
+                    <a href="videos.php" style="display:inline-flex;align-items:center;gap:8px;padding:14px 25px;border:2px solid #E8ECF0;border-radius:12px;text-decoration:none;color:#666;font-weight:500;transition:all 0.3s;">
+                        <i class="bi bi-x-circle"></i> Annuler
+                    </a>
+                </div>
             </form>
         </div>
     </div>
 </div>
 
 <script>
-    // Gérer l'affichage des sections selon le choix
-    const sourceUrl = document.getElementById('source_url');
-    const sourceFile = document.getElementById('source_file');
-    const urlSection = document.getElementById('url_section');
-    const fileSection = document.getElementById('file_section');
-    const urlInput = document.querySelector('input[name="url_ou_fichier"]');
-    const fileInput = document.querySelector('input[name="fichier_video"]');
+    // Upload area click
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('fileInput');
+    const fileSelected = document.getElementById('fileSelected');
+    const fileName = document.getElementById('fileName');
+    const fileSize = document.getElementById('fileSize');
     const videoPreview = document.getElementById('videoPreview');
+    const previewVideo = document.getElementById('previewVideo');
     
-    function toggleSections() {
-        if (sourceUrl.checked) {
-            urlSection.style.display = 'block';
-            fileSection.style.display = 'none';
-            urlInput.required = true;
-            fileInput.required = false;
-        } else {
-            urlSection.style.display = 'none';
-            fileSection.style.display = 'block';
-            urlInput.required = false;
-            fileInput.required = true;
-        }
-    }
+    uploadArea.addEventListener('click', function() {
+        fileInput.click();
+    });
     
-    sourceUrl.addEventListener('change', toggleSections);
-    sourceFile.addEventListener('change', toggleSections);
+    // Drag and drop
+    uploadArea.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        this.style.borderColor = '#C8922A';
+        this.style.background = 'rgba(200,146,42,0.05)';
+    });
     
-    // Preview vidéo locale
-    fileInput.addEventListener('change', function(e) {
-        if (e.target.files && e.target.files[0]) {
-            const video = videoPreview.querySelector('video');
-            video.src = URL.createObjectURL(e.target.files[0]);
-            videoPreview.style.display = 'block';
-            video.load();
+    uploadArea.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        this.style.borderColor = '#D0D5DD';
+        this.style.background = '#FAFBFC';
+    });
+    
+    uploadArea.addEventListener('drop', function(e) {
+        e.preventDefault();
+        this.style.borderColor = '#D0D5DD';
+        this.style.background = '#FAFBFC';
+        
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            handleFile(e.dataTransfer.files[0]);
         }
     });
     
-    toggleSections();
+    fileInput.addEventListener('change', function() {
+        if (this.files.length) {
+            handleFile(this.files[0]);
+        }
+    });
+    
+    function handleFile(file) {
+        // Afficher le nom du fichier
+        fileName.textContent = file.name;
+        fileSize.textContent = (file.size / 1024 / 1024).toFixed(1) + ' MB';
+        fileSelected.classList.add('active');
+        
+        // Afficher la prévisualisation
+        const url = URL.createObjectURL(file);
+        previewVideo.src = url;
+        videoPreview.classList.add('active');
+        
+        // Changer le style de l'upload area
+        uploadArea.style.borderColor = '#27AE60';
+        uploadArea.style.background = 'rgba(39,174,96,0.05)';
+    }
+    
+    function removeFile() {
+        fileInput.value = '';
+        fileSelected.classList.remove('active');
+        videoPreview.classList.remove('active');
+        previewVideo.src = '';
+        uploadArea.style.borderColor = '#D0D5DD';
+        uploadArea.style.background = '#FAFBFC';
+    }
 </script>
 
 </body>

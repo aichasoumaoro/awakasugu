@@ -32,7 +32,7 @@ try {
 }
 
 // ============================================
-// FONCTION POUR L'IMAGE
+// FONCTION POUR L'IMAGE - VERSION AMÉLIORÉE (comme dans catalogue.php)
 // ============================================
 function getImageUrl($image) {
     if (empty($image)) {
@@ -43,21 +43,34 @@ function getImageUrl($image) {
     $image_name = pathinfo($image, PATHINFO_FILENAME);
     $extension = pathinfo($image, PATHINFO_EXTENSION);
     
+    // Liste complète des dossiers comme dans catalogue.php
     $dossiers = [
-        '../uploads/produits/port-monaie/',
+        'uploads/produits/voile/',
+        '../uploads/produits/voile/',
+        'uploads/produits/pret a porter femme/',
+        '../uploads/produits/pret a porter femme/',
+        'uploads/produits/les tallons/',
+        '../uploads/produits/les tallons/',
+        'uploads/produits/fermés/',
+        '../uploads/produits/fermés/',
+        'uploads/produits/les turbants/',
+        '../uploads/produits/les turbants/',
+        'uploads/produits/les foulards/',
+        '../uploads/produits/les foulards/',
+        'uploads/produits/les foullards/',
+        '../uploads/produits/les foullards/',
         'uploads/produits/port-monaie/',
-        '../uploads/produits/sacs a mains/',
+        '../uploads/produits/port-monaie/',
         'uploads/produits/sacs a mains/',
-        '../uploads/produits/ensemble tallons sacs/',
+        '../uploads/produits/sacs a mains/',
         'uploads/produits/ensemble tallons sacs/',
-        '../uploads/produits/abayas/',
+        '../uploads/produits/ensemble tallons sacs/',
         'uploads/produits/abayas/',
-        '../uploads/produits/abayas pour enfants/',
+        '../uploads/produits/abayas/',
         'uploads/produits/abayas pour enfants/',
-        '../uploads/produits/',
+        '../uploads/produits/abayas pour enfants/',
         'uploads/produits/',
-        '../uploads/',
-        'uploads/',
+        '../uploads/produits/',
     ];
     
     $extensions = ['', '.jpeg', '.jpg', '.png', '.gif', '.webp'];
@@ -361,7 +374,7 @@ if (!empty($produits)) {
                 $reduction = round((($p['prix'] - $p['prix_promo']) / $p['prix']) * 100);
                 $img = getImageUrl($p['image_principale'] ?? '');
             ?>
-            <div class="product-card">
+            <a href="produit.php?id=<?= $p['id'] ?>" class="product-card">
                 <div class="product-image">
                     <img src="<?= $img ?>" alt="<?= htmlspecialchars($p['nom']) ?>" loading="lazy" onerror="this.src='https://placehold.co/400x500/F5F5F5/C8922A?text=<?= urlencode($p['nom'])?>'">
                     <div class="promo-badge">-<?= $reduction ?>%</div>
@@ -372,9 +385,9 @@ if (!empty($produits)) {
                         <span class="price-promo"><?= number_format($p['prix_promo'], 0, ',', ' ') ?> FCFA</span>
                         <span class="price-old"><?= number_format($p['prix'], 0, ',', ' ') ?> FCFA</span>
                     </div>
-                    <a href="produit.php?id=<?= $p['id'] ?>" class="btn-quick">Profiter de l'offre</a>
+                    <span class="btn-quick">Profiter de l'offre</span>
                 </div>
-            </div>
+            </a>
             <?php endforeach; ?>
         </div>
         
