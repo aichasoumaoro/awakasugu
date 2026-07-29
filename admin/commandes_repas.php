@@ -117,13 +117,14 @@ if (isset($_GET['statut']) && isset($_GET['id']) && isset($_GET['type'])) {
             $client = $stmt->fetch();
             if ($client) {
                 $client_id = $client['id'];
-                if ($type == 'repas') {
-                    $stmt = $pdo->prepare("UPDATE commandes_repas SET client_id = ? WHERE id = ?");
-                    $stmt->execute([$client_id, $id]);
-                } elseif ($type == 'gateau') {
-                    $stmt = $pdo->prepare("UPDATE commandes_gateaux SET client_id = ? WHERE id = ?");
-                    $stmt->execute([$client_id, $id]);
-                }
+                // SUPPRESSION DES LIGNES QUI CAUSAIENT L'ERREUR (client_id n'existe pas dans commandes_repas)
+                // if ($type == 'repas') {
+                //     $stmt = $pdo->prepare("UPDATE commandes_repas SET client_id = ? WHERE id = ?");
+                //     $stmt->execute([$client_id, $id]);
+                // } elseif ($type == 'gateau') {
+                //     $stmt = $pdo->prepare("UPDATE commandes_gateaux SET client_id = ? WHERE id = ?");
+                //     $stmt->execute([$client_id, $id]);
+                // }
             }
         }
         

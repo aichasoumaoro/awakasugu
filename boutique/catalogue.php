@@ -99,7 +99,7 @@ $total_products = 0;
 $total_pages = 0;
 
 // ============================================
-// REQUÊTE PRINCIPALE
+// REQUÊTE PRINCIPALE (UNIQUEMENT SUR LE NOM)
 // ============================================
 $sql = "SELECT p.* FROM produits p WHERE p.est_visible = 1";
 $params = [];
@@ -138,10 +138,12 @@ if ($categorie_id > 0) {
     }
 }
 
+// ===== RECHERCHE UNIQUEMENT SUR LE NOM (CORRIGÉE) =====
 if (!empty($search)) {
-    $sql .= " AND (p.nom LIKE ? OR p.description LIKE ?)";
-    $params[] = "%$search%";
-    $params[] = "%$search%";
+    // On cherche UNIQUEMENT dans le NOM du produit pour éviter les erreurs de base de données
+    $sql .= " AND p.nom LIKE ?";
+    $term = "%" . $search . "%"; // Exemple: "abay" deviendra "%abay%"
+    $params[] = $term;
 }
 
 switch ($tri) {
@@ -193,9 +195,9 @@ if ($categorie_id > 0) {
 }
 
 if (!empty($search)) {
-    $count_sql .= " AND (p.nom LIKE ? OR p.description LIKE ?)";
-    $count_params[] = "%$search%";
-    $count_params[] = "%$search%";
+    $count_sql .= " AND p.nom LIKE ?";
+    $term = "%" . $search . "%";
+    $count_params[] = $term;
 }
 
 $stmt_count = $pdo->prepare($count_sql);

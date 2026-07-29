@@ -42,7 +42,7 @@ if (session_status() === PHP_SESSION_NONE) {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 40px;
-    margin-bottom: 45px;
+    margin-bottom: 35px; /* Réduit pour laisser place aux ressources */
 }
 
 .footer-logo {
@@ -170,6 +170,45 @@ if (session_status() === PHP_SESSION_NONE) {
     color: #C8922A;
 }
 
+/* ===== NOUVELLE SECTION RESSOURCES ===== */
+.footer-ressources {
+    border-top: 1px solid rgba(255,255,255,0.06);
+    padding: 25px 0 30px;
+    margin-bottom: 5px;
+}
+.footer-ressources h4 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #C8922A;
+    margin-bottom: 15px;
+    font-family: 'Playfair Display', serif;
+    text-align: center;
+}
+.footer-ressources .ressources-grid {
+    display: flex;
+    justify-content: center;
+    gap: 35px;
+    flex-wrap: wrap;
+}
+.footer-ressources .ressources-grid a {
+    color: rgba(255,255,255,0.5);
+    text-decoration: none;
+    font-size: 0.85rem;
+    transition: all 0.3s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.footer-ressources .ressources-grid a:hover {
+    color: #C8922A;
+    transform: translateY(-2px);
+}
+.footer-ressources .ressources-grid a i {
+    font-size: 0.7rem;
+    color: #C8922A;
+}
+
+/* ===== COPYRIGHT MODIFIÉ ===== */
 .footer-bottom {
     border-top: 1px solid rgba(255,255,255,0.06);
     padding-top: 25px;
@@ -249,6 +288,12 @@ if (session_status() === PHP_SESSION_NONE) {
         left: 50%;
         transform: translateX(-50%);
     }
+
+    .footer-ressources .ressources-grid {
+        flex-direction: column;
+        gap: 12px;
+        align-items: center;
+    }
 }
 </style>
 
@@ -293,7 +338,7 @@ if (session_status() === PHP_SESSION_NONE) {
                 <ul class="footer-links">
                     <li><a href="<?= SITE_URL ?>/restaurant/menu.php">Menu complet</a></li>
                     <li><a href="<?= SITE_URL ?>/restaurant/reservation.php">Réservation</a></li>
-                    <li><a href="<?= SITE_URL ?>/restaurant/plat_jour.php">Plat du jour</a></li>
+                    <!-- SUPPRESSION DU LIEN PLAT DU JOUR -->
                 </ul>
                 <div class="footer-contact">
                     <i class="bi bi-geo-alt"></i> Sebenikoro, face mosquée
@@ -325,8 +370,21 @@ if (session_status() === PHP_SESSION_NONE) {
             </div>
         </div>
 
+        <!-- ===== NOUVELLE SECTION RESSOURCES ===== -->
+        <div class="footer-ressources">
+            <h4>Ressources</h4>
+            <div class="ressources-grid">
+                <!-- Les 4 liens pointent vers le dossier includes/ comme demandé -->
+                <a href="<?= SITE_URL ?>/includes/mentions_legales.php"><i class="bi bi-file-earmark-person"></i> Mentions légales</a>
+                <a href="<?= SITE_URL ?>/includes/faq.php"><i class="bi bi-question-circle"></i> FAQ</a>
+                <a href="<?= SITE_URL ?>/includes/cgv.php"><i class="bi bi-file-check"></i> CGV</a>
+                <a href="<?= SITE_URL ?>/includes/politiquedeconfidentialite.php"><i class="bi bi-file-earmark-text"></i> Politique de confidentialité</a>
+            </div>
+        </div>
+
+        <!-- ===== COPYRIGHT AVEC VOTRE NOM ===== -->
         <div class="footer-bottom">
-            <p>© <?= date('Y') ?> <span>Awa Ka Sugu</span> — Tous droits réservés</p>
+            <p>© <?= date('Y') ?> <span>Awa Ka Sugu</span> — Tous droits réservés | <span style="color: #C8922A; font-weight: 500;">Développé par Aïchatou SOUMAORO</span></p>
         </div>
     </div>
 </footer>

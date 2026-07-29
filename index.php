@@ -8,6 +8,76 @@ session_name('PUBLIC_SESSION');
 session_start();
 
 // ============================================
+// TRAITEMENT DU LOGIN UNIFIÉ (CLIENT & ADMIN)
+// ============================================
+$login_error = '';
+$login_success = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_login'])) {
+    $host = 'localhost';
+    $dbname = 'awakasugu_db';
+    $user = 'root';
+    $pass = '';
+
+    try {
+        $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $user, $pass);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    } catch(PDOException $e) {
+        $login_error = "Erreur de connexion à la base de données.";
+    }
+
+    $email = trim($_POST['email'] ?? '');
+    $password = $_POST['password'] ?? '';
+
+    if (empty($email) || empty($password)) {
+        $login_error = 'Veuillez remplir tous les champs.';
+    } else {
+        // 1. Vérification ADMIN (Prioritaire)
+        $stmt = $pdo->prepare("SELECT * FROM admin WHERE email = ?");
+        $stmt->execute([$email]);
+        $admin = $stmt->fetch();
+
+        if ($admin && password_verify($password, $admin['mot_de_passe'])) {
+            // C'est un admin ! On lance la session admin
+            session_name('ADMIN_SESSION');
+            session_start();
+
+            $_SESSION['admin_id'] = $admin['id'];
+            $_SESSION['admin_nom'] = $admin['nom'];
+            $_SESSION['admin_email'] = $admin['email'];
+
+            // Redirection vers le dashboard admin
+            header('Location: admin/dashboard.php');
+            exit;
+        }
+
+        // 2. Vérification CLIENT (Si ce n'est pas un admin)
+        $stmt = $pdo->prepare("SELECT * FROM clients WHERE email = ?");
+        $stmt->execute([$email]);
+        $client = $stmt->fetch();
+
+        if ($client && password_verify($password, $client['mot_de_passe'])) {
+            // C'est un client classique
+            session_name('PUBLIC_SESSION');
+            session_start();
+
+            $_SESSION['client_id'] = $client['id'];
+            $_SESSION['client_nom'] = $client['nom'];
+            $_SESSION['client_email'] = $client['email'];
+            $_SESSION['client_telephone'] = $client['telephone'];
+
+            // Redirection vers le compte client
+            header('Location: client/mon_compte.php');
+            exit;
+        }
+
+        // 3. Si rien ne correspond
+        $login_error = 'Email ou mot de passe incorrect.';
+    }
+}
+
+
+// ============================================
 // SPLASH SCREEN - AWA KA SUGU
 // ============================================
 $show_splash = !isset($_GET['splash_done']);
@@ -931,8 +1001,8 @@ body {
 .why-card-modern h4 { font-size: 1.15rem; font-weight: 700; margin-bottom: 10px; color: #1A1A1A; }
 .why-card-modern p { font-size: 0.85rem; color: #8A99AA; line-height: 1.6; }
 
-/* ===== NEWSLETTER ===== */
-.newsletter-section {
+/* ===== NEWSLETTER / LOGIN SECTION ===== */
+.login-section {
     background: linear-gradient(135deg, #1A1A1A 0%, #2D2D2D 100%);
     border-radius: 24px;
     padding: 60px;
@@ -940,7 +1010,7 @@ body {
     position: relative;
     overflow: hidden;
 }
-.newsletter-section::before {
+.login-section::before {
     content: '';
     position: absolute;
     top: -50%;
@@ -950,20 +1020,32 @@ body {
     background: radial-gradient(circle, rgba(200,146,42,0.08) 0%, transparent 70%);
     animation: floatSlow 20s ease-in-out infinite;
 }
-.newsletter-section h3 { font-family: 'Playfair Display', serif; font-size: 1.8rem; color: #FFFFFF; margin-bottom: 12px; position: relative; z-index: 1; }
-.newsletter-section p { color: rgba(255,255,255,0.5); margin-bottom: 30px; position: relative; z-index: 1; }
-.newsletter-form-modern {
+.login-section h3 { font-family: 'Playfair Display', serif; font-size: 1.8rem; color: #FFFFFF; margin-bottom: 12px; position: relative; z-index: 1; }
+.login-section p { color: rgba(255,255,255,0.5); margin-bottom: 30px; position: relative; z-index: 1; }
+.login-section .login-error {
+    background: rgba(231, 76, 60, 0.15);
+    color: #E74C3C;
+    padding: 10px 15px;
+    border-radius: 10px;
+    margin-bottom: 15px;
+    border-left: 3px solid #E74C3C;
+    font-size: 0.85rem;
+    display: inline-block;
+    position: relative;
+    z-index: 1;
+}
+.login-form-modern {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
     gap: 12px;
-    flex-wrap: wrap;
     position: relative;
     z-index: 1;
     max-width: 500px;
     margin: 0 auto;
 }
-.newsletter-input-group { flex: 1; min-width: 280px; position: relative; }
-.newsletter-input-group i {
+.login-input-group { width: 100%; position: relative; }
+.login-input-group i {
     position: absolute;
     left: 18px;
     top: 50%;
@@ -971,7 +1053,7 @@ body {
     color: #C8922A;
     font-size: 1rem;
 }
-.newsletter-form-modern input {
+.login-form-modern input {
     width: 100%;
     padding: 16px 20px 16px 48px;
     border: 2px solid rgba(200,146,42,0.2);
@@ -983,12 +1065,13 @@ body {
     color: white;
     font-size: 0.95rem;
 }
-.newsletter-form-modern input:focus {
+.login-form-modern input:focus {
     border-color: #C8922A;
     background: rgba(255,255,255,0.1);
     box-shadow: 0 0 0 3px rgba(200,146,42,0.2);
 }
-.newsletter-form-modern button {
+.login-form-modern button {
+    width: 100%;
     padding: 16px 36px;
     background: linear-gradient(135deg, #C8922A, #E8B55A);
     color: #1A1A1A;
@@ -997,8 +1080,9 @@ body {
     font-weight: 700;
     cursor: pointer;
     transition: all 0.3s;
+    font-size: 1rem;
 }
-.newsletter-form-modern button:hover {
+.login-form-modern button:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 20px rgba(200,146,42,0.3);
     background: linear-gradient(135deg, #9A6E1A, #C8922A);
@@ -1146,7 +1230,7 @@ body {
     .section { padding: 60px 0; }
     .section-title { font-size: 1.8rem; }
     .hero-content h1 { font-size: 2.5rem; }
-    .newsletter-section { padding: 40px 20px; }
+    .login-section { padding: 40px 20px; }
     .legacy-social { flex-direction: column; }
     .hero-premium .container { padding: 0 30px; }
 }
@@ -1365,19 +1449,31 @@ body {
     </div>
 </section>
 
-<!-- ===== NEWSLETTER ===== -->
+<!-- ===== LOGIN SECTION (Ex-Newsletter) ===== -->
 <section class="section" style="padding: 0 40px 100px;">
     <div class="container-custom">
-        <div class="newsletter-section">
-            <h3>Restez informée</h3>
-            <p>Recevez vos newsletters, offres et invitations.</p>
-            <form class="newsletter-form-modern" method="GET" action="client/inscription.php">
-                <div class="newsletter-input-group">
+        <div class="login-section">
+            <h3>🔐 Accédez à votre espace</h3>
+            <p>Connectez-vous pour gérer vos commandes ou administrer votre boutique.</p>
+            
+            <?php if($login_error): ?>
+                <div class="login-error">
+                    <i class="bi bi-exclamation-triangle-fill"></i> <?= htmlspecialchars($login_error) ?>
+                </div>
+            <?php endif; ?>
+
+            <form class="login-form-modern" method="POST">
+                <input type="hidden" name="action_login" value="1">
+                <div class="login-input-group">
                     <i class="bi bi-envelope"></i>
                     <input type="email" name="email" placeholder="Votre adresse email" required>
                 </div>
+                <div class="login-input-group">
+                    <i class="bi bi-lock"></i>
+                    <input type="password" name="password" placeholder="Votre mot de passe" required>
+                </div>
                 <button type="submit">
-                    <i class="bi bi-send"></i> S'inscrire
+                    <i class="bi bi-box-arrow-in-right"></i> Se connecter
                 </button>
             </form>
         </div>
@@ -1438,7 +1534,7 @@ body {
                 </div>
                 <div class="legacy-quote">
                     <i class="bi bi-quote"></i>
-                    <p>"Si aujourd'hui je tiens debout… c'est parce que tu ne te fais jamais assise."</p>
+                    <p>"Si aujourd'hui je tiens debout… c'est parce que tu ne t'es jamais assise."</p>
                     <span>— Awa Doumbia</span>
                 </div>
                 <div class="legacy-social">
