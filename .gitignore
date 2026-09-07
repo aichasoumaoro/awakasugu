@@ -45,3 +45,5 @@ access_log
 .vscode/
 .idea/
 *.sublime-*
+includes/fonctions_email.php
+includes/functions_securite.php
