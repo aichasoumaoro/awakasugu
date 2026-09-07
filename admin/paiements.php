@@ -1,15 +1,37 @@
 <?php
 // ============================================
-// GESTION DES PAIEMENTS - ADMIN AWA KA SUGU
+// PAIEMENTS - ADMIN AWA KA SUGU
 // ============================================
 
-require_once 'session_config.php';
+require_once '../includes/session_config.php';
 
+// ============================================
+// VÉRIFICATION DE CONNEXION
+// ============================================
 if (!isAdminLoggedIn()) {
     header('Location: login.php');
     exit;
 }
 
+// ============================================
+// RÉCUPÉRATION DES INFOS ADMIN
+// ============================================
+$admin_info = getAdminInfo();
+$admin_role = $admin_info['role'] ?? 'admin';
+$admin_nom = $admin_info['nom'] ?? 'Awa Doumbia';
+$admin_id = $admin_info['id'] ?? 0;
+
+// Vérification des permissions (Paiements visible pour super_admin et directeur uniquement)
+if ($admin_role !== 'super_admin' && $admin_role !== 'directeur') {
+    header('Location: dashboard.php?error=Accès non autorisé');
+    exit;
+}
+
+$page_title = 'Gestion des Paiements';
+
+// ============================================
+// CONNEXION À LA BASE DE DONNÉES
+// ============================================
 $host = 'localhost';
 $dbname = 'awakasugu_db';
 $user = 'root';
@@ -18,8 +40,9 @@ $pass = '';
 try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $user, $pass);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 } catch(PDOException $e) {
-    die("Erreur : " . $e->getMessage());
+    die("Erreur de connexion : " . $e->getMessage());
 }
 
 // ============================================
@@ -65,14 +88,23 @@ $paiements = $pdo->query("
 ")->fetchAll();
 
 // ============================================
-// GROUPER LES PAIEMENTS PAR CLIENT (TÉLÉPHONE)
+// GROUPER LES PAIEMENTS PAR CLIENT
 // ============================================
 $clients = [];
+
 foreach($paiements as $p) {
-    $telephone = $p['telephone'] ?? 'inconnu';
-    if (!isset($clients[$telephone])) {
-        $clients[$telephone] = [
-            'telephone' => $telephone,
+    $client_key = $p['client_id'] ?? null;
+    if ($client_key) {
+        $key = 'id_' . $client_key;
+    } else {
+        $telephone = $p['telephone'] ?? 'inconnu';
+        $key = 'tel_' . $telephone;
+    }
+    
+    if (!isset($clients[$key])) {
+        $clients[$key] = [
+            'id' => $p['client_id'] ?? null,
+            'telephone' => $p['telephone'] ?? 'inconnu',
             'nom_client' => $p['nom_client'] ?? 'Inconnu',
             'paiements' => [],
             'total_paiements' => 0,
@@ -81,11 +113,10 @@ foreach($paiements as $p) {
             'nom_deposant' => '-'
         ];
     }
-    $clients[$telephone]['paiements'][] = $p;
-    $clients[$telephone]['total_paiements']++;
-    $clients[$telephone]['total_montant'] += $p['montant'];
+    $clients[$key]['paiements'][] = $p;
+    $clients[$key]['total_paiements']++;
+    $clients[$key]['total_montant'] += $p['montant'];
     
-    // Extraire le nom du déposant
     $nom_deposant = '-';
     if (!empty($p['commande_notes'])) {
         if (preg_match('/Nom:\s*([^\n]+)/', $p['commande_notes'], $matches)) {
@@ -93,21 +124,19 @@ foreach($paiements as $p) {
         }
     }
     if ($nom_deposant != '-') {
-        $clients[$telephone]['nom_deposant'] = $nom_deposant;
+        $clients[$key]['nom_deposant'] = $nom_deposant;
     }
     
-    // Mettre à jour la date du dernier paiement
-    if (strtotime($p['created_at']) > strtotime($clients[$telephone]['dernier_paiement'])) {
-        $clients[$telephone]['dernier_paiement'] = $p['created_at'];
+    if (strtotime($p['created_at']) > strtotime($clients[$key]['dernier_paiement'])) {
+        $clients[$key]['dernier_paiement'] = $p['created_at'];
     }
 }
 
-// Trier les clients par date du dernier paiement
 usort($clients, function($a, $b) {
     return strtotime($b['dernier_paiement']) - strtotime($a['dernier_paiement']);
 });
 
-// Statistiques globales
+// Statistiques
 $total_paiements = count($paiements);
 $total_clients = count($clients);
 $total_montant_global = 0;
@@ -124,442 +153,79 @@ foreach($paiements as $p) {
 
 $message = $_SESSION['message_paiement'] ?? '';
 unset($_SESSION['message_paiement']);
+
+// ============================================
+// PARAMÈTRES D'AFFICHAGE
+// ============================================
+$voir_client_id = isset($_GET['voir_client']) ? (int)$_GET['voir_client'] : 0;
+$telephone_param = isset($_GET['telephone']) ? trim($_GET['telephone']) : '';
+$show_detail = $voir_client_id > 0 || !empty($telephone_param);
+
+$paiements_client = [];
+$client_info = null;
+
+if ($show_detail) {
+    if ($voir_client_id > 0) {
+        foreach($paiements as $p) {
+            if (($p['client_id'] ?? 0) == $voir_client_id) {
+                $paiements_client[] = $p;
+                if (!$client_info) {
+                    $client_info = $p;
+                }
+            }
+        }
+    } elseif (!empty($telephone_param) && $telephone_param != 'inconnu') {
+        foreach($paiements as $p) {
+            if (($p['telephone'] ?? '') == $telephone_param) {
+                $paiements_client[] = $p;
+                if (!$client_info) {
+                    $client_info = $p;
+                }
+            }
+        }
+    }
+}
+
+// ============================================
+// INCLUSION DU HEADER ET DE LA SIDEBAR
+// ============================================
+include 'includes/header.php';
+include 'includes/sidebar.php';
 ?>
-
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Paiements - Admin Awa Ka Sugu</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,400&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
-    <style>
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Jost', sans-serif; background: #F5F7FA; color: #1A2C3E; display: flex; min-height: 100vh; }
-
-        .sidebar {
-            width: 260px;
-            background: #0D0D0D;
-            border-right: 1px solid rgba(200,146,42,0.2);
-            position: fixed;
-            top: 0; left: 0; bottom: 0;
-            display: flex;
-            flex-direction: column;
-            z-index: 100;
-            overflow-y: auto;
-        }
-        .sidebar-brand {
-            padding: 28px 24px 20px;
-            border-bottom: 1px solid rgba(200,146,42,0.15);
-        }
-        .brand-logo {
-            font-family: 'Playfair Display', serif;
-            font-size: 1.2rem;
-            font-weight: 700;
-            color: #C8922A;
-            letter-spacing: 3px;
-            text-transform: uppercase;
-        }
-        .brand-sub {
-            font-size: 0.6rem;
-            color: rgba(255,255,255,0.3);
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            margin-top: 3px;
-        }
-        .admin-user {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-top: 20px;
-            padding: 10px 12px;
-            background: rgba(200,146,42,0.08);
-            border-radius: 10px;
-            border: 1px solid rgba(200,146,42,0.15);
-        }
-        .admin-avatar {
-            width: 34px; height: 34px;
-            background: linear-gradient(135deg, #C8922A, #E2B96A);
-            border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 0.9rem; color: #fff; font-weight: 600;
-            flex-shrink: 0;
-        }
-        .admin-name { font-size: 0.82rem; color: #fff; font-weight: 500; }
-        .admin-role { font-size: 0.62rem; color: rgba(255,255,255,0.35); letter-spacing: 1px; text-transform: uppercase; }
-        .nav-section {
-            font-size: 0.58rem;
-            color: rgba(255,255,255,0.2);
-            letter-spacing: 2.5px;
-            text-transform: uppercase;
-            padding: 18px 24px 6px;
-        }
-        .sidebar nav { flex: 1; padding: 8px 12px; }
-        .nav-item {
-            display: flex;
-            align-items: center;
-            gap: 11px;
-            padding: 10px 14px;
-            border-radius: 8px;
-            color: rgba(255,255,255,0.5);
-            text-decoration: none;
-            font-size: 0.83rem;
-            font-weight: 500;
-            border-left: 2px solid transparent;
-            transition: all 0.22s;
-            margin-bottom: 2px;
-        }
-        .nav-item i { font-size: 1rem; width: 18px; text-align: center; }
-        .nav-item:hover { color: #fff; background: rgba(200,146,42,0.1); border-left-color: rgba(200,146,42,0.5); }
-        .nav-item.active { color: #fff; background: rgba(200,146,42,0.15); border-left-color: #C8922A; }
-        .nav-item.active i { color: #C8922A; }
-        .nav-item.logout:hover { color: #E74C3C; background: rgba(231,76,60,0.1); border-left-color: #E74C3C; }
-
-        .main {
-            margin-left: 260px;
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            background: #F5F7FA;
-            min-height: 100vh;
-        }
-        .topbar {
-            background: #fff;
-            border-bottom: 1px solid #E8ECF0;
-            padding: 16px 32px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 16px;
-            position: sticky;
-            top: 0;
-            z-index: 50;
-        }
-        .topbar-title {
-            font-family: 'Playfair Display', serif;
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: #0D0D0D;
-        }
-        .topbar-title span { color: #C8922A; }
-        .topbar-breadcrumb { font-size: 0.75rem; color: #999; margin-top: 2px; }
-        .btn-admin {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-family: 'Jost', sans-serif;
-            font-size: 0.75rem;
-            font-weight: 600;
-            padding: 8px 18px;
-            border-radius: 8px;
-            text-decoration: none;
-            transition: all 0.2s;
-            border: 1px solid #E0E6ED;
-            color: #5A6B7A;
-            background: #fff;
-        }
-        .btn-admin:hover { border-color: #C8922A; color: #C8922A; }
-        .btn-site {
-            background: linear-gradient(135deg, #C8922A, #E8B55A);
-            color: #fff !important;
-            border-color: #C8922A !important;
-        }
-        .btn-site:hover {
-            background: linear-gradient(135deg, #9A6E1A, #C8922A) !important;
-            color: #fff !important;
-        }
-
-        .content { padding: 28px 32px; flex: 1; }
-        .alert-success {
-            background: #D4EDDA;
-            border-left: 4px solid #27AE60;
-            color: #0A3622;
-            padding: 15px 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-        }
-
-        .stats-row {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 20px;
-            margin-bottom: 28px;
-        }
-        .stat-box {
-            background: #fff;
-            border-radius: 16px;
-            padding: 18px 20px;
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            border: 1px solid #E8ECF0;
-        }
-        .stat-icon {
-            width: 44px; height: 44px;
-            border-radius: 12px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 1.2rem; flex-shrink: 0;
-        }
-        .ic-or { background: rgba(200,146,42,0.1); color: #C8922A; }
-        .ic-red { background: rgba(231,76,60,0.1); color: #E74C3C; }
-        .ic-green { background: rgba(27,122,74,0.1); color: #1A7A4A; }
-        .ic-blue { background: rgba(41,128,185,0.1); color: #2980B9; }
-        .stat-val {
-            font-family: 'Playfair Display', serif;
-            font-size: 1.4rem; font-weight: 700;
-            color: #1A2C3E; line-height: 1;
-        }
-        .stat-lbl { font-size: 0.7rem; color: #8A99AA; margin-top: 2px; }
-
-        .table-card {
-            background: #fff;
-            border-radius: 16px;
-            overflow: hidden;
-            border: 1px solid #E8ECF0;
-        }
-        .table-card-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 18px 24px;
-            border-bottom: 1px solid #F0F2F5;
-        }
-        .table-card-title {
-            font-family: 'Playfair Display', serif;
-            font-size: 1rem;
-            font-weight: 600;
-            color: #0D0D0D;
-        }
-        table { width: 100%; border-collapse: collapse; }
-        thead th {
-            background: #0D0D0D;
-            color: #C8922A;
-            font-size: 0.65rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            padding: 12px 16px;
-            text-align: left;
-        }
-        tbody td {
-            padding: 12px 16px;
-            font-size: 0.85rem;
-            color: #333;
-            border-bottom: 1px solid #F0F2F5;
-            vertical-align: middle;
-        }
-        tbody tr:hover td { background: #FEFBF5; }
-
-        .badge-statut {
-            display: inline-block;
-            padding: 3px 12px;
-            border-radius: 20px;
-            font-size: 0.7rem;
-            font-weight: 600;
-        }
-        .statut-en_attente { background: #FEF6E6; color: #E67E22; }
-        .statut-confirme { background: #E8F5E9; color: #2E7D32; }
-        .statut-echoue { background: #F8D7DA; color: #721C24; }
-
-        .badge-mode {
-            display: inline-block;
-            padding: 2px 10px;
-            border-radius: 4px;
-            font-size: 0.6rem;
-            font-weight: 600;
-        }
-        .mode-orange_money { background: #FF6600; color: #fff; }
-        .mode-wave { background: #1A7A4A; color: #fff; }
-        .mode-moov_money { background: #E63E2E; color: #fff; }
-
-        .btn-small {
-            padding: 4px 12px;
-            border-radius: 6px;
-            font-size: 0.65rem;
-            font-weight: 600;
-            text-decoration: none;
-            transition: all 0.2s;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            border: none;
-            cursor: pointer;
-        }
-        .btn-small.green { background: #1A7A4A; color: #fff; }
-        .btn-small.green:hover { background: #145E38; }
-        .btn-small.red { background: #E74C3C; color: #fff; }
-        .btn-small.red:hover { background: #C0392B; }
-
-        .badge-nb-paiements {
-            display: inline-block;
-            background: #C8922A;
-            color: #fff;
-            border-radius: 50%;
-            padding: 2px 8px;
-            font-size: 0.6rem;
-            font-weight: 700;
-            margin-left: 5px;
-        }
-
-        .empty-state { text-align: center; padding: 40px; color: #999; }
-        .empty-state i { font-size: 2.5rem; display: block; margin-bottom: 10px; }
-
-        .btn-detail-client {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 5px 14px;
-            border-radius: 6px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            text-decoration: none;
-            background: rgba(200,146,42,0.1);
-            color: #C8922A;
-            transition: all 0.3s;
-        }
-        .btn-detail-client:hover { background: #C8922A; color: #fff; }
-
-        /* Modal Détail Client */
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 9999;
-            justify-content: center;
-            align-items: center;
-        }
-        .modal-overlay.active { display: flex; }
-        .modal-content {
-            background: #fff;
-            border-radius: 20px;
-            max-width: 800px;
-            width: 95%;
-            max-height: 90vh;
-            overflow-y: auto;
-            padding: 30px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            animation: scaleIn 0.3s ease;
-        }
-        @keyframes scaleIn {
-            from { opacity: 0; transform: scale(0.9); }
-            to { opacity: 1; transform: scale(1); }
-        }
-        .modal-close {
-            float: right;
-            background: none;
-            border: none;
-            font-size: 1.8rem;
-            cursor: pointer;
-            color: #999;
-            transition: all 0.3s;
-        }
-        .modal-close:hover { color: #333; transform: rotate(90deg); }
-        .modal-title {
-            font-family: 'Playfair Display', serif;
-            font-size: 1.3rem;
-            color: #0D0D0D;
-            margin-bottom: 15px;
-        }
-        .modal-title span { color: #C8922A; }
-        .modal-subtitle {
-            font-size: 0.9rem;
-            color: #8A99AA;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #F0F2F5;
-        }
-        .paiement-detail-item {
-            background: #F8F9FA;
-            border-radius: 10px;
-            padding: 12px 16px;
-            margin-bottom: 10px;
-            border-left: 3px solid #C8922A;
-        }
-        .paiement-detail-item .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-        .paiement-detail-item .header .date {
-            font-size: 0.8rem;
-            color: #8A99AA;
-        }
-        .paiement-detail-item .details {
-            margin-top: 5px;
-            font-size: 0.85rem;
-            color: #5A6B7A;
-        }
-
-        @media (max-width: 768px) {
-            .sidebar { display: none; }
-            .main { margin-left: 0; }
-            .content { padding: 20px 16px; }
-            .stats-row { grid-template-columns: 1fr 1fr; }
-            .table-card { overflow-x: auto; }
-            .modal-content { padding: 20px; }
-        }
-    </style>
-</head>
-<body>
-
-<aside class="sidebar">
-    <div class="sidebar-brand">
-        <div class="brand-logo">AWA KA SUGU</div>
-        <div class="brand-sub">Administration</div>
-        <div class="admin-user">
-            <div class="admin-avatar">A</div>
-            <div>
-                <div class="admin-name"><?= htmlspecialchars($_SESSION['admin_nom'] ?? 'Awa Doumbia') ?></div>
-                <div class="admin-role">Administratrice</div>
-            </div>
-        </div>
-    </div>
-    <nav>
-        <div class="nav-section">Principal</div>
-        <a href="dashboard.php" class="nav-item"><i class="bi bi-speedometer2"></i> Tableau de bord</a>
-        <a href="point_de_vente.php" class="nav-item"><i class="bi bi-cash-stack"></i> Point de vente</a>
-        <a href="produits.php" class="nav-item"><i class="bi bi-box-seam"></i> Produits</a>
-        <a href="commandes.php" class="nav-item"><i class="bi bi-receipt"></i> Commandes</a>
-        <a href="clients.php" class="nav-item"><i class="bi bi-people"></i> Clients</a>
-        <div class="nav-section">Restaurant</div>
-        <a href="plats.php" class="nav-item"><i class="bi bi-cup-hot"></i> Plats</a>
-        <a href="commandes_repas.php" class="nav-item"><i class="bi bi-bag-check"></i> Commandes repas</a>
-        <a href="reservations.php" class="nav-item"><i class="bi bi-calendar-check"></i> Réservations</a>
-        <div class="nav-section">Gestion</div>
-        <a href="achats.php" class="nav-item"><i class="bi bi-cart-check"></i> Achats</a>
-        <a href="stocks.php" class="nav-item"><i class="bi bi-bar-chart"></i> Stocks</a>
-        <a href="promotions.php" class="nav-item"><i class="bi bi-percent"></i> Promotions</a>
-        <a href="videos.php" class="nav-item"><i class="bi bi-camera-reels"></i> Vidéos</a>
-        <a href="factures.php" class="nav-item"><i class="bi bi-file-earmark-text"></i> Factures</a>
-        <a href="paiements.php" class="nav-item active"><i class="bi bi-credit-card"></i> Paiements</a>
-        <a href="maintenance.php" class="nav-item"><i class="bi bi-tools"></i> Maintenance</a>
-        <div class="nav-section">Compte</div>
-        <a href="../index.php" class="nav-item"><i class="bi bi-house"></i> Voir le site</a>
-        <a href="logout.php" class="nav-item logout"><i class="bi bi-box-arrow-right"></i> Déconnexion</a>
-    </nav>
-</aside>
-
+<!-- ============================================
+     MAIN CONTENT
+     ============================================ -->
 <div class="main">
+
+    <!-- ===== TOPBAR ===== -->
     <div class="topbar">
         <div>
             <div class="topbar-title">💳 Gestion des <span>Paiements</span></div>
-            <div class="topbar-breadcrumb">Gestion → Paiements</div>
+            <div class="topbar-breadcrumb">Finances → Paiements</div>
         </div>
-        <div>
-            <a href="../index.php" class="btn-admin btn-site"><i class="bi bi-eye"></i> Voir le site</a>
+        <div class="topbar-right">
+            <a href="../index.php" class="btn-admin btn-site">
+                <i class="bi bi-eye"></i> Voir le site
+            </a>
         </div>
     </div>
 
+    <!-- ===== CONTENT ===== -->
     <div class="content">
+
         <?php if($message): ?>
-            <div class="alert-success"><i class="bi bi-check-circle-fill"></i> <?= $message ?></div>
+            <div class="alert-success"><i class="bi bi-check-circle-fill"></i> <?= htmlspecialchars($message) ?></div>
         <?php endif; ?>
 
+        <?php if($show_detail && empty($paiements_client)): ?>
+            <div class="alert-info">
+                <i class="bi bi-info-circle"></i> 
+                Aucun paiement trouvé pour ce client.
+                <a href="paiements.php" style="color:#2980B9;font-weight:600;text-decoration:underline;">Retour à la liste</a>
+            </div>
+        <?php endif; ?>
+
+        <!-- ===== STATISTIQUES ===== -->
         <div class="stats-row">
             <div class="stat-box">
                 <div class="stat-icon ic-or"><i class="bi bi-credit-card"></i></div>
@@ -569,7 +235,7 @@ unset($_SESSION['message_paiement']);
                 </div>
             </div>
             <div class="stat-box">
-                <div class="stat-icon ic-red"><i class="bi bi-clock-history"></i></div>
+                <div class="stat-icon ic-orange"><i class="bi bi-clock-history"></i></div>
                 <div>
                     <div class="stat-val"><?= $paiements_attente ?></div>
                     <div class="stat-lbl">En attente</div>
@@ -591,103 +257,131 @@ unset($_SESSION['message_paiement']);
             </div>
         </div>
 
-        <!-- ============================================
-        LISTE DES CLIENTS AVEC LEURS PAIEMENTS
-        ============================================ -->
-        <div class="table-card">
-            <div class="table-card-header">
-                <div class="table-card-title">👥 Clients</div>
-                <div class="table-count"><?= $total_clients ?> client(s)</div>
+        <!-- ===== LISTE DES CLIENTS ===== -->
+        <div class="card-white">
+            <div class="card-header">
+                <div class="card-title"><i class="bi bi-people"></i> Clients</div>
+                <div style="font-size:0.7rem;color:#8A99AA;background:#F8F9FA;padding:4px 16px;border-radius:20px;border:1px solid #E8ECF0;">
+                    <strong style="color:#C8922A;"><?= $total_clients ?></strong> client(s)
+                </div>
             </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Client</th>
-                        <th>Téléphone</th>
-                        <th style="text-align:center;">Paiements</th>
-                        <th style="text-align:right;">Total</th>
-                        <th>Dernier paiement</th>
-                        <th style="text-align:center;">Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if(empty($clients)): ?>
-                        <tr><td colspan="6"><div class="empty-state"><i class="bi bi-credit-card"></i><p>Aucun paiement</p></div></td></tr>
-                    <?php else: ?>
-                        <?php foreach($clients as $client): ?>
-                        <tr>
-                            <td><strong><?= htmlspecialchars($client['nom_client']) ?></strong></td>
-                            <td><?= htmlspecialchars($client['telephone']) ?></td>
-                            <td style="text-align:center;">
-                                <span class="badge-nb-paiements"><?= $client['total_paiements'] ?></span>
-                            </td>
-                            <td style="text-align:right;font-weight:600;color:#C8922A;">
-                                <?= number_format($client['total_montant'], 0, ',', ' ') ?> F
-                            </td>
-                            <td style="font-size:0.8rem;color:#8A99AA;">
-                                <?= date('d/m/Y H:i', strtotime($client['dernier_paiement'])) ?>
-                            </td>
-                            <td style="text-align:center;">
-                                <a href="paiements.php?voir_client=1&telephone=<?= urlencode($client['telephone']) ?>" 
-                                   class="btn-detail-client" title="Voir tous les paiements du client">
-                                    <i class="bi bi-eye"></i> Voir
-                                </a>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
+            <div class="card-body" style="padding:0;">
+                <div class="table-container">
+                    <table class="table-paiements" style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+                        <thead>
+                            <tr>
+                                <th style="padding:10px 14px;background:#F8F9FA;color:#5A6B7A;font-weight:600;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #E8ECF0;text-align:left;">Client</th>
+                                <th style="padding:10px 14px;background:#F8F9FA;color:#5A6B7A;font-weight:600;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #E8ECF0;text-align:left;">Téléphone</th>
+                                <th style="padding:10px 14px;background:#F8F9FA;color:#5A6B7A;font-weight:600;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #E8ECF0;text-align:center;">Paiements</th>
+                                <th style="padding:10px 14px;background:#F8F9FA;color:#5A6B7A;font-weight:600;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #E8ECF0;text-align:right;">Total</th>
+                                <th style="padding:10px 14px;background:#F8F9FA;color:#5A6B7A;font-weight:600;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #E8ECF0;text-align:left;">Dernier paiement</th>
+                                <th style="padding:10px 14px;background:#F8F9FA;color:#5A6B7A;font-weight:600;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #E8ECF0;text-align:center;width:100px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if(empty($clients)): ?>
+                                <tr>
+                                    <td colspan="6">
+                                        <div class="empty-state" style="text-align:center;padding:40px;color:#8A99AA;">
+                                            <i class="bi bi-credit-card" style="font-size:2.5rem;display:block;margin-bottom:10px;color:#D5D5D5;"></i>
+                                            <p style="margin:0;font-size:0.85rem;">Aucun paiement</p>
+                                            <span style="font-size:0.75rem;color:#bbb;display:block;margin-top:4px;">Les paiements apparaissent ici après validation</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php else: ?>
+                                <?php foreach($clients as $client): 
+                                    $initiale = strtoupper(mb_substr($client['nom_client'] ?? 'C', 0, 1));
+                                ?>
+                                <tr style="transition:background 0.2s;">
+                                    <td style="padding:10px 14px;border-bottom:1px solid #F0F2F5;vertical-align:middle;">
+                                        <div style="display:flex;align-items:center;gap:10px;">
+                                            <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#C8922A,#E8B55A);display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;color:#fff;flex-shrink:0;">
+                                                <?= $initiale ?>
+                                            </div>
+                                            <div>
+                                                <div style="font-weight:600;color:#1A2C3E;font-size:0.85rem;">
+                                                    <?= htmlspecialchars($client['nom_client']) ?>
+                                                </div>
+                                                <?php if($client['nom_deposant'] != '-'): ?>
+                                                    <div style="font-size:0.6rem;color:#8A99AA;margin-top:1px;">
+                                                        <i class="bi bi-person" style="font-size:0.55rem;"></i> <?= htmlspecialchars($client['nom_deposant']) ?>
+                                                    </div>
+                                                <?php endif; ?>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td style="padding:10px 14px;border-bottom:1px solid #F0F2F5;vertical-align:middle;font-size:0.8rem;">
+                                        <?= htmlspecialchars($client['telephone']) ?>
+                                    </td>
+                                    <td style="padding:10px 14px;border-bottom:1px solid #F0F2F5;vertical-align:middle;text-align:center;">
+                                        <span style="display:inline-block;background:rgba(200,146,42,0.12);color:#C8922A;border-radius:50%;padding:2px 12px;font-size:0.7rem;font-weight:700;min-width:28px;">
+                                            <?= $client['total_paiements'] ?>
+                                        </span>
+                                    </td>
+                                    <td style="padding:10px 14px;border-bottom:1px solid #F0F2F5;vertical-align:middle;text-align:right;font-weight:600;color:#C8922A;font-size:0.85rem;">
+                                        <?= number_format($client['total_montant'], 0, ',', ' ') ?> F
+                                    </td>
+                                    <td style="padding:10px 14px;border-bottom:1px solid #F0F2F5;vertical-align:middle;font-size:0.75rem;color:#8A99AA;">
+                                        <i class="bi bi-calendar3" style="font-size:0.6rem;"></i>
+                                        <?= date('d/m/Y H:i', strtotime($client['dernier_paiement'])) ?>
+                                    </td>
+                                    <td style="padding:10px 14px;border-bottom:1px solid #F0F2F5;vertical-align:middle;text-align:center;">
+                                        <?php if($client['id']): ?>
+                                        <a href="paiements.php?voir_client=<?= $client['id'] ?>" class="btn-small blue" title="Voir les paiements du client" style="padding:4px 14px;border-radius:6px;font-size:0.7rem;text-decoration:none;display:inline-flex;align-items:center;gap:4px;background:rgba(41,128,185,0.1);color:#2980B9;transition:all 0.2s;border:none;cursor:pointer;">
+                                            <i class="bi bi-eye"></i> Voir
+                                        </a>
+                                        <?php else: ?>
+                                        <a href="paiements.php?telephone=<?= urlencode($client['telephone']) ?>" class="btn-small blue" title="Voir les paiements du client" style="padding:4px 14px;border-radius:6px;font-size:0.7rem;text-decoration:none;display:inline-flex;align-items:center;gap:4px;background:rgba(41,128,185,0.1);color:#2980B9;transition:all 0.2s;border:none;cursor:pointer;">
+                                            <i class="bi bi-eye"></i> Voir
+                                        </a>
+                                        <?php endif; ?>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
-    </div>
-</div>
+
+    </div><!-- /content -->
+</div><!-- /main -->
 
 <!-- ============================================
-     MODAL DÉTAIL CLIENT (TOUS SES PAIEMENTS)
+     MODAL DÉTAIL CLIENT
      ============================================ -->
-<?php if(isset($_GET['voir_client']) && isset($_GET['telephone'])): 
-    $telephone = $_GET['telephone'];
-    $paiements_client = [];
-    $client_info = null;
-    
-    foreach($paiements as $p) {
-        if($p['telephone'] == $telephone) {
-            $paiements_client[] = $p;
-            if(!$client_info) {
-                $client_info = $p;
-            }
-        }
-    }
-    
-    if(!empty($paiements_client)):
-?>
+<?php if($show_detail && !empty($paiements_client) && $client_info): ?>
 <div class="modal-overlay active" id="modalDetail" onclick="if(event.target===this) closeModal()">
-    <div class="modal-content">
-        <button class="modal-close" onclick="closeModal()"><i class="bi bi-x-lg"></i></button>
-        <div class="modal-title">
-            👤 Paiements de <span><?= htmlspecialchars($client_info['nom_client'] ?? 'Client') ?></span>
+    <div class="modal-content" style="max-width:800px;width:95%;max-height:90vh;overflow-y:auto;padding:30px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;margin:0;">
+                👤 Paiements de <span style="color:#C8922A;"><?= htmlspecialchars($client_info['nom_client'] ?? 'Client') ?></span>
+            </h3>
+            <button onclick="closeModal()" style="background:none;border:none;font-size:1.8rem;cursor:pointer;color:#999;transition:transform 0.3s;line-height:1;" onmouseover="this.style.transform='rotate(90deg)'" onmouseout="this.style.transform='rotate(0deg)'">&times;</button>
         </div>
-        <div class="modal-subtitle">
-            <i class="bi bi-telephone"></i> <?= htmlspecialchars($telephone) ?>
-            <span style="margin-left:20px;">
-                <i class="bi bi-credit-card"></i> <?= count($paiements_client) ?> paiement(s)
-            </span>
-            <span style="margin-left:20px;">
-                <i class="bi bi-cash"></i> Total : <?= number_format(array_sum(array_column($paiements_client, 'montant')), 0, ',', ' ') ?> F
-            </span>
+        
+        <div style="background:#F8F9FA;padding:12px 16px;border-radius:8px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:12px 20px;font-size:0.85rem;color:#5A6B7A;border:1px solid #E8ECF0;">
+            <span><i class="bi bi-telephone" style="color:#C8922A;"></i> <?= htmlspecialchars($client_info['telephone'] ?? 'Non renseigné') ?></span>
+            <span><i class="bi bi-credit-card" style="color:#C8922A;"></i> <?= count($paiements_client) ?> paiement(s)</span>
+            <span style="font-weight:600;color:#C8922A;"><i class="bi bi-cash" style="color:#C8922A;"></i> Total : <?= number_format(array_sum(array_column($paiements_client, 'montant')), 0, ',', ' ') ?> F</span>
         </div>
         
         <?php foreach($paiements_client as $p): 
             $mode_label = '';
-            $mode_class = '';
-            if($p['mode'] == 'orange_money') { $mode_class = 'mode-orange_money'; $mode_label = 'Orange Money'; }
-            elseif($p['mode'] == 'wave') { $mode_class = 'mode-wave'; $mode_label = 'Wave'; }
-            elseif($p['mode'] == 'moov_money') { $mode_class = 'mode-moov_money'; $mode_label = 'Moov Money'; }
+            $mode_color = '';
+            if($p['mode'] == 'orange_money') { $mode_color = '#FF6600'; $mode_label = 'Orange Money'; }
+            elseif($p['mode'] == 'wave') { $mode_color = '#1A7A4A'; $mode_label = 'Wave'; }
+            elseif($p['mode'] == 'moov_money') { $mode_color = '#E63E2E'; $mode_label = 'Moov Money'; }
+            else { $mode_label = $p['mode'] ?? 'Autre'; $mode_color = '#6C757D'; }
             
             $statut_label = '';
-            if($p['statut'] == 'en_attente') $statut_label = '⏳ En attente';
-            elseif($p['statut'] == 'confirme') $statut_label = '✅ Confirmé';
-            elseif($p['statut'] == 'echoue') $statut_label = '❌ Échoué';
+            $statut_class = '';
+            if($p['statut'] == 'en_attente') { $statut_label = '⏳ En attente'; $statut_class = 'statut-en_attente'; }
+            elseif($p['statut'] == 'confirme') { $statut_label = '✅ Confirmé'; $statut_class = 'statut-confirme'; }
+            elseif($p['statut'] == 'echoue') { $statut_label = '❌ Échoué'; $statut_class = 'statut-annulee'; }
+            else { $statut_label = $p['statut'] ?? 'Inconnu'; }
             
             $nom_deposant = '-';
             if (!empty($p['commande_notes'])) {
@@ -696,42 +390,60 @@ unset($_SESSION['message_paiement']);
                 }
             }
         ?>
-        <div class="paiement-detail-item">
-            <div class="header">
-                <div>
-                    <span style="font-weight:600;color:#C8922A;">#<?= $p['id'] ?></span>
-                    <span class="badge-mode <?= $mode_class ?>"><?= $mode_label ?></span>
-                    <span class="badge-statut statut-<?= $p['statut'] ?>"><?= $statut_label ?></span>
+        <div style="background:#FFFFFF;border-radius:10px;padding:14px 18px;margin-bottom:10px;border:1px solid #E8ECF0;transition:all 0.3s;" onmouseover="this.style.borderColor='#C8922A';this.style.boxShadow='0 4px 20px rgba(200,146,42,0.08)'" onmouseout="this.style.borderColor='#E8ECF0';this.style.boxShadow='none'">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <span style="font-weight:700;color:#C8922A;font-size:0.9rem;">#<?= $p['id'] ?></span>
+                    <span style="display:inline-block;padding:2px 12px;border-radius:4px;font-size:0.6rem;font-weight:600;color:#fff;background:<?= $mode_color ?>;">
+                        <?= $mode_label ?>
+                    </span>
+                    <span class="badge-status <?= $statut_class ?>" style="padding:3px 12px;border-radius:20px;font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;display:inline-flex;align-items:center;gap:4px;background:<?= $p['statut'] == 'confirme' ? '#E8F5E9' : ($p['statut'] == 'echoue' ? '#FBE9E7' : '#FEF6E6') ?>;color:<?= $p['statut'] == 'confirme' ? '#2E7D32' : ($p['statut'] == 'echoue' ? '#C62828' : '#E67E22') ?>;">
+                        <?= $statut_label ?>
+                    </span>
                 </div>
-                <div class="date"><?= date('d/m/Y H:i', strtotime($p['created_at'])) ?></div>
+                <div style="font-size:0.75rem;color:#8A99AA;">
+                    <i class="bi bi-calendar3"></i> <?= date('d/m/Y H:i', strtotime($p['created_at'])) ?>
+                </div>
             </div>
-            <div class="details">
-                <strong>Commande :</strong> <?= htmlspecialchars($p['numero_commande'] ?? 'N/A') ?>
-                - <strong>Montant :</strong> <span style="color:#C8922A;font-weight:600;"><?= number_format($p['montant'], 0, ',', ' ') ?> F</span>
-                <br>
-                <strong>Déposant :</strong> <?= htmlspecialchars($nom_deposant) ?>
-                - <strong>Téléphone :</strong> <?= htmlspecialchars($p['telephone_paiement'] ?? '-') ?>
-                <?php if($p['reference_transaction']): ?>
-                <br><strong>Réf :</strong> <?= htmlspecialchars($p['reference_transaction']) ?>
+            <div style="margin-top:6px;padding-top:8px;border-top:1px solid #F0F2F5;font-size:0.82rem;color:#5A6B7A;display:flex;flex-wrap:wrap;gap:8px 20px;">
+                <span><strong>Commande :</strong> <?= htmlspecialchars($p['numero_commande'] ?? 'N/A') ?></span>
+                <span><strong>Montant :</strong> <span style="color:#C8922A;font-weight:600;"><?= number_format($p['montant'], 0, ',', ' ') ?> F</span></span>
+                <span><strong>Déposant :</strong> <?= htmlspecialchars($nom_deposant) ?></span>
+                <?php if(!empty($p['telephone_paiement'])): ?>
+                <span><strong>Tél :</strong> <?= htmlspecialchars($p['telephone_paiement']) ?></span>
                 <?php endif; ?>
             </div>
+            <?php if(!empty($p['reference_transaction'])): ?>
+            <div style="margin-top:4px;font-size:0.7rem;color:#8A99AA;">
+                <strong>Réf :</strong> <?= htmlspecialchars($p['reference_transaction']) ?>
+            </div>
+            <?php endif; ?>
             <?php if($p['statut'] == 'en_attente'): ?>
-            <div style="margin-top:8px;display:flex;gap:5px;">
-                <a href="paiements.php?action=valider&id=<?= $p['id'] ?>&statut=valide" class="btn-small green" onclick="return confirm('Valider ce paiement ?')">Valider</a>
-                <a href="paiements.php?action=valider&id=<?= $p['id'] ?>&statut=rejete" class="btn-small red" onclick="return confirm('Rejeter ce paiement ?')">Rejeter</a>
+            <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;">
+                <a href="paiements.php?action=valider&id=<?= $p['id'] ?>&statut=valide" class="btn-small green" onclick="return confirm('Valider ce paiement ?')" style="padding:5px 16px;border-radius:6px;font-size:0.7rem;text-decoration:none;display:inline-flex;align-items:center;gap:5px;background:rgba(40,167,69,0.1);color:#28A745;transition:all 0.2s;border:none;cursor:pointer;" onmouseover="this.style.background='#28A745';this.style.color='#fff'" onmouseout="this.style.background='rgba(40,167,69,0.1)';this.style.color='#28A745'">
+                    <i class="bi bi-check2"></i> Valider
+                </a>
+                <a href="paiements.php?action=valider&id=<?= $p['id'] ?>&statut=rejete" class="btn-small red" onclick="return confirm('Rejeter ce paiement ?')" style="padding:5px 16px;border-radius:6px;font-size:0.7rem;text-decoration:none;display:inline-flex;align-items:center;gap:5px;background:rgba(231,76,60,0.1);color:#E74C3C;transition:all 0.2s;border:none;cursor:pointer;" onmouseover="this.style.background='#E74C3C';this.style.color='#fff'" onmouseout="this.style.background='rgba(231,76,60,0.1)';this.style.color='#E74C3C'">
+                    <i class="bi bi-x"></i> Rejeter
+                </a>
             </div>
             <?php endif; ?>
         </div>
         <?php endforeach; ?>
         
         <div style="text-align:center;margin-top:20px;">
-            <a href="paiements.php" class="btn-admin" style="background:#C8922A;color:#fff;border-color:#C8922A;">
+            <a href="paiements.php" class="btn-admin btn-primary" style="padding:10px 28px;justify-content:center;">
                 <i class="bi bi-arrow-left"></i> Retour à la liste
             </a>
         </div>
     </div>
 </div>
-<?php endif; endif; ?>
+<?php endif; ?>
+
+<!-- ============================================
+     FOOTER
+     ============================================ -->
+<?php include 'includes/footer.php'; ?>
 
 <script>
 function closeModal() {
@@ -739,6 +451,3 @@ function closeModal() {
     window.location.href = 'paiements.php';
 }
 </script>
-
-</body>
-</html>

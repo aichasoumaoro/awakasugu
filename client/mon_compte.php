@@ -214,196 +214,243 @@ $statuts = [
 ?>
 
 <style>
-.compte-container {
-    max-width: 1300px;
-    margin: 40px auto;
-    padding: 0 40px;
+/* ===== RESET ===== */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
 }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #F8F9FA;
+}
+
+/* ===== CONTENEUR PRINCIPAL ===== */
+.compte-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+    background: #F8F9FA;
+}
+
+/* ===== HEADER ===== */
 .compte-header {
     background: linear-gradient(135deg, #0D0D0D, #1A1A1A);
-    border-radius: 20px;
-    padding: 40px;
-    margin-bottom: 40px;
+    border-radius: 16px;
+    padding: 25px;
+    margin-bottom: 20px;
     color: #fff;
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
-    border: 1px solid rgba(200,146,42,0.15);
-    position: relative;
-    overflow: hidden;
+    gap: 20px;
 }
-.compte-header::after {
-    content: '✦';
-    position: absolute;
-    right: -20px;
-    top: -20px;
-    font-size: 80px;
-    color: rgba(200,146,42,0.05);
-}
+
 .compte-header h1 {
     font-family: 'Playfair Display', serif;
-    font-size: 2rem;
+    font-size: 1.8rem;
     color: #C8922A;
-    margin-bottom: 8px;
+    margin-bottom: 5px;
 }
+
 .compte-header p {
-    color: rgba(255,255,255,0.5);
+    color: rgba(255,255,255,0.6);
+    font-size: 0.9rem;
 }
+
 .compte-stats {
     display: flex;
-    gap: 15px;
+    gap: 12px;
     flex-wrap: wrap;
-    position: relative;
-    z-index: 1;
 }
+
 .stat-card {
     background: rgba(200,146,42,0.12);
-    border-radius: 14px;
-    padding: 15px 25px;
+    border-radius: 12px;
+    padding: 12px 18px;
     text-align: center;
-    min-width: 90px;
+    min-width: 80px;
     border: 1px solid rgba(200,146,42,0.1);
 }
+
 .stat-card .number {
     font-family: 'Playfair Display', serif;
-    font-size: 1.8rem;
+    font-size: 1.5rem;
     font-weight: 700;
     color: #C8922A;
     line-height: 1;
 }
+
 .stat-card .label {
     font-size: 0.6rem;
-    color: rgba(255,255,255,0.4);
+    color: rgba(255,255,255,0.5);
     text-transform: uppercase;
     letter-spacing: 1px;
     margin-top: 5px;
 }
+
+/* ===== GRID ===== */
 .compte-grid {
     display: grid;
-    grid-template-columns: 260px 1fr;
-    gap: 30px;
+    grid-template-columns: 240px 1fr;
+    gap: 20px;
 }
+
+/* ===== SIDEBAR ===== */
 .compte-sidebar {
     background: #fff;
-    border-radius: 16px;
+    border-radius: 12px;
     border: 1px solid #F0EDEA;
     overflow: hidden;
     align-self: start;
 }
+
 .compte-sidebar .menu-item {
-    padding: 16px 20px;
+    padding: 14px 18px;
     border-bottom: 1px solid #F0EDEA;
     transition: all 0.3s;
 }
+
 .compte-sidebar .menu-item a {
     color: #0D0D0D;
     text-decoration: none;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     font-size: 0.85rem;
 }
+
 .compte-sidebar .menu-item i {
     color: #C8922A;
-    width: 24px;
-    font-size: 1.1rem;
+    width: 22px;
+    font-size: 1rem;
 }
+
 .compte-sidebar .menu-item:hover {
     background: #FEFBF5;
 }
+
 .compte-sidebar .menu-item.active {
     background: #FEFBF5;
     border-left: 3px solid #C8922A;
 }
+
 .compte-sidebar .menu-item.logout a {
     color: #E74C3C;
 }
+
 .compte-sidebar .menu-item.logout a i {
     color: #E74C3C;
 }
+
+/* ===== CONTENU ===== */
 .compte-content {
     background: #fff;
-    border-radius: 16px;
+    border-radius: 12px;
     border: 1px solid #F0EDEA;
-    padding: 30px;
-}
-.section-title {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.4rem;
-    font-weight: 600;
-    margin-bottom: 20px;
-    color: #0D0D0D;
-}
-.section-title i {
-    color: #C8922A;
-    margin-right: 10px;
+    padding: 25px;
 }
 
-/* Carte de la dernière commande */
+.section-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-bottom: 15px;
+    color: #0D0D0D;
+}
+
+.section-title i {
+    color: #C8922A;
+    margin-right: 8px;
+}
+
+/* ===== DERNIÈRE COMMANDE ===== */
 .derniere-commande {
     background: #FEFBF5;
-    border-radius: 16px;
-    padding: 20px 25px;
-    margin-bottom: 30px;
+    border-radius: 12px;
+    padding: 15px;
+    margin-bottom: 20px;
     border: 1px solid rgba(200,146,42,0.15);
     border-left: 4px solid #C8922A;
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
-    gap: 15px;
+    gap: 12px;
 }
+
 .derniere-commande .info {
     display: flex;
     flex-direction: column;
     gap: 3px;
 }
+
 .derniere-commande .info .numero {
     font-weight: 700;
-    font-size: 1.1rem;
+    font-size: 1rem;
     color: #0D0D0D;
 }
+
 .derniere-commande .info .numero span {
     color: #C8922A;
 }
+
 .derniere-commande .info .date {
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     color: #8A99AA;
 }
-.derniere-commande .info .type {
-    font-size: 0.7rem;
-    padding: 2px 10px;
-    border-radius: 12px;
-    background: rgba(200,146,42,0.1);
-    color: #C8922A;
-    display: inline-block;
-}
+
 .derniere-commande .total {
     text-align: right;
 }
+
 .derniere-commande .total .prix {
-    font-size: 1.5rem;
+    font-size: 1.3rem;
     font-weight: 700;
     color: #C8922A;
 }
+
 .derniere-commande .total .label {
-    font-size: 0.65rem;
+    font-size: 0.6rem;
     color: #8A99AA;
     text-transform: uppercase;
     letter-spacing: 1px;
 }
 
+.badge-type {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.6rem;
+    font-weight: 600;
+    margin-left: 5px;
+}
+
+.badge-boutique {
+    background: #D1ECF1;
+    color: #0C5460;
+}
+
+.badge-repas {
+    background: #FFF3CD;
+    color: #856404;
+}
+
+/* ===== TABLEAU ===== */
 .commandes-table {
     width: 100%;
     border-collapse: collapse;
 }
+
 .commandes-table th,
 .commandes-table td {
-    padding: 12px 15px;
+    padding: 10px 12px;
     text-align: left;
     border-bottom: 1px solid #F0EDEA;
 }
+
 .commandes-table th {
     color: #C8922A;
     font-weight: 600;
@@ -411,16 +458,19 @@ $statuts = [
     text-transform: uppercase;
     letter-spacing: 1px;
 }
+
 .commandes-table tr:hover td {
     background: #FEFBF5;
 }
+
 .statut {
     display: inline-block;
-    padding: 4px 14px;
-    border-radius: 20px;
+    padding: 3px 12px;
+    border-radius: 15px;
     font-size: 0.7rem;
     font-weight: 600;
 }
+
 .statut-en_attente { background: #FFF3CD; color: #856404; }
 .statut-confirmee { background: #D1ECF1; color: #0C5460; }
 .statut-en_preparation { background: #CCE5FF; color: #004085; }
@@ -428,6 +478,7 @@ $statuts = [
 .statut-livree { background: #D4EDDA; color: #155724; }
 .statut-terminee { background: #D4EDDA; color: #155724; }
 .statut-annulee { background: #F8D7DA; color: #721C24; }
+
 .btn-voir {
     background: none;
     border: none;
@@ -437,125 +488,279 @@ $statuts = [
     text-decoration: none;
     transition: color 0.3s;
 }
+
 .btn-voir:hover {
     color: #9A6E1A;
     text-decoration: underline;
 }
+
 .btn-boutique {
     display: inline-block;
     background: linear-gradient(135deg, #C8922A, #E2B96A);
     color: #fff;
-    padding: 12px 30px;
-    border-radius: 30px;
+    padding: 12px 25px;
+    border-radius: 25px;
     text-decoration: none;
     font-weight: 600;
     transition: all 0.3s;
-    margin-top: 20px;
+    margin-top: 15px;
 }
+
 .btn-boutique:hover {
     background: linear-gradient(135deg, #9A6E1A, #C8922A);
     transform: translateY(-2px);
-    box-shadow: 0 5px 20px rgba(200,146,42,0.3);
+    box-shadow: 0 5px 15px rgba(200,146,42,0.3);
 }
+
+/* ===== INFO PROFIL ===== */
 .info-profil {
     background: #FEFBF5;
     border-radius: 12px;
-    padding: 20px 25px;
-    margin-top: 30px;
+    padding: 15px;
+    margin-top: 20px;
     border: 1px solid rgba(200,146,42,0.08);
 }
+
 .info-profil h3 {
-    font-size: 1rem;
-    margin-bottom: 15px;
+    font-size: 0.9rem;
+    margin-bottom: 12px;
     color: #C8922A;
 }
+
 .info-profil .info-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 10px;
+    gap: 8px;
 }
+
 .info-profil p {
-    margin-bottom: 6px;
+    margin-bottom: 5px;
     font-size: 0.85rem;
     color: #333;
 }
+
 .info-profil strong {
     color: #C8922A;
 }
-.badge-type {
-    display: inline-block;
-    padding: 2px 10px;
-    border-radius: 12px;
-    font-size: 0.6rem;
-    font-weight: 600;
-    margin-left: 5px;
-}
-.badge-boutique {
-    background: #D1ECF1;
-    color: #0C5460;
-}
-.badge-repas {
-    background: #FFF3CD;
-    color: #856404;
-}
+
 .empty-state {
     text-align: center;
-    padding: 50px 20px;
+    padding: 30px 15px;
 }
+
 .empty-state i {
-    font-size: 3.5rem;
+    font-size: 3rem;
     color: #E8E0D8;
     display: block;
-    margin-bottom: 15px;
+    margin-bottom: 10px;
 }
+
 .empty-state p {
     color: #8A99AA;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
 }
-@media (max-width: 900px) {
-    .compte-grid {
-        grid-template-columns: 1fr;
-        gap: 20px;
+
+/* ============================================
+   RESPONSIVE MOBILE (iPhone, Android, etc.)
+   ============================================ */
+@media (max-width: 768px) {
+    .compte-container {
+        padding: 10px;
     }
+    
     .compte-header {
         flex-direction: column;
         text-align: center;
-        gap: 20px;
-        padding: 30px 20px;
+        gap: 15px;
+        padding: 20px;
+        border-radius: 12px;
     }
-    .compte-container {
-        padding: 0 20px;
+    
+    .compte-header h1 {
+        font-size: 1.3rem;
     }
-    .commandes-table th,
-    .commandes-table td {
-        padding: 8px 10px;
-        font-size: 0.75rem;
+    
+    .compte-header p {
+        font-size: 0.8rem;
     }
-    .info-profil .info-row {
+    
+    .compte-stats {
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+    }
+    
+    .stat-card {
+        padding: 10px 12px;
+        min-width: 70px;
+        border-radius: 8px;
+        flex: 1;
+    }
+    
+    .stat-card .number {
+        font-size: 1.2rem;
+    }
+    
+    .stat-card .label {
+        font-size: 0.5rem;
+        margin-top: 3px;
+    }
+    
+    .compte-grid {
         grid-template-columns: 1fr;
+        gap: 15px;
     }
+    
+    /* Sidebar devient scrollable horizontalement */
+    .compte-sidebar {
+        border-radius: 12px;
+        display: flex;
+        overflow-x: auto;
+        white-space: nowrap;
+        border: none;
+        padding: 8px;
+        gap: 6px;
+        background: transparent;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .compte-sidebar .menu-item {
+        display: inline-block;
+        padding: 8px 12px;
+        border-radius: 20px;
+        border: 1px solid #F0EDEA;
+        background: white;
+        margin-bottom: 0;
+        flex-shrink: 0;
+    }
+    
+    .compte-sidebar .menu-item a {
+        font-size: 0.75rem;
+        gap: 5px;
+    }
+    
+    .compte-sidebar .menu-item i {
+        font-size: 0.9rem;
+        width: 16px;
+    }
+    
+    .compte-content {
+        padding: 15px;
+        border-radius: 10px;
+    }
+    
+    .section-title {
+        font-size: 1.1rem;
+        margin-bottom: 12px;
+    }
+    
     .derniere-commande {
         flex-direction: column;
         text-align: center;
+        padding: 15px 10px;
     }
+    
+    .derniere-commande .info {
+        align-items: center;
+    }
+    
     .derniere-commande .total {
         text-align: center;
     }
-}
-@media (max-width: 600px) {
+    
+    .derniere-commande .total .prix {
+        font-size: 1.1rem;
+    }
+    
+    /* Tableau scrollable horizontalement */
     .commandes-table {
         display: block;
         overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        white-space: nowrap;
     }
-    .compte-stats {
-        justify-content: center;
+    
+    .commandes-table th,
+    .commandes-table td {
+        padding: 8px;
+        font-size: 0.7rem;
+        white-space: nowrap;
     }
+    
+    .statut {
+        font-size: 0.6rem;
+        padding: 2px 8px;
+    }
+    
+    .info-profil {
+        padding: 12px;
+    }
+    
+    .info-profil .info-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .info-profil p {
+        font-size: 0.8rem;
+    }
+    
+    .empty-state {
+        padding: 20px 10px;
+    }
+    
+    .empty-state i {
+        font-size: 2.5rem;
+    }
+    
+    .btn-boutique {
+        padding: 10px 20px;
+        font-size: 0.8rem;
+    }
+}
+
+/* ===== TRÈS PETITS ÉCRANS (iPhone SE, etc.) ===== */
+@media (max-width: 380px) {
+    .compte-header h1 {
+        font-size: 1.1rem;
+    }
+    
+    .compte-header p {
+        font-size: 0.7rem;
+    }
+    
     .stat-card {
-        padding: 10px 15px;
-        min-width: 70px;
+        padding: 8px 8px;
+        min-width: 60px;
     }
+    
     .stat-card .number {
-        font-size: 1.3rem;
+        font-size: 1rem;
+    }
+    
+    .stat-card .label {
+        font-size: 0.45rem;
+    }
+    
+    .compte-sidebar .menu-item a {
+        font-size: 0.7rem;
+    }
+    
+    .compte-content {
+        padding: 10px;
+    }
+    
+    .section-title {
+        font-size: 1rem;
+    }
+    
+    .commandes-table th,
+    .commandes-table td {
+        font-size: 0.65rem;
+    }
+    
+    .btn-boutique {
+        padding: 8px 15px;
+        font-size: 0.75rem;
     }
 }
 </style>
@@ -583,6 +788,7 @@ $statuts = [
     </div>
     
     <div class="compte-grid">
+        <!-- Sidebar avec menu scrollable horizontal sur mobile -->
         <aside class="compte-sidebar">
             <div class="menu-item active">
                 <a href="mon_compte.php">
@@ -714,7 +920,7 @@ $statuts = [
                 </table>
                 
                 <?php if(count($commandes) > 10): ?>
-                    <div style="text-align: center; margin-top: 20px;">
+                    <div style="text-align: center; margin-top: 15px;">
                         <a href="mes_commandes.php" class="btn-voir" style="font-size:0.9rem;">
                             Voir toutes mes commandes (<?= count($commandes) ?>) →
                         </a>
@@ -737,7 +943,7 @@ $statuts = [
                         <p><strong>Adresse :</strong> <?= htmlspecialchars($client['adresse_complete'] ?? 'Non renseignée') ?></p>
                     </div>
                 </div>
-                <div style="margin-top:15px;">
+                <div style="margin-top:10px;">
                     <a href="mon_profil.php" class="btn-voir">
                         <i class="bi bi-pencil"></i> Modifier mes informations
                     </a>

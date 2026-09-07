@@ -287,12 +287,125 @@ require_once '../includes/navbar.php';
             .table-produits { font-size: 0.75rem; }
             .confirmation-card h2 { font-size: 1.4rem; }
         }
+
+        /* Styles professionnels - sans emojis */
+        .section-title {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .order-number {
+            font-weight: 700;
+            color: #C8922A;
+            letter-spacing: 1px;
+        }
+
+        .label-text {
+            font-weight: 500;
+            color: #4A4A4A;
+            min-width: 140px;
+            display: inline-block;
+        }
+
+        .detail-row {
+            display: flex;
+            padding: 4px 0;
+            align-items: baseline;
+        }
+
+        .badge-payment {
+            display: inline-block;
+            padding: 4px 14px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            background: #F0EDE6;
+            color: #8A7A5A;
+            letter-spacing: 0.3px;
+        }
+
+        .delivery-info {
+            display: flex;
+            gap: 12px;
+            padding: 4px 0;
+            font-size: 0.9rem;
+        }
+
+        .delivery-info i {
+            color: #C8922A;
+            margin-top: 2px;
+        }
+
+        .email-alert {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+
+        .email-alert i {
+            color: #2980B9;
+            font-size: 1.2rem;
+            margin-top: 2px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 3px 12px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .status-success {
+            background: #D4EDDA;
+            color: #155724;
+        }
+
+        .status-pending {
+            background: #FFF3CD;
+            color: #856404;
+        }
+
+        .header-divider {
+            width: 60px;
+            height: 2px;
+            background: #C8922A;
+            margin: 6px auto 0;
+        }
+
+        .amount-display {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.4rem;
+            color: #C8922A;
+            font-weight: 700;
+        }
+
+        .btn-outline-gold {
+            background: transparent;
+            color: #C8922A;
+            border: 2px solid #C8922A;
+            padding: 10px 30px;
+            border-radius: 30px;
+            text-decoration: none;
+            font-weight: 600;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+        .btn-outline-gold:hover {
+            background: #C8922A;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(200,146,42,0.2);
+        }
     </style>
 </head>
 <body>
 
 <div class="banner">
-    <h1>🎉 Commande confirmée !</h1>
+    <h1>Commande confirmée</h1>
     <p>Merci pour votre confiance, <?= htmlspecialchars($commande['nom_client'] ?? '') ?></p>
 </div>
 
@@ -302,7 +415,7 @@ require_once '../includes/navbar.php';
             <i class="bi bi-check-lg"></i>
         </div>
         
-        <h2>✅ Commande confirmée !</h2>
+        <h2>Commande confirmée</h2>
         <p class="sub-text">Votre commande a été enregistrée avec succès.</p>
         
         <!-- Message de succès -->
@@ -317,31 +430,51 @@ require_once '../includes/navbar.php';
         <?php endif; ?>
         
         <div class="info-box">
-            <h5><i class="bi bi-receipt"></i> Détails de votre commande</h5>
-            <p><strong>📦 Numéro de commande :</strong> <?= htmlspecialchars($commande['numero_commande'] ?? '') ?></p>
-            <p><strong>📅 Date :</strong> <?= date('d/m/Y à H:i', strtotime($commande['created_at'] ?? 'now')) ?></p>
-            <p><strong>👤 Client :</strong> <?= htmlspecialchars($commande['nom_client'] ?? '') ?></p>
-            <p><strong>📞 Téléphone :</strong> <?= htmlspecialchars($commande['telephone'] ?? 'Non renseigné') ?></p>
-            <p><strong>📍 Adresse de livraison :</strong> <?= nl2br(htmlspecialchars($commande['adresse_livraison'] ?? '')) ?></p>
-            <p><strong>💰 Mode de paiement :</strong> 
+            <h5><i class="bi bi-receipt"></i> Détails de la commande</h5>
+            
+            <div class="detail-row">
+                <span class="label-text">Numéro de commande</span>
+                <span class="order-number">#<?= htmlspecialchars($commande['numero_commande'] ?? '') ?></span>
+            </div>
+            <div class="detail-row">
+                <span class="label-text">Date</span>
+                <span><?= date('d/m/Y à H:i', strtotime($commande['created_at'] ?? 'now')) ?></span>
+            </div>
+            <div class="detail-row">
+                <span class="label-text">Client</span>
+                <span><?= htmlspecialchars($commande['nom_client'] ?? '') ?></span>
+            </div>
+            <div class="detail-row">
+                <span class="label-text">Téléphone</span>
+                <span><?= htmlspecialchars($commande['telephone'] ?? 'Non renseigné') ?></span>
+            </div>
+            <div class="detail-row" style="align-items: flex-start;">
+                <span class="label-text">Adresse de livraison</span>
+                <span><?= nl2br(htmlspecialchars($commande['adresse_livraison'] ?? '')) ?></span>
+            </div>
+            <div class="detail-row">
+                <span class="label-text">Mode de paiement</span>
                 <?php 
                 $paiements = [
-                    'livraison' => '💵 Paiement à la livraison',
-                    'orange_money' => '🟠 Orange Money',
-                    'wave' => '🌊 Wave',
-                    'moov_money' => '📱 Moov Money',
-                    'carte' => '💳 Carte bancaire',
-                    'especes' => '💰 Espèces'
+                    'livraison' => 'Paiement à la livraison',
+                    'orange_money' => 'Orange Money',
+                    'wave' => 'Wave',
+                    'moov_money' => 'Moov Money',
+                    'carte' => 'Carte bancaire',
+                    'especes' => 'Espèces'
                 ];
                 $mode = $commande['mode_paiement'] ?? 'livraison';
-                echo '<span class="paiement-badge">' . ($paiements[$mode] ?? $mode) . '</span>';
+                echo '<span class="badge-payment">' . ($paiements[$mode] ?? $mode) . '</span>';
                 ?>
-            </p>
-            <p><strong>💰 Montant total :</strong> <span class="total-amount"><?= number_format($commande['total'] ?? 0, 0, ',', ' ') ?> FCFA</span></p>
+            </div>
+            <div class="detail-row" style="margin-top: 6px; border-top: 1px solid rgba(200,146,42,0.15); padding-top: 12px;">
+                <span class="label-text" style="font-weight: 600;">Montant total</span>
+                <span class="amount-display"><?= number_format($commande['total'] ?? 0, 0, ',', ' ') ?> FCFA</span>
+            </div>
             
-            <hr style="border-color: rgba(200,146,42,0.15); margin: 15px 0;">
+            <hr style="border-color: rgba(200,146,42,0.15); margin: 18px 0;">
             
-            <h6 style="font-weight:700;color:#0D0D0D;margin-bottom:10px;">🛍️ Articles commandés :</h6>
+            <h6 style="font-weight:600;color:#0D0D0D;margin-bottom:12px;letter-spacing:0.3px;">Articles commandés</h6>
             <table class="table-produits">
                 <thead>
                     <tr>
@@ -367,26 +500,34 @@ require_once '../includes/navbar.php';
         </div>
         
         <div class="alert-email">
-            <i class="bi bi-envelope-fill"></i> 
-            <strong>Un email de confirmation vous a été envoyé.</strong><br>
-            <small style="color:#666;">Vérifiez votre boîte de réception (pensez à vérifier les spams).</small>
-            <br>
-            <?php if(isset($success_msg['email_envoye']) && $success_msg['email_envoye']): ?>
-                <span class="email-status email-sent">
-                    <i class="bi bi-check-circle-fill"></i> Email envoyé
-                </span>
-            <?php else: ?>
-                <span class="email-status email-failed">
-                    <i class="bi bi-exclamation-triangle-fill"></i> Envoi en cours
-                </span>
-            <?php endif; ?>
+            <div class="email-alert">
+                <i class="bi bi-envelope-fill"></i>
+                <div>
+                    <strong>Un email de confirmation vous a été envoyé.</strong><br>
+                    <small style="color:#666;">Vérifiez votre boîte de réception (pensez à vérifier les spams).</small>
+                    <br>
+                    <?php if(isset($success_msg['email_envoye']) && $success_msg['email_envoye']): ?>
+                        <span class="status-badge status-success">Email envoyé</span>
+                    <?php else: ?>
+                        <span class="status-badge status-pending">Envoi en cours</span>
+                    <?php endif; ?>
+                </div>
+            </div>
         </div>
         
         <div class="info-delivery">
-            <i class="bi bi-clock-history"></i>
-            <strong>Traitement :</strong> Votre commande sera traitée dans les 24h.<br>
-            <i class="bi bi-truck"></i>
-            <strong>Livraison :</strong> Livraison express partout à Bamako.
+            <div class="delivery-info">
+                <i class="bi bi-clock-history"></i>
+                <div>
+                    <strong>Traitement :</strong> Votre commande sera traitée dans les 24h.
+                </div>
+            </div>
+            <div class="delivery-info" style="margin-top: 6px;">
+                <i class="bi bi-truck"></i>
+                <div>
+                    <strong>Livraison :</strong> Livraison express partout à Bamako.
+                </div>
+            </div>
         </div>
         
         <a href="catalogue.php" class="btn-continuer">

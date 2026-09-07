@@ -48,7 +48,7 @@ if (isset($_POST['action']) && $_POST['action'] == 'ajouter') {
     $couleur_id = isset($_POST['couleur_id']) ? (int)$_POST['couleur_id'] : 0;
     $taille_id = isset($_POST['taille_id']) ? (int)$_POST['taille_id'] : 0;
     
-    // ✅ Récupérer les infos de couleur et taille
+    // Récupérer les infos de couleur et taille
     $couleur_nom = '';
     $couleur_hex = '';
     $taille_nom = '';
@@ -77,7 +77,7 @@ if (isset($_POST['action']) && $_POST['action'] == 'ajouter') {
                 ? $produit['prix_promo'] 
                 : $produit['prix'];
         
-        // ✅ Clé unique pour le panier (avec couleur et taille)
+        // Clé unique pour le panier (avec couleur et taille)
         $cle_panier = $produit_id . '_' . $couleur_id . '_' . $taille_id;
         
         if (isset($_SESSION['panier'][$cle_panier])) {
@@ -97,7 +97,7 @@ if (isset($_POST['action']) && $_POST['action'] == 'ajouter') {
             ];
         }
         
-        // ✅ Si client connecté, sauvegarder en BDD
+        // Si client connecté, sauvegarder en BDD
         if (isset($_SESSION['client_id'])) {
             sauvegarderPanierClient($_SESSION['client_id'], $_SESSION['panier'], $pdo);
         }
@@ -119,6 +119,10 @@ if (isset($_GET['modifier'])) {
             $_SESSION['panier'][$cle]['quantite'] = $qte;
         }
     }
+    // Supprimer le code promo si le panier est vide
+    if (empty($_SESSION['panier'])) {
+        unset($_SESSION['code_promo']);
+    }
     if (isset($_SESSION['client_id'])) {
         sauvegarderPanierClient($_SESSION['client_id'], $_SESSION['panier'], $pdo);
     }
@@ -132,6 +136,10 @@ if (isset($_GET['modifier'])) {
 if (isset($_GET['supprimer'])) {
     $cle = $_GET['supprimer'];
     unset($_SESSION['panier'][$cle]);
+    // Supprimer le code promo si le panier est vide
+    if (empty($_SESSION['panier'])) {
+        unset($_SESSION['code_promo']);
+    }
     if (isset($_SESSION['client_id'])) {
         sauvegarderPanierClient($_SESSION['client_id'], $_SESSION['panier'], $pdo);
     }
@@ -144,9 +152,78 @@ if (isset($_GET['supprimer'])) {
 // ============================================
 if (isset($_GET['vider'])) {
     $_SESSION['panier'] = [];
+    unset($_SESSION['code_promo']);
     if (isset($_SESSION['client_id'])) {
         viderPanierBDD($_SESSION['client_id'], $pdo);
     }
+    header('Location: panier.php');
+    exit;
+}
+
+// ============================================
+// APPLIQUER UN CODE PROMO
+// ============================================
+if (isset($_POST['appliquer_promo'])) {
+    $code = strtoupper(trim($_POST['code_promo']));
+    $message_promo = '';
+    
+    if (empty($code)) {
+        $_SESSION['message_promo'] = '⚠️ Veuillez saisir un code promo.';
+    } else {
+        // Vérifier le code dans la BDD
+        $stmt = $pdo->prepare("
+            SELECT * FROM codes_promo 
+            WHERE code = ? AND est_actif = 1
+            AND (date_expiration IS NULL OR date_expiration > NOW())
+            AND (nb_utilisations_max IS NULL OR nb_utilisations < nb_utilisations_max)
+        ");
+        $stmt->execute([$code]);
+        $promo = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($promo) {
+            // Calculer le total du panier
+            $total = 0;
+            foreach ($_SESSION['panier'] as $item) {
+                $total += $item['prix'] * $item['quantite'];
+            }
+            
+            if ($total >= $promo['min_achat']) {
+                // Calculer la réduction
+                if ($promo['type'] == 'pourcentage') {
+                    $reduction = $total * ($promo['valeur'] / 100);
+                } else {
+                    $reduction = $promo['valeur'];
+                }
+                // Limiter la réduction au total du panier
+                if ($reduction > $total) {
+                    $reduction = $total;
+                }
+                
+                $_SESSION['code_promo'] = [
+                    'code' => $promo['code'],
+                    'id' => $promo['id'],
+                    'type' => $promo['type'],
+                    'valeur' => $promo['valeur'],
+                    'reduction' => $reduction
+                ];
+                $_SESSION['message_promo'] = '✅ Code promo "' . $promo['code'] . '" appliqué ! Réduction de ' . number_format($reduction, 0, ',', ' ') . ' FCFA.';
+            } else {
+                $_SESSION['message_promo'] = '⚠️ Ce code promo nécessite un achat minimum de ' . number_format($promo['min_achat'], 0, ',', ' ') . ' FCFA.';
+            }
+        } else {
+            $_SESSION['message_promo'] = '❌ Code promo invalide ou expiré.';
+        }
+    }
+    header('Location: panier.php');
+    exit;
+}
+
+// ============================================
+// SUPPRIMER LE CODE PROMO
+// ============================================
+if (isset($_GET['supprimer_promo'])) {
+    unset($_SESSION['code_promo']);
+    $_SESSION['message_promo'] = '✅ Code promo retiré.';
     header('Location: panier.php');
     exit;
 }
@@ -158,6 +235,34 @@ $total = 0;
 foreach ($_SESSION['panier'] as $item) {
     $total += $item['prix'] * $item['quantite'];
 }
+
+// ============================================
+// APPLIQUER LA RÉDUCTION DU CODE PROMO
+// ============================================
+$reduction_appliquee = 0;
+$code_promo_info = $_SESSION['code_promo'] ?? null;
+
+if ($code_promo_info) {
+    $reduction_appliquee = $code_promo_info['reduction'] ?? 0;
+    // Si le total est inférieur à la réduction
+    if ($reduction_appliquee > $total) {
+        $reduction_appliquee = $total;
+        $_SESSION['code_promo']['reduction'] = $reduction_appliquee;
+    }
+    // Si le total est 0, supprimer le code promo
+    if ($total == 0) {
+        unset($_SESSION['code_promo']);
+        $reduction_appliquee = 0;
+    }
+}
+
+$total_apres_reduction = $total - $reduction_appliquee;
+
+// ============================================
+// RÉCUPÉRER LES MESSAGES
+// ============================================
+$message_promo = $_SESSION['message_promo'] ?? '';
+unset($_SESSION['message_promo']);
 
 // ============================================
 // AFFICHAGE
@@ -392,7 +497,121 @@ require_once '../includes/navbar.php';
     color: white;
 }
 
-/* ✅ STYLE POUR L'AFFICHAGE DES OPTIONS DANS LE PANIER */
+/* ========================================== */
+/* STYLES POUR LE CODE PROMO */
+/* ========================================== */
+.promo-section {
+    margin: 20px 0 15px;
+    padding: 20px;
+    background: #F8F9FA;
+    border-radius: 12px;
+    border: 1px dashed #E0E6ED;
+}
+.promo-section .promo-title {
+    font-weight: 600;
+    color: #0D0D0D;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.promo-section .promo-title i {
+    color: #C8922A;
+}
+.promo-section .input-group {
+    display: flex;
+    gap: 10px;
+}
+.promo-section input {
+    flex: 1;
+    padding: 10px 14px;
+    border: 1.5px solid #E0E6ED;
+    border-radius: 8px;
+    font-family: 'Jost', sans-serif;
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    transition: border-color 0.3s;
+    background: #fff;
+}
+.promo-section input:focus {
+    outline: none;
+    border-color: #C8922A;
+}
+.promo-section input:disabled {
+    background: #F0F2F5;
+    cursor: not-allowed;
+}
+.promo-section .btn-promo {
+    background: #C8922A;
+    color: #fff;
+    border: none;
+    padding: 10px 24px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.3s;
+    font-family: 'Jost', sans-serif;
+    white-space: nowrap;
+}
+.promo-section .btn-promo:hover {
+    background: #9A6E1A;
+}
+.promo-section .btn-promo:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
+.promo-message {
+    margin-top: 10px;
+    font-size: 0.85rem;
+    padding: 8px 12px;
+    border-radius: 8px;
+}
+.promo-message.success {
+    background: #D4EDDA;
+    color: #0A3622;
+}
+.promo-message.error {
+    background: #F8D7DA;
+    color: #721C24;
+}
+.promo-message.warning {
+    background: #FFF3CD;
+    color: #856404;
+}
+.promo-applique {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #D4EDDA;
+    padding: 12px 18px;
+    border-radius: 8px;
+    color: #0A3622;
+    margin: 10px 0 15px;
+}
+.promo-applique .code {
+    font-weight: 700;
+    color: #0D0D0D;
+}
+.promo-applique .reduction {
+    font-weight: 700;
+    color: #27AE60;
+}
+.promo-applique .btn-retirer {
+    background: rgba(231,76,60,0.15);
+    color: #E74C3C;
+    border: none;
+    padding: 4px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.3s;
+}
+.promo-applique .btn-retirer:hover {
+    background: #E74C3C;
+    color: #fff;
+}
+/* ========================================== */
+
 .option-badge {
     display: inline-block;
     padding: 1px 10px;
@@ -443,6 +662,7 @@ require_once '../includes/navbar.php';
     .table-panier .product-name { justify-content: flex-end; }
     .panier-total { flex-direction: column; text-align: center; }
     .panier-actions { justify-content: center; }
+    .promo-section .input-group { flex-direction: column; }
 }
 </style>
 
@@ -523,10 +743,62 @@ require_once '../includes/navbar.php';
                 </tbody>
             </table>
 
+            <!-- ========================================== -->
+            <!-- SECTION CODE PROMO (NOUVEAU)              -->
+            <!-- ========================================== -->
+            <div class="promo-section">
+                <div class="promo-title">
+                    <i class="bi bi-ticket-perforated"></i> Code promo
+                </div>
+
+                <?php if(isset($_SESSION['code_promo'])): ?>
+                    <!-- Code promo déjà appliqué -->
+                    <div class="promo-applique">
+                        <div>
+                            🏷️ Code <span class="code"><?= htmlspecialchars($_SESSION['code_promo']['code']) ?></span>
+                            <span style="color:#8A99AA;font-size:0.8rem;margin-left:10px;">
+                                (<?= $_SESSION['code_promo']['type'] == 'pourcentage' ? $_SESSION['code_promo']['valeur'] . '%' : number_format($_SESSION['code_promo']['valeur'], 0, ',', ' ') . ' FCFA' ?>)
+                            </span>
+                        </div>
+                        <div>
+                            <span class="reduction">- <?= number_format($reduction_appliquee, 0, ',', ' ') ?> FCFA</span>
+                            <a href="panier.php?supprimer_promo=1" class="btn-retirer" onclick="return confirm('Retirer ce code promo ?')">
+                                <i class="bi bi-x"></i> Retirer
+                            </a>
+                        </div>
+                    </div>
+                <?php else: ?>
+                    <!-- Formulaire code promo -->
+                    <form method="POST" class="input-group">
+                        <input type="text" name="code_promo" placeholder="Entrez votre code promo (ex: BIENVENUE10)" id="code_promo_input">
+                        <button type="submit" name="appliquer_promo" class="btn-promo">
+                            <i class="bi bi-check2"></i> Appliquer
+                        </button>
+                    </form>
+                <?php endif; ?>
+
+                <?php if($message_promo): ?>
+                    <div class="promo-message <?= 
+                        strpos($message_promo, '✅') !== false ? 'success' : 
+                        (strpos($message_promo, '⚠️') !== false ? 'warning' : 'error') 
+                    ?>">
+                        <?= $message_promo ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+            <!-- ========================================== -->
+
             <div class="panier-total">
                 <div>
                     <span class="total-label">Total de la commande</span>
-                    <div class="total-amount"><?= number_format($total, 0, ',', ' ') ?> FCFA</div>
+                    <?php if($reduction_appliquee > 0): ?>
+                        <div style="font-size:0.8rem;color:#8A99AA;text-decoration:line-through;">
+                            <?= number_format($total, 0, ',', ' ') ?> FCFA
+                        </div>
+                        <div class="total-amount"><?= number_format($total_apres_reduction, 0, ',', ' ') ?> FCFA</div>
+                    <?php else: ?>
+                        <div class="total-amount"><?= number_format($total, 0, ',', ' ') ?> FCFA</div>
+                    <?php endif; ?>
                 </div>
                 <div class="panier-actions">
                     <a href="catalogue.php" class="btn-continuer">
@@ -543,5 +815,20 @@ require_once '../includes/navbar.php';
         </div>
     <?php endif; ?>
 </div>
+
+<script>
+// ============================================
+// RECHERCHE AUTOMATIQUE DE CODE PROMO (optionnel)
+// ============================================
+document.addEventListener('DOMContentLoaded', function() {
+    const promoInput = document.getElementById('code_promo_input');
+    if (promoInput) {
+        // Convertir en majuscules automatiquement
+        promoInput.addEventListener('input', function() {
+            this.value = this.value.toUpperCase();
+        });
+    }
+});
+</script>
 
 <?php require_once '../includes/footer.php'; ?>

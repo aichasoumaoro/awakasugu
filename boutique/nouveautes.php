@@ -32,29 +32,32 @@ $limit = 12;
 $offset = ($page - 1) * $limit;
 
 // ============================================
-// RÉCUPÉRATION DE TOUS LES PRODUITS VISIBLES
+// RÉCUPÉRATION DES PRODUITS MARQUÉS "NOUVEAU"
 // ============================================
 $countStmt = $pdo->query("
     SELECT COUNT(*) as total FROM produits 
-    WHERE est_visible = 1
+    WHERE est_visible = 1 AND est_nouveau = 1
 ");
 $totalProduits = $countStmt->fetchColumn();
 $totalPages = ceil($totalProduits / $limit);
 
-// Récupérer les produits avec pagination
+// Récupérer les produits avec pagination (uniquement est_nouveau = 1)
 $stmt = $pdo->prepare("
     SELECT * FROM produits 
-    WHERE est_visible = 1 
+    WHERE est_visible = 1 AND est_nouveau = 1
     ORDER BY created_at DESC 
     LIMIT $limit OFFSET $offset
 ");
 $stmt->execute();
 $produits = $stmt->fetchAll();
 
-// Récupérer les 4 derniers pour la section "À découvrir"
+// ============================================
+// RÉCUPÉRATION DES PRODUITS "À DÉCOUVRIR"
+// (produits récents qui ne sont PAS marqués comme nouveaux)
+// ============================================
 $recentStmt = $pdo->query("
     SELECT * FROM produits 
-    WHERE est_visible = 1 
+    WHERE est_visible = 1 AND est_nouveau = 0
     ORDER BY created_at DESC 
     LIMIT 4
 ");
@@ -74,45 +77,32 @@ function getImageUrl($image) {
     
     // Tous les dossiers possibles
     $dossiers = [
-        // Voiles
         '../uploads/produits/voile/',
         'uploads/produits/voile/',
-        // Prêt-à-porter femme
         '../uploads/produits/pret a porter femme/',
         'uploads/produits/pret a porter femme/',
-        // Tallons
         '../uploads/produits/les tallons/',
         'uploads/produits/les tallons/',
-        // Fermées
         '../uploads/produits/fermés/',
         'uploads/produits/fermés/',
-        // Turbants
         '../uploads/produits/les turbants/',
         'uploads/produits/les turbants/',
-        // Foulards
         '../uploads/produits/les foulards/',
         'uploads/produits/les foulards/',
         '../uploads/produits/les foullards/',
         'uploads/produits/les foullards/',
-        // Porte-monnaie
         '../uploads/produits/port-monaie/',
         'uploads/produits/port-monaie/',
-        // Sacs à mains
         '../uploads/produits/sacs a mains/',
         'uploads/produits/sacs a mains/',
-        // Ensemble tallons sacs
         '../uploads/produits/ensemble tallons sacs/',
         'uploads/produits/ensemble tallons sacs/',
-        // Abayas
         '../uploads/produits/abayas/',
         'uploads/produits/abayas/',
-        // Abayas enfants
         '../uploads/produits/abayas pour enfants/',
         'uploads/produits/abayas pour enfants/',
-        // Dossier principal
         '../uploads/produits/',
         'uploads/produits/',
-        // Dossier uploads
         '../uploads/',
         'uploads/',
     ];
@@ -134,8 +124,21 @@ function getImageUrl($image) {
     
     return 'https://placehold.co/400x500/F5F5F5/C8922A?text=' . urlencode($image_name);
 }
-?>
 
+// ============================================
+// FONCTION AJOUT PANIER (AJAX)
+// ============================================
+function getPanierCount() {
+    $count = 0;
+    if (isset($_SESSION['panier'])) {
+        foreach ($_SESSION['panier'] as $item) {
+            $count += $item['quantite'];
+        }
+    }
+    return $count;
+}
+$panier_count = getPanierCount();
+?>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -712,7 +715,7 @@ function getImageUrl($image) {
     <div class="stats">
         <div class="stat">
             <span class="number"><?= $totalProduits ?></span>
-            <span class="label">Produits</span>
+            <span class="label">Nouveautés</span>
         </div>
         <div class="stat">
             <span class="number">✦</span>
@@ -730,8 +733,8 @@ function getImageUrl($image) {
     <div class="section-head">
         <div>
             <div class="section-title">
-                Tous les produits
-                <small>Les dernières pièces ajoutées</small>
+                Toutes les nouveautés
+                <small>Les dernières pièces marquées comme nouvelles</small>
             </div>
         </div>
         <a href="catalogue.php" class="view-all">
@@ -742,8 +745,8 @@ function getImageUrl($image) {
     <?php if(empty($produits)): ?>
         <div class="empty-state">
             <i class="bi bi-box-seam empty-icon"></i>
-            <h3>Aucun produit</h3>
-            <p>Aucun produit n'est disponible pour le moment.</p>
+            <h3>Aucune nouveauté</h3>
+            <p>Aucun produit n'est actuellement marqué comme nouveau.</p>
             <a href="catalogue.php" class="btn-empty">
                 <i class="bi bi-grid"></i> Voir le catalogue
             </a>
@@ -756,7 +759,7 @@ function getImageUrl($image) {
                 $prix_affiché = $est_promo ? $p['prix_promo'] : $p['prix'];
                 $prix_ancien = $est_promo ? $p['prix'] : null;
             ?>
-            <div class="product-card">
+            <div class="product-card" data-product-id="<?= $p['id'] ?>">
                 <div class="image-wrapper">
                     <img src="<?= $img ?>" alt="<?= htmlspecialchars($p['nom']) ?>" loading="lazy" onerror="this.src='https://placehold.co/400x500/F5F5F5/C8922A?text=<?= urlencode($p['nom'])?>'">
                     
@@ -767,11 +770,11 @@ function getImageUrl($image) {
                     
                     <div class="product-overlay">
                         <a href="produit.php?id=<?= $p['id'] ?>" class="btn-overlay btn-view">
-                            <i class="bi bi-eye"></i> Voir
+                            <i class="bi bi-eye"></i> Détail
                         </a>
-                        <a href="produit.php?id=<?= $p['id'] ?>" class="btn-overlay btn-buy">
-                            <i class="bi bi-cart-plus"></i> Acheter
-                        </a>
+                        <button class="btn-overlay btn-buy" onclick="ajouterAuPanier(event, <?= $p['id'] ?>, 1)">
+                            <i class="bi bi-cart-plus"></i> Ajouter
+                        </button>
                     </div>
                 </div>
                 
@@ -855,7 +858,7 @@ function getImageUrl($image) {
             <div>
                 <div class="section-title">
                     À découvrir
-                    <small>D'autres pièces de la collection</small>
+                    <small>D'autres pièces de la collection (non marquées nouvelles)</small>
                 </div>
             </div>
             <a href="catalogue.php" class="view-all">
@@ -866,17 +869,20 @@ function getImageUrl($image) {
         <div class="products-grid">
             <?php foreach($produitsRecents as $p): 
                 $img = getImageUrl($p['image_principale'] ?? '');
+                $est_promo = !empty($p['prix_promo']) && $p['prix_promo'] > 0 && $p['prix_promo'] < $p['prix'];
+                $prix_affiché = $est_promo ? $p['prix_promo'] : $p['prix'];
+                $prix_ancien = $est_promo ? $p['prix'] : null;
             ?>
-            <div class="product-card">
+            <div class="product-card" data-product-id="<?= $p['id'] ?>">
                 <div class="image-wrapper">
                     <img src="<?= $img ?>" alt="<?= htmlspecialchars($p['nom']) ?>" loading="lazy" onerror="this.src='https://placehold.co/400x500/F5F5F5/C8922A?text=<?= urlencode($p['nom'])?>'">
                     <div class="product-overlay">
                         <a href="produit.php?id=<?= $p['id'] ?>" class="btn-overlay btn-view">
-                            <i class="bi bi-eye"></i> Voir
+                            <i class="bi bi-eye"></i> Détail
                         </a>
-                        <a href="produit.php?id=<?= $p['id'] ?>" class="btn-overlay btn-buy">
-                            <i class="bi bi-cart-plus"></i> Acheter
-                        </a>
+                        <button class="btn-overlay btn-buy" onclick="ajouterAuPanier(event, <?= $p['id'] ?>, 1)">
+                            <i class="bi bi-cart-plus"></i> Ajouter
+                        </button>
                     </div>
                 </div>
                 
@@ -885,7 +891,13 @@ function getImageUrl($image) {
                     <div class="name"><?= htmlspecialchars($p['nom']) ?></div>
                     <div class="divider"></div>
                     <div class="price">
-                        <?= number_format($p['prix'], 0, ',', ' ') ?> FCFA
+                        <?php if($est_promo): ?>
+                            <span class="old"><?= number_format($prix_ancien, 0, ',', ' ') ?> FCFA</span>
+                            <?= number_format($prix_affiché, 0, ',', ' ') ?> FCFA
+                            <span class="promo">Promo</span>
+                        <?php else: ?>
+                            <?= number_format($prix_affiché, 0, ',', ' ') ?> FCFA
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -894,5 +906,105 @@ function getImageUrl($image) {
     </div>
 </section>
 <?php endif; ?>
+
+<!-- ========== TOAST NOTIFICATION ========== -->
+<div id="toast" class="toast-notification" style="position:fixed;bottom:30px;right:30px;background:#1A1A1A;color:white;padding:14px 20px;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.3);display:flex;align-items:center;gap:10px;transform:translateY(100px);opacity:0;transition:all 0.4s ease;z-index:9999;border-left:4px solid #C8922A;font-family:'Inter',sans-serif;">
+    <i class="bi bi-cart-plus" style="color:#C8922A;"></i>
+    <span id="toastMessage">Ajouté au panier</span>
+    <button class="toast-close" onclick="closeToast()" style="background:none;border:none;color:rgba(255,255,255,0.3);cursor:pointer;font-size:1.1rem;padding:0 5px;">&times;</button>
+</div>
+
+<script>
+// ============================================
+// AJOUTER AU PANIER - FONCTION AJAX
+// ============================================
+function ajouterAuPanier(event, produitId, quantite) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    if (!produitId || produitId <= 0) {
+        showToast('Produit invalide', 'error');
+        return;
+    }
+    
+    const btn = event.currentTarget;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Ajout...';
+    btn.style.opacity = '0.7';
+    btn.style.pointerEvents = 'none';
+    
+    const formData = new FormData();
+    formData.append('action', 'ajouter_panier');
+    formData.append('produit_id', produitId);
+    formData.append('quantite', quantite || 1);
+    formData.append('couleur_id', 0);
+    formData.append('taille_id', 0);
+    
+    fetch(window.location.href, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        btn.innerHTML = originalText;
+        btn.style.opacity = '1';
+        btn.style.pointerEvents = 'auto';
+        
+        if (data.success) {
+            // Mettre à jour le compteur du panier si présent
+            const cartBadge = document.querySelector('.cart-badge .cart-count');
+            if (cartBadge) {
+                cartBadge.textContent = data.count || 0;
+            }
+            showToast(data.message || 'Produit ajouté au panier', 'success');
+        } else {
+            showToast(data.message || 'Erreur lors de l\'ajout', 'error');
+        }
+    })
+    .catch(error => {
+        btn.innerHTML = originalText;
+        btn.style.opacity = '1';
+        btn.style.pointerEvents = 'auto';
+        showToast('Erreur de connexion', 'error');
+        console.error('Error:', error);
+    });
+}
+
+// ============================================
+// TOAST NOTIFICATION
+// ============================================
+let toastTimeout = null;
+
+function showToast(message, type = 'success') {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+    
+    const toastMessage = document.getElementById('toastMessage');
+    const icon = toast.querySelector('.toast-icon');
+    
+    if (toastMessage) toastMessage.textContent = message;
+    
+    if (type === 'error') {
+        toast.style.borderLeftColor = '#E74C3C';
+        toast.querySelector('i').className = 'bi bi-x-circle-fill';
+    } else if (type === 'warning') {
+        toast.style.borderLeftColor = '#F39C12';
+        toast.querySelector('i').className = 'bi bi-exclamation-triangle-fill';
+    } else {
+        toast.style.borderLeftColor = '#C8922A';
+        toast.querySelector('i').className = 'bi bi-check-circle-fill';
+    }
+    
+    toast.classList.add('show');
+    clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+function closeToast() {
+    const toast = document.getElementById('toast');
+    if (toast) toast.classList.remove('show');
+    clearTimeout(toastTimeout);
+}
+</script>
 
 <?php require_once '../includes/footer.php'; ?>

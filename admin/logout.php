@@ -1,20 +1,16 @@
 <?php
 // ============================================
-// SESSION ADMIN SÉPARÉE — DÉCONNEXION COMPLÈTE
+// DÉCONNEXION ADMIN - AWA KA SUGU
 // ============================================
-session_name('ADMIN_SESSION');
-session_start();
 
-// Vider les données de session
-$_SESSION = [];
+// Inclure la configuration de session
+require_once '../includes/session_config.php';
 
-// Détruire les données côté serveur
-session_destroy();
+// Déconnecter l'admin (fonction définie dans session_config.php)
+logoutAdmin();
 
-// ⚠️ IMPORTANT : session_destroy() ne supprime PAS le cookie
-// dans le navigateur. On doit le faire manuellement, sinon le
-// cookie ADMIN_SESSION reste vivant dans Chrome/Edge même après
-// déconnexion, et peut redonner accès à l'admin par erreur.
+// Supprimer le cookie de session admin manuellement
+// (au cas où la fonction logoutAdmin() ne le ferait pas)
 if (ini_get('session.use_cookies')) {
     $params = session_get_cookie_params();
     setcookie(

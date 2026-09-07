@@ -1,24 +1,15 @@
 <?php
 // ============================================
-// AVIS CLIENTS - Awa Ka Sugu
+// AVIS CLIENTS - Tous les avis (avec réponses + likes)
 // ============================================
 
-// ============================================
-// SESSION PUBLIQUE SÉPARÉE
-// ============================================
 session_name('PUBLIC_SESSION');
 session_start();
 
-// ============================================
-// VÉRIFICATION MAINTENANCE
-// ============================================
+// Vérification maintenance
 require_once '../includes/maintenance_check.php';
 
-// ============================================
-// CONNEXION BDD + RÉCUPÉRATION PRODUIT
-// (déplacé avant header.php pour pouvoir rediriger
-// sans déclencher "headers already sent")
-// ============================================
+// Connexion BDD
 $host = 'localhost';
 $dbname = 'awakasugu_db';
 $user = 'root';
@@ -31,447 +22,459 @@ try {
     die("Erreur de connexion : " . $e->getMessage());
 }
 
-// Récupérer l'ID du produit
-$produit_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+// ============================================
+// TRAITEMENT AJOUT D'UNE RÉPONSE
+// ============================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_repondre'])) {
+    $avis_parent_id = (int)($_POST['parent_id'] ?? 0);
+    $commentaire = trim($_POST['commentaire'] ?? '');
+    
+    if ($avis_parent_id > 0 && !empty($commentaire)) {
+        $client_id = $_SESSION['client_id'] ?? null;
+        $admin_id = $_SESSION['admin_id'] ?? null;
+        
+        if ($admin_id) {
+            $auteur_type = 'admin';
+            $nom_auteur = 'Administration IBA';
+            $admin_id_val = $admin_id;
+            $client_id_val = null;
+        } elseif ($client_id) {
+            $auteur_type = 'client';
+            $stmt = $pdo->prepare("SELECT nom FROM clients WHERE id = ?");
+            $stmt->execute([$client_id]);
+            $client = $stmt->fetch();
+            $nom_auteur = $client['nom'] ?? 'Client';
+            $admin_id_val = null;
+            $client_id_val = $client_id;
+        } else {
+            $auteur_type = 'client';
+            $nom_auteur = 'Anonyme';
+            $client_id_val = null;
+            $admin_id_val = null;
+        }
+        
+        $stmt = $pdo->prepare("
+            INSERT INTO avis_clients (client_id, produit_id, parent_id, nom_client, note, commentaire, est_valide, est_visible, recommandation, auteur_type, admin_id, created_at)
+            VALUES (?, ?, ?, ?, 5, ?, 1, 1, 0, ?, ?, NOW())
+        ");
+        $stmt_parent = $pdo->prepare("SELECT produit_id FROM avis_clients WHERE id = ?");
+        $stmt_parent->execute([$avis_parent_id]);
+        $produit_id_parent = $stmt_parent->fetchColumn();
+        
+        $stmt->execute([
+            $client_id_val,
+            $produit_id_parent,
+            $avis_parent_id,
+            $nom_auteur,
+            $commentaire,
+            $auteur_type,
+            $admin_id_val
+        ]);
+        
+        header('Location: avis.php?success=1#avis-' . $avis_parent_id);
+        exit;
+    }
+}
 
-if ($produit_id <= 0) {
-    header('Location: catalogue.php');
+// ============================================
+// TRAITEMENT AJOUT / RETRAIT D'UN LIKE (AJAX)
+// ============================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_like'])) {
+    header('Content-Type: application/json');
+    
+    $avis_id = (int)($_POST['avis_id'] ?? 0);
+    $client_id = $_SESSION['client_id'] ?? null;
+    $admin_id = $_SESSION['admin_id'] ?? null;
+    
+    if ($avis_id <= 0 || (!$client_id && !$admin_id)) {
+        echo json_encode(['success' => false, 'message' => 'Action impossible']);
+        exit;
+    }
+    
+    $user_id = $client_id ?: $admin_id;
+    
+    $stmt = $pdo->prepare("SELECT id FROM avis_clients WHERE id = ?");
+    $stmt->execute([$avis_id]);
+    if (!$stmt->fetch()) {
+        echo json_encode(['success' => false, 'message' => 'Avis introuvable']);
+        exit;
+    }
+    
+    $stmt = $pdo->prepare("SELECT id FROM avis_clients_likes WHERE avis_id = ? AND client_id = ?");
+    $stmt->execute([$avis_id, $user_id]);
+    $existing = $stmt->fetch();
+    
+    if ($existing) {
+        $stmt = $pdo->prepare("DELETE FROM avis_clients_likes WHERE id = ?");
+        $stmt->execute([$existing['id']]);
+        $liked = false;
+    } else {
+        $stmt = $pdo->prepare("INSERT INTO avis_clients_likes (avis_id, client_id) VALUES (?, ?)");
+        $stmt->execute([$avis_id, $user_id]);
+        $liked = true;
+    }
+    
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM avis_clients_likes WHERE avis_id = ?");
+    $stmt->execute([$avis_id]);
+    $count = (int)$stmt->fetchColumn();
+    
+    echo json_encode([
+        'success' => true,
+        'liked' => $liked,
+        'count' => $count
+    ]);
     exit;
 }
 
-// Récupérer le produit
-$stmt = $pdo->prepare("SELECT * FROM produits WHERE id = ? AND est_visible = 1");
-$stmt->execute([$produit_id]);
-$produit = $stmt->fetch();
+// ============================================
+// RÉCUPÉRATION DES AVIS PRINCIPAUX ET RÉPONSES
+// ============================================
+$sql = "
+    SELECT a.*, p.nom as produit_nom, p.image_principale as produit_image
+    FROM avis_clients a
+    LEFT JOIN produits p ON a.produit_id = p.id
+    WHERE a.est_valide = 1 AND a.est_visible = 1 AND a.parent_id IS NULL
+    ORDER BY a.created_at DESC
+";
+$stmt = $pdo->query($sql);
+$avis_principaux = $stmt->fetchAll();
 
-if (!$produit) {
-    header('Location: catalogue.php');
-    exit;
+// CORRECTION ICI : jointure correcte pour les réponses
+$sql_reponses = "
+    SELECT a.*, p.nom as produit_nom
+    FROM avis_clients a
+    LEFT JOIN produits p ON a.produit_id = p.id
+    WHERE a.parent_id IS NOT NULL
+    ORDER BY a.created_at ASC
+";
+$stmt_reponses = $pdo->query($sql_reponses);
+$reponses = $stmt_reponses->fetchAll();
+
+$reponses_par_parent = [];
+foreach ($reponses as $r) {
+    $parent = $r['parent_id'];
+    if (!isset($reponses_par_parent[$parent])) {
+        $reponses_par_parent[$parent] = [];
+    }
+    $reponses_par_parent[$parent][] = $r;
 }
 
-$titre_page = 'Avis - IBA Design';
+$all_avis_ids = array_merge(
+    array_column($avis_principaux, 'id'),
+    array_column($reponses, 'id')
+);
+$likes_map = [];
+$user_likes = [];
+
+if (!empty($all_avis_ids)) {
+    $in = implode(',', array_fill(0, count($all_avis_ids), '?'));
+    $stmt = $pdo->prepare("SELECT avis_id, COUNT(*) as nb FROM avis_clients_likes WHERE avis_id IN ($in) GROUP BY avis_id");
+    $stmt->execute($all_avis_ids);
+    $likes_data = $stmt->fetchAll();
+    foreach ($likes_data as $row) {
+        $likes_map[$row['avis_id']] = (int)$row['nb'];
+    }
+    
+    $client_id = $_SESSION['client_id'] ?? null;
+    $admin_id = $_SESSION['admin_id'] ?? null;
+    $user_id = $client_id ?: $admin_id;
+    
+    if ($user_id) {
+        $stmt = $pdo->prepare("SELECT avis_id FROM avis_clients_likes WHERE client_id = ? AND avis_id IN ($in)");
+        $stmt->execute(array_merge([$user_id], $all_avis_ids));
+        $user_likes = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        $user_likes = array_flip($user_likes);
+    }
+}
+
+$total_avis = count($avis_principaux);
+$note_moyenne_globale = 0;
+if ($total_avis > 0) {
+    $somme = 0;
+    foreach ($avis_principaux as $a) {
+        $somme += $a['note'];
+    }
+    $note_moyenne_globale = $somme / $total_avis;
+}
+
+$titre_page = 'Tous les avis clients';
+
 require_once '../includes/header.php';
 require_once '../includes/navbar.php';
-
-$client_id = $_SESSION['client_id'] ?? null;
-$error = '';
-$success = '';
-
-// Ajouter un avis
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $client_id) {
-    $note = (int)$_POST['note'];
-    $commentaire = trim($_POST['commentaire'] ?? '');
-    $nom_client = trim($_POST['nom_client'] ?? $_SESSION['client_nom'] ?? 'Client');
-    
-    if ($note < 1 || $note > 5) {
-        $error = 'La note doit être comprise entre 1 et 5.';
-    } elseif (empty($commentaire)) {
-        $error = 'Veuillez écrire un commentaire.';
-    } else {
-        // Vérifier si le client a déjà acheté ce produit
-        $stmt = $pdo->prepare("
-            SELECT * FROM details_commande dc
-            JOIN commandes c ON c.id = dc.commande_id
-            WHERE dc.produit_id = ? AND c.client_id = ? AND c.statut = 'livree'
-            LIMIT 1
-        ");
-        $stmt->execute([$produit_id, $client_id]);
-        $aAchete = $stmt->fetch();
-        
-        if (!$aAchete) {
-            $error = 'Vous devez avoir acheté ce produit pour laisser un avis.';
-        } else {
-            // Vérifier si un avis existe déjà
-            $stmt = $pdo->prepare("SELECT * FROM avis_clients WHERE client_id = ? AND produit_id = ?");
-            $stmt->execute([$client_id, $produit_id]);
-            if ($stmt->fetch()) {
-                $error = 'Vous avez déjà laissé un avis sur ce produit.';
-            } else {
-                $stmt = $pdo->prepare("
-                    INSERT INTO avis_clients (client_id, produit_id, nom_client, note, commentaire, est_valide, created_at)
-                    VALUES (?, ?, ?, ?, ?, 0, NOW())
-                ");
-                $stmt->execute([$client_id, $produit_id, $nom_client, $note, $commentaire]);
-                $success = 'Merci pour votre avis ! Il sera visible après validation.';
-            }
-        }
-    }
-}
-
-// Récupérer les avis validés
-$stmt = $pdo->prepare("
-    SELECT * FROM avis_clients 
-    WHERE produit_id = ? AND est_valide = 1 
-    ORDER BY created_at DESC
-");
-$stmt->execute([$produit_id]);
-$avis_liste = $stmt->fetchAll();
-
-// Calculer la note moyenne
-$note_moyenne = 0;
-if (!empty($avis_liste)) {
-    $total_notes = 0;
-    foreach ($avis_liste as $a) {
-        $total_notes += $a['note'];
-    }
-    $note_moyenne = $total_notes / count($avis_liste);
-}
 ?>
 
 <style>
-/* ========== PAGE AVIS ========== */
-.avis-header {
-    background: linear-gradient(135deg, #0D0D0D 0%, #1A1A1A 50%, #0D0D0D 100%);
-    padding: 50px 0 40px;
-    text-align: center;
-    margin-bottom: 40px;
-}
-.avis-header h1 {
-    font-family: 'Playfair Display', serif;
-    font-size: 2rem;
-    color: #C8922A;
-    margin-bottom: 10px;
-}
-.avis-header p {
-    color: rgba(255,255,255,0.5);
-    font-size: 0.9rem;
-}
-.container-custom {
-    max-width: 1000px;
-    margin: 0 auto;
-    padding: 0 20px 60px;
-}
-.btn-retour {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: #6C757D;
-    color: white;
-    padding: 10px 22px;
-    border-radius: 8px;
-    text-decoration: none;
-    font-weight: 600;
-    transition: all 0.3s;
-    margin-bottom: 25px;
-    font-size: 0.85rem;
-}
-.btn-retour:hover {
-    background: #5A6268;
-    color: white;
-}
-.avis-card {
-    background: white;
-    border-radius: 16px;
-    padding: 30px;
-    box-shadow: 0 5px 25px rgba(0,0,0,0.05);
-    border: 1px solid rgba(200,146,42,0.08);
-    margin-bottom: 25px;
-}
-.note-moyenne {
-    font-family: 'Playfair Display', serif;
-    font-size: 2.5rem;
-    font-weight: 700;
-    color: #C8922A;
-    line-height: 1;
-}
-.etoiles {
-    color: #FFD700;
-    font-size: 1.2rem;
-}
-.etoiles-vide {
-    color: #ddd;
-}
-.rating-input {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 15px;
-}
-.rating-star {
-    font-size: 2.2rem;
-    cursor: pointer;
-    color: #ddd;
-    transition: all 0.2s;
-}
-.rating-star:hover,
-.rating-star.selected {
-    color: #FFD700;
-    transform: scale(1.1);
-}
-.btn-envoyer {
-    background: linear-gradient(135deg, #C8922A, #E8B55A);
-    color: white;
-    border: none;
-    padding: 12px 35px;
-    border-radius: 10px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all 0.3s;
-}
-.btn-envoyer:hover {
-    background: linear-gradient(135deg, #9A6E1A, #C8922A);
-    transform: translateY(-2px);
-    box-shadow: 0 5px 20px rgba(200,146,42,0.3);
-    color: white;
-}
-.btn-connexion {
-    background: #C8922A;
-    color: white;
-    padding: 12px 35px;
-    border-radius: 10px;
-    text-decoration: none;
-    font-weight: 700;
-    display: inline-block;
-    transition: all 0.3s;
-}
-.btn-connexion:hover {
-    background: #9A6E1A;
-    color: white;
-}
-.avis-item {
-    border-bottom: 1px solid #F0F2F5;
-    padding-bottom: 18px;
-    margin-bottom: 18px;
-}
-.avis-item:last-child {
-    border-bottom: none;
-    margin-bottom: 0;
-    padding-bottom: 0;
-}
-.avis-item .avis-header-info {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 10px;
-}
-.avis-item .avis-nom {
-    font-weight: 600;
-    color: #0D0D0D;
-    font-size: 0.95rem;
-}
-.avis-item .avis-date {
-    font-size: 0.75rem;
-    color: #8A99AA;
-}
-.avis-item .avis-commentaire {
-    color: #4A5568;
-    font-size: 0.9rem;
-    margin-top: 8px;
-    line-height: 1.6;
-}
-.empty-avis {
-    text-align: center;
-    padding: 30px;
-    color: #8A99AA;
-}
-.empty-avis i {
-    font-size: 2.5rem;
-    display: block;
-    margin-bottom: 10px;
-    color: #E0E6ED;
-}
-.form-card .form-label {
-    font-weight: 600;
-    font-size: 0.8rem;
-    color: #0D0D0D;
-}
-.form-card .form-control {
-    border: 1.5px solid #E0E6ED;
-    border-radius: 10px;
-    padding: 12px 16px;
-    font-family: 'Jost', sans-serif;
-    transition: all 0.3s;
-}
-.form-card .form-control:focus {
-    border-color: #C8922A;
-    box-shadow: 0 0 0 3px rgba(200,146,42,0.1);
-}
-.alert {
-    border-radius: 10px;
-    border: none;
-    border-left: 4px solid;
-}
-.alert-danger { border-left-color: #E74C3C; background: #FEF3F2; color: #721C24; }
-.alert-success { border-left-color: #27AE60; background: #D4EDDA; color: #0A3622; }
-@media (max-width: 600px) {
-    .avis-header h1 { font-size: 1.5rem; }
-    .avis-card { padding: 20px; }
-    .rating-star { font-size: 1.8rem; }
+.avis-page { padding: 40px 0 60px; background: #F8F9FA; }
+.container-custom { max-width: 1000px; margin: 0 auto; padding: 0 20px; }
+
+.avis-page-header { text-align: center; margin-bottom: 40px; background: white; padding: 30px 20px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.04); border: 1px solid rgba(200,146,42,0.08); }
+.avis-page-header h1 { font-family: 'Playfair Display', serif; font-size: 2.2rem; color: #0D0D0D; margin-bottom: 8px; }
+.avis-page-header p { color: #8A99AA; font-size: 0.95rem; }
+.avis-stats { display: flex; align-items: center; justify-content: center; gap: 25px; margin-top: 15px; flex-wrap: wrap; }
+.avis-stats .note { font-family: 'Playfair Display', serif; font-size: 2.5rem; font-weight: 700; color: #C8922A; line-height: 1; }
+.avis-stats .etoiles { color: #F1C40F; font-size: 1.3rem; }
+.avis-stats .count { color: #8A99AA; font-size: 0.9rem; }
+
+.avis-list { display: flex; flex-direction: column; gap: 20px; }
+
+.avis-item { background: white; border-radius: 16px; padding: 24px 28px; border: 1px solid #E8ECF0; transition: all 0.3s ease; }
+.avis-item:hover { border-color: rgba(200,146,42,0.3); box-shadow: 0 6px 20px rgba(0,0,0,0.04); }
+.avis-item .avis-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+.avis-item .avis-nom { font-weight: 600; color: #0D0D0D; font-size: 1rem; }
+.avis-item .avis-date { color: #8A99AA; font-size: 0.75rem; }
+.avis-item .avis-etoiles { color: #F1C40F; font-size: 0.95rem; margin-bottom: 6px; }
+.avis-item .avis-commentaire { color: #4A5568; font-size: 0.95rem; line-height: 1.6; margin-top: 4px; }
+.avis-item .avis-produit { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding-top: 14px; border-top: 1px solid #F0F2F5; }
+.avis-item .avis-produit img { width: 50px; height: 50px; object-fit: cover; border-radius: 8px; border: 1px solid #F0F2F5; }
+.avis-item .avis-produit span { font-size: 0.8rem; color: #8A99AA; }
+.avis-item .avis-produit strong { color: #1A1A1A; font-weight: 600; }
+.avis-item .avis-produit a { color: #C8922A; text-decoration: none; font-weight: 500; transition: color 0.2s; }
+.avis-item .avis-produit a:hover { color: #9A6E1A; text-decoration: underline; }
+
+/* Styles pour les réponses */
+.avis-reponses { margin-top: 15px; padding-left: 20px; border-left: 3px solid #C8922A; }
+.avis-reponse { background: #F8F9FA; border-radius: 12px; padding: 12px 16px; margin-bottom: 10px; }
+.avis-reponse .reponse-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; flex-wrap: wrap; }
+.avis-reponse .reponse-auteur { font-weight: 700; color: #C8922A; font-size: 0.85rem; }
+.avis-reponse .reponse-auteur.admin { background: rgba(200,146,42,0.1); padding: 2px 8px; border-radius: 12px; }
+.avis-reponse .reponse-date { font-size: 0.7rem; color: #8A99AA; }
+.avis-reponse .reponse-texte { font-size: 0.85rem; color: #333; line-height: 1.5; }
+
+/* Formulaire de réponse */
+.form-reponse { margin-top: 12px; padding: 10px; background: #F8F9FA; border-radius: 12px; display: none; }
+.form-reponse textarea { width: 100%; border: 1px solid #E8ECF0; border-radius: 8px; padding: 8px; font-family: inherit; font-size: 0.85rem; resize: vertical; min-height: 60px; }
+.form-reponse button { margin-top: 8px; background: #C8922A; color: white; border: none; padding: 8px 18px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+.btn-repondre { display: inline-block; margin-top: 10px; background: transparent; border: 1px solid #C8922A; color: #C8922A; padding: 5px 14px; border-radius: 20px; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; }
+.btn-repondre:hover { background: #C8922A; color: white; }
+
+/* Styles pour le bouton like */
+.avis-actions { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.btn-like { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 1px solid #E0E0E0; border-radius: 20px; padding: 5px 12px; font-size: 0.8rem; color: #666; cursor: pointer; transition: all 0.2s; }
+.btn-like:hover { border-color: #C8922A; color: #C8922A; }
+.btn-like.liked { background: rgba(231,76,60,0.1); border-color: #E74C3C; color: #E74C3C; }
+.btn-like i { font-size: 1rem; }
+.btn-like .like-count { font-weight: 600; }
+
+.empty-avis { text-align: center; padding: 50px 0; color: #8A99AA; }
+.empty-avis i { font-size: 3.5rem; display: block; margin-bottom: 15px; color: #D5D5D5; }
+.empty-avis p { font-size: 1.1rem; }
+.btn-retour { display: inline-flex; align-items: center; gap: 8px; background: #F0F2F5; color: #5A6B7A; padding: 10px 22px; border-radius: 8px; text-decoration: none; font-weight: 500; transition: all 0.3s; margin-top: 30px; }
+.btn-retour:hover { background: #E0E6ED; color: #333; }
+
+@media (max-width: 700px) {
+    .avis-page-header h1 { font-size: 1.6rem; }
+    .avis-stats { flex-direction: column; gap: 12px; }
+    .avis-item { padding: 18px 16px; }
 }
 </style>
 
-<!-- Header -->
-<div class="avis-header">
-    <div class="container-custom" style="padding-bottom:0;">
-        <h1>⭐ Avis sur "<?= htmlspecialchars($produit['nom']) ?>"</h1>
-        <p>Ce que nos clientes pensent de ce produit</p>
-    </div>
-</div>
+<div class="avis-page">
+    <div class="container-custom">
 
-<div class="container-custom">
-    <a href="produit.php?id=<?= $produit_id ?>" class="btn-retour">
-        <i class="bi bi-arrow-left"></i> Retour au produit
-    </a>
+        <!-- En-tête -->
+        <div class="avis-page-header">
+            <h1>⭐ Tous les avis clients</h1>
+            <p>Découvrez ce que nos clientes pensent de leurs achats</p>
+            <div class="avis-stats">
+                <span class="note"><?= number_format($note_moyenne_globale, 1) ?></span>
+                <span class="etoiles">
+                    <?php for($i=1; $i<=5; $i++): ?>
+                        <i class="bi bi-star<?= $i <= round($note_moyenne_globale) ? '-fill' : '' ?>"></i>
+                    <?php endfor; ?>
+                </span>
+                <span class="count">(<?= $total_avis ?> avis)</span>
+            </div>
+        </div>
 
-    <!-- Résumé des notes -->
-    <div class="avis-card">
-        <div class="row align-items-center">
-            <div class="col-md-4 text-center">
-                <div class="note-moyenne"><?= number_format($note_moyenne, 1) ?> / 5</div>
-                <div class="etoiles mt-2">
-                    <?php for($i = 1; $i <= 5; $i++): ?>
-                        <?php if($i <= round($note_moyenne)): ?>
-                            <i class="bi bi-star-fill"></i>
-                        <?php else: ?>
-                            <i class="bi bi-star"></i>
-                        <?php endif; ?>
+        <!-- Liste des avis -->
+        <?php if(!empty($avis_principaux)): ?>
+        <div class="avis-list">
+            <?php foreach($avis_principaux as $a): 
+                $initiale = strtoupper(mb_substr($a['nom_client'] ?? 'C', 0, 1));
+                $date_avis = date('d/m/Y', strtotime($a['created_at']));
+                $image_produit = '';
+                if(!empty($a['produit_image'])) {
+                    $image_produit = '../uploads/produits/' . $a['produit_image'];
+                    if(!file_exists($image_produit)) {
+                        $image_produit = '';
+                    }
+                }
+                if(empty($image_produit)) {
+                    $image_produit = 'https://placehold.co/60x60/F5F5F5/C8922A?text=P';
+                }
+                $reponses_avis = $reponses_par_parent[$a['id']] ?? [];
+                $nb_likes = $likes_map[$a['id']] ?? 0;
+                $has_liked = isset($user_likes[$a['id']]);
+            ?>
+            <div class="avis-item" id="avis-<?= $a['id'] ?>">
+                <div class="avis-header">
+                    <span class="avis-nom"><?= htmlspecialchars($a['nom_client'] ?? 'Anonyme') ?></span>
+                    <span class="avis-date"><i class="bi bi-calendar3"></i> <?= $date_avis ?></span>
+                </div>
+                <div class="avis-etoiles">
+                    <?php for($i=1; $i<=5; $i++): ?>
+                        <i class="bi bi-star<?= $i <= $a['note'] ? '-fill' : '' ?>"></i>
                     <?php endfor; ?>
                 </div>
-                <p class="text-muted mt-2" style="font-size:0.85rem;"><?= count($avis_liste) ?> avis</p>
-            </div>
-            <div class="col-md-8">
-                <p style="color:#4A5568; margin-bottom:0;">
-                    <i class="bi bi-chat-quote" style="color:#C8922A;"></i>
-                    Partagez votre expérience avec ce produit. Votre avis nous aide à nous améliorer et aide les autres clientes à faire leur choix.
-                </p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Formulaire d'avis -->
-    <?php if($client_id): ?>
-    <div class="avis-card form-card">
-        <h4 style="font-family:'Playfair Display',serif; color:#0D0D0D; margin-bottom:20px;">
-            ✍️ Donnez votre avis
-        </h4>
-        
-        <?php if($error): ?>
-            <div class="alert alert-danger">
-                <i class="bi bi-exclamation-triangle-fill"></i> <?= htmlspecialchars($error) ?>
-            </div>
-        <?php endif; ?>
-        <?php if($success): ?>
-            <div class="alert alert-success">
-                <i class="bi bi-check-circle-fill"></i> <?= htmlspecialchars($success) ?>
-            </div>
-        <?php endif; ?>
-        
-        <form method="POST">
-            <div class="mb-3">
-                <label class="form-label">Votre note *</label>
-                <div class="rating-input" id="ratingStars">
-                    <i class="bi bi-star rating-star" data-note="1"></i>
-                    <i class="bi bi-star rating-star" data-note="2"></i>
-                    <i class="bi bi-star rating-star" data-note="3"></i>
-                    <i class="bi bi-star rating-star" data-note="4"></i>
-                    <i class="bi bi-star rating-star" data-note="5"></i>
+                <?php if(!empty($a['commentaire'])): ?>
+                    <div class="avis-commentaire">"<?= nl2br(htmlspecialchars($a['commentaire'])) ?>"</div>
+                <?php endif; ?>
+                <?php if(!empty($a['recommandation']) && $a['recommandation'] == 1): ?>
+                    <div class="avis-recommandation">👍 Je recommande</div>
+                <?php endif; ?>
+                <div class="avis-produit">
+                    <img src="<?= htmlspecialchars($image_produit) ?>" alt="<?= htmlspecialchars($a['produit_nom'] ?? 'Produit') ?>">
+                    <span>
+                        Sur <a href="produit.php?id=<?= $a['produit_id'] ?>">
+                            <strong><?= htmlspecialchars($a['produit_nom'] ?? 'un produit') ?></strong>
+                        </a>
+                    </span>
                 </div>
-                <input type="hidden" name="note" id="note" required>
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Votre commentaire *</label>
-                <textarea name="commentaire" class="form-control" rows="4" placeholder="Partagez votre expérience avec ce produit..." required></textarea>
-            </div>
-            <button type="submit" class="btn-envoyer">
-                <i class="bi bi-send"></i> Envoyer mon avis
-            </button>
-        </form>
-    </div>
-    <?php else: ?>
-    <div class="avis-card text-center" style="padding:40px;">
-        <i class="bi bi-person-circle" style="font-size:3.5rem; color:#E0E6ED;"></i>
-        <h4 style="margin-top:15px; color:#0D0D0D;">Connectez-vous pour laisser un avis</h4>
-        <p style="color:#8A99AA; margin-bottom:20px;">
-            Seuls les clients ayant acheté ce produit peuvent laisser un avis.
-        </p>
-        <a href="../client/connexion.php?redirect=avis.php?id=<?= $produit_id ?>" class="btn-connexion">
-            <i class="bi bi-box-arrow-in-right"></i> Se connecter
-        </a>
-    </div>
-    <?php endif; ?>
 
-    <!-- Liste des avis -->
-    <?php if(!empty($avis_liste)): ?>
-    <div class="avis-card">
-        <h4 style="font-family:'Playfair Display',serif; color:#0D0D0D; margin-bottom:20px;">
-            📝 Avis des clientes
-        </h4>
-        <?php foreach($avis_liste as $a): ?>
-        <div class="avis-item">
-            <div class="avis-header-info">
-                <div>
-                    <span class="avis-nom"><?= htmlspecialchars($a['nom_client']) ?></span>
-                    <div class="etoiles" style="font-size:0.9rem;">
-                        <?php for($i = 1; $i <= 5; $i++): ?>
-                            <?php if($i <= $a['note']): ?>
-                                <i class="bi bi-star-fill text-warning"></i>
-                            <?php else: ?>
-                                <i class="bi bi-star text-muted"></i>
-                            <?php endif; ?>
-                        <?php endfor; ?>
+                <!-- Actions : Répondre + Like -->
+                <div class="avis-actions">
+                    <button class="btn-like <?= $has_liked ? 'liked' : '' ?>" 
+                            onclick="toggleLike(<?= $a['id'] ?>, this)"
+                            data-avis-id="<?= $a['id'] ?>">
+                        <i class="bi <?= $has_liked ? 'bi-heart-fill' : 'bi-heart' ?>"></i>
+                        <span class="like-count"><?= $nb_likes ?></span>
+                    </button>
+
+                    <?php if (isset($_SESSION['client_id']) || isset($_SESSION['admin_id'])): ?>
+                        <button class="btn-repondre" onclick="toggleFormReponse(<?= $a['id'] ?>)">
+                            <i class="bi bi-chat-left-text"></i> Répondre
+                        </button>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Formulaire de réponse -->
+                <div class="form-reponse" id="form-reponse-<?= $a['id'] ?>">
+                    <form method="POST">
+                        <input type="hidden" name="action_repondre" value="1">
+                        <input type="hidden" name="parent_id" value="<?= $a['id'] ?>">
+                        <textarea name="commentaire" placeholder="Votre réponse..." required></textarea>
+                        <button type="submit"><i class="bi bi-send"></i> Envoyer</button>
+                    </form>
+                </div>
+
+                <!-- Affichage des réponses -->
+                <?php if (!empty($reponses_avis)): ?>
+                <div class="avis-reponses">
+                    <?php foreach ($reponses_avis as $r): 
+                        $date_reponse = date('d/m/Y', strtotime($r['created_at']));
+                        $auteur = $r['nom_client'] ?? 'Anonyme';
+                        $is_admin = ($r['auteur_type'] ?? '') == 'admin';
+                        $nb_likes_r = $likes_map[$r['id']] ?? 0;
+                        $has_liked_r = isset($user_likes[$r['id']]);
+                    ?>
+                    <div class="avis-reponse" id="reponse-<?= $r['id'] ?>">
+                        <div class="reponse-header">
+                            <span class="reponse-auteur <?= $is_admin ? 'admin' : '' ?>">
+                                <i class="bi <?= $is_admin ? 'bi-shield-check' : 'bi-person' ?>"></i>
+                                <?= htmlspecialchars($auteur) ?>
+                                <?php if ($is_admin): ?><span style="font-size:0.6rem;color:#C8922A;"> (Admin)</span><?php endif; ?>
+                            </span>
+                            <span class="reponse-date"><?= $date_reponse ?></span>
+                        </div>
+                        <div class="reponse-texte"><?= nl2br(htmlspecialchars($r['commentaire'])) ?></div>
+                        
+                        <!-- Like sur réponse -->
+                        <div class="avis-actions" style="margin-top:6px;">
+                            <button class="btn-like <?= $has_liked_r ? 'liked' : '' ?>" 
+                                    onclick="toggleLike(<?= $r['id'] ?>, this)"
+                                    data-avis-id="<?= $r['id'] ?>">
+                                <i class="bi <?= $has_liked_r ? 'bi-heart-fill' : 'bi-heart' ?>"></i>
+                                <span class="like-count"><?= $nb_likes_r ?></span>
+                            </button>
+                        </div>
                     </div>
+                    <?php endforeach; ?>
                 </div>
-                <span class="avis-date"><i class="bi bi-calendar3"></i> <?= date('d/m/Y', strtotime($a['created_at'])) ?></span>
+                <?php endif; ?>
             </div>
-            <div class="avis-commentaire"><?= nl2br(htmlspecialchars($a['commentaire'])) ?></div>
+            <?php endforeach; ?>
         </div>
-        <?php endforeach; ?>
+        <?php else: ?>
+        <div class="empty-avis">
+            <i class="bi bi-chat-dots"></i>
+            <p>Aucun avis client pour le moment.</p>
+            <p style="font-size:0.85rem;color:#bbb;">Soyez le premier à donner votre avis !</p>
+        </div>
+        <?php endif; ?>
+
+        <!-- Lien retour -->
+        <div style="text-align:center;">
+            <a href="../index.php" class="btn-retour">
+                <i class="bi bi-house"></i> Retour à l'accueil
+            </a>
+        </div>
+
     </div>
-    <?php endif; ?>
 </div>
 
 <script>
-// Gestion des étoiles pour la note
-const stars = document.querySelectorAll('.rating-star');
-const noteInput = document.getElementById('note');
-
-stars.forEach(star => {
-    star.addEventListener('click', function() {
-        const note = parseInt(this.dataset.note);
-        noteInput.value = note;
+// Toggle like AJAX
+function toggleLike(avisId, button) {
+    const btn = button;
+    const icon = btn.querySelector('i');
+    const countSpan = btn.querySelector('.like-count');
+    
+    btn.style.pointerEvents = 'none';
+    btn.style.opacity = '0.6';
+    
+    const formData = new FormData();
+    formData.append('action_like', '1');
+    formData.append('avis_id', avisId);
+    
+    fetch(window.location.href, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        btn.style.pointerEvents = 'auto';
+        btn.style.opacity = '1';
         
-        stars.forEach(s => {
-            const sNote = parseInt(s.dataset.note);
-            if(sNote <= note) {
-                s.classList.remove('bi-star');
-                s.classList.add('bi-star-fill');
-                s.classList.add('selected');
+        if (data.success) {
+            countSpan.textContent = data.count;
+            if (data.liked) {
+                btn.classList.add('liked');
+                icon.className = 'bi bi-heart-fill';
             } else {
-                s.classList.remove('bi-star-fill');
-                s.classList.add('bi-star');
-                s.classList.remove('selected');
+                btn.classList.remove('liked');
+                icon.className = 'bi bi-heart';
             }
-        });
+        } else {
+            alert(data.message || 'Erreur');
+        }
+    })
+    .catch(error => {
+        btn.style.pointerEvents = 'auto';
+        btn.style.opacity = '1';
+        console.error('Erreur:', error);
     });
-    
-    // Effet hover
-    star.addEventListener('mouseenter', function() {
-        const note = parseInt(this.dataset.note);
-        stars.forEach(s => {
-            const sNote = parseInt(s.dataset.note);
-            if(sNote <= note) {
-                s.classList.add('bi-star-fill');
-                s.classList.remove('bi-star');
-            } else {
-                s.classList.remove('bi-star-fill');
-                s.classList.add('bi-star');
+}
+
+// Toggle formulaire réponse
+function toggleFormReponse(avisId) {
+    const form = document.getElementById('form-reponse-' + avisId);
+    if (form) {
+        form.style.display = (form.style.display === 'none' || form.style.display === '') ? 'block' : 'none';
+    }
+}
+
+// Scroll si réponse envoyée
+document.addEventListener('DOMContentLoaded', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('success') === '1') {
+        const hash = window.location.hash;
+        if (hash) {
+            const element = document.querySelector(hash);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth' });
             }
-        });
-    });
-    
-    star.addEventListener('mouseleave', function() {
-        const selected = parseInt(noteInput.value) || 0;
-        stars.forEach(s => {
-            const sNote = parseInt(s.dataset.note);
-            if(sNote <= selected) {
-                s.classList.add('bi-star-fill');
-                s.classList.remove('bi-star');
-            } else {
-                s.classList.remove('bi-star-fill');
-                s.classList.add('bi-star');
-            }
-        });
-    });
+        }
+    }
 });
 </script>
 

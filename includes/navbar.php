@@ -120,6 +120,9 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
 <?php endif; ?>
 
 <style>
+/* ============================================
+   BASE — DESIGN "APP MOBILE" APPLIQUÉ SUR TOUS LES ÉCRANS
+   ============================================ */
 .site-header {
     position: sticky;
     top: 0;
@@ -131,12 +134,12 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
 .nav-container {
     max-width: 1400px;
     margin: 0 auto;
-    padding: 0 40px;
+    padding: 0 20px;
     height: 75px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 15px;
+    gap: 12px;
 }
 .nav-logo {
     flex-shrink: 0;
@@ -150,8 +153,8 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
     gap: 12px;
 }
 .logo-circle {
-    width: 48px;
-    height: 48px;
+    width: 42px;
+    height: 42px;
     flex-shrink: 0;
     filter: drop-shadow(0 0 10px rgba(200,146,42,0.4));
     transition: all 0.3s ease;
@@ -167,9 +170,9 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
 }
 .logo-title-premium {
     font-family: 'Playfair Display', serif;
-    font-size: 0.95rem;
+    font-size: 0.8rem;
     font-weight: 800;
-    letter-spacing: 3px;
+    letter-spacing: 2px;
     background: linear-gradient(135deg, #C8922A, #F5D78C, #C8922A);
     -webkit-background-clip: text;
     background-clip: text;
@@ -179,14 +182,16 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
 }
 .logo-slogan-premium {
     font-family: 'Jost', sans-serif;
-    font-size: 0.48rem;
-    letter-spacing: 2px;
+    font-size: 0.42rem;
+    letter-spacing: 1.5px;
     color: rgba(255,255,255,0.3);
     text-transform: uppercase;
     margin-top: 3px;
 }
+
+/* Menu desktop classique — remplacé partout par le burger + barre du bas */
 .nav-menu {
-    display: flex;
+    display: none;
     align-items: center;
     gap: 2px;
     list-style: none;
@@ -194,6 +199,38 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
     padding: 0;
     flex: 1;
     justify-content: center;
+}
+.nav-menu.open {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    top: 75px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    background: #141414;
+    padding: 10px;
+    border-radius: 12px;
+    border: 1px solid rgba(200,146,42,0.2);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+    gap: 2px;
+    z-index: 10002;
+}
+.nav-menu.open .nav-link {
+    width: 100%;
+    justify-content: flex-start;
+    padding: 10px 14px;
+    border-radius: 8px;
+}
+.nav-menu.open .nav-dropdown {
+    position: static;
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    background: transparent;
+    padding-left: 20px;
+    box-shadow: none;
+    border: none;
 }
 .nav-link {
     font-family: 'Jost', sans-serif;
@@ -236,11 +273,6 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
     z-index: 1000;
     box-shadow: 0 20px 50px rgba(0,0,0,0.6);
 }
-.has-dropdown:hover .nav-dropdown {
-    opacity: 1;
-    visibility: visible;
-    transform: translateY(0);
-}
 .nav-dropdown a {
     display: flex;
     align-items: center;
@@ -258,62 +290,180 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
     color: #C8922A;
 }
 .nav-dropdown a i { color: #C8922A; width: 18px; }
+
 .nav-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     flex-shrink: 0;
 }
-.nav-search {
+
+/* ===== ICÔNES RONDES (recherche / panier / messagerie) — toujours actives ===== */
+.mobile-only-icon {
     display: flex;
     align-items: center;
-    gap: 6px;
-    background: rgba(255,255,255,0.05);
+    justify-content: center;
+    position: relative;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.06);
     border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 30px;
-    padding: 0 14px;
-    height: 36px;
+    color: rgba(255,255,255,0.75);
+    text-decoration: none;
+    font-size: 1.05rem;
     transition: all 0.3s;
+    flex-shrink: 0;
+    cursor: pointer;
 }
-.nav-search:focus-within {
-    border-color: #C8922A;
-    box-shadow: 0 0 0 3px rgba(200,146,42,0.12);
-    background: rgba(200,146,42,0.06);
+.mobile-only-icon:hover { color: #C8922A; border-color: rgba(200,146,42,0.4); }
+.mobile-only-icon .nav-badge { top: -4px; right: -4px; }
+
+/* ===== RECHERCHE — overlay plein écran, toujours ce comportement ===== */
+.nav-search {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 60px;
+    background: #0D0D0D;
+    border: none;
+    border-bottom: 1px solid rgba(200,146,42,0.3);
+    border-radius: 0;
+    padding: 0 16px;
+    z-index: 10001;
+    transform: translateY(-100%);
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s ease;
 }
-.nav-search i { color: rgba(255,255,255,0.35); font-size: 0.8rem; }
-.nav-search:focus-within i { color: #C8922A; }
+.nav-search.active {
+    transform: translateY(0);
+    opacity: 1;
+    pointer-events: auto;
+}
+.nav-search i { color: rgba(255,255,255,0.35); font-size: 0.9rem; flex-shrink: 0; }
 .nav-search input {
     background: transparent;
     border: none;
     outline: none;
     color: #fff;
-    font-size: 0.78rem;
-    width: 120px;
+    font-size: 0.85rem;
+    width: 100%;
     font-family: 'Jost', sans-serif;
 }
 .nav-search input::placeholder { color: rgba(255,255,255,0.25); }
+.nav-search-close {
+    display: block;
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.5);
+    font-size: 1.3rem;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.search-results {
+    position: absolute;
+    top: 60px;
+    left: 0; right: 0;
+    width: 100%;
+    max-height: calc(100vh - 60px);
+    overflow-y: auto;
+    background: #141414;
+    border: none;
+    border-radius: 0 0 12px 12px;
+    padding: 10px;
+    display: none;
+    z-index: 10000;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+}
+.search-results.active { display: block; }
+.search-category {
+    font-family: 'Jost', sans-serif;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #C8922A;
+    padding: 8px 10px 4px;
+    border-bottom: 1px solid rgba(200,146,42,0.2);
+    margin-bottom: 4px;
+}
+.search-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px;
+    border-radius: 8px;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+.search-item:hover { background: rgba(200,146,42,0.1); }
+.search-item img {
+    width: 45px; height: 45px;
+    border-radius: 8px;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+.search-icon {
+    width: 40px; height: 40px;
+    border-radius: 8px;
+    background: rgba(200,146,42,0.15);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.search-icon i { color: #C8922A; font-size: 1.2rem; }
+.search-item-name {
+    font-family: 'Jost', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 2px;
+}
+.search-item-price {
+    font-family: 'Jost', sans-serif;
+    font-size: 0.75rem;
+    color: #C8922A;
+}
+.search-empty, .search-error {
+    text-align: center;
+    padding: 20px;
+    color: rgba(255,255,255,0.5);
+    font-family: 'Jost', sans-serif;
+    font-size: 0.85rem;
+}
+.search-loading {
+    text-align: center;
+    padding: 20px;
+    color: rgba(255,255,255,0.3);
+    font-size: 0.85rem;
+}
+
+/* ===== PANIER — icône ronde toujours ===== */
 .nav-panier {
     position: relative;
     display: flex;
     align-items: center;
-    gap: 6px;
-    color: rgba(255,255,255,0.6);
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border-radius: 50%;
+    color: rgba(255,255,255,0.75);
     text-decoration: none;
-    padding: 0 14px;
-    height: 36px;
     border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 30px;
-    font-size: 0.78rem;
-    font-weight: 500;
+    background: rgba(255,255,255,0.06);
     transition: all 0.3s;
-    font-family: 'Jost', sans-serif;
+    flex-shrink: 0;
 }
 .nav-panier:hover {
     color: #C8922A;
     border-color: rgba(200,146,42,0.4);
     background: rgba(200,146,42,0.08);
 }
-.nav-panier-text { font-size: 0.7rem; }
+.nav-panier-text { display: none; }
 .nav-badge {
     position: absolute;
     top: -5px; right: -5px;
@@ -328,120 +478,95 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
     justify-content: center;
     border: 2px solid #0D0D0D;
 }
-.nav-connexion {
+
+/* Compte / connexion desktop classique : géré désormais par la barre du bas */
+.nav-connexion { display: none !important; }
+
+/* Burger — toujours visible, donne accès aux liens secondaires (Restaurant, Vidéos...) */
+.nav-burger {
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-family: 'Jost', sans-serif;
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    padding: 0 18px;
-    height: 36px;
-    border-radius: 30px;
-    text-decoration: none;
-    transition: all 0.3s;
-    white-space: nowrap;
-}
-.nav-connexion.normal {
-    background: linear-gradient(135deg, #C8922A, #E8B55A);
-    color: #0D0D0D !important;
-    box-shadow: 0 4px 14px rgba(200,146,42,0.25);
-}
-.nav-connexion.normal:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 22px rgba(200,146,42,0.4);
-    color: #fff !important;
-}
-.nav-connexion.normal i { font-size: 0.9rem; }
-.nav-connexion.admin {
-    background: rgba(200,146,42,0.12);
-    border: 1.5px solid rgba(200,146,42,0.4);
-    color: #C8922A !important;
-}
-.nav-connexion.admin:hover {
-    background: rgba(200,146,42,0.2);
-    border-color: #C8922A;
-    transform: translateY(-2px);
-    box-shadow: 0 8px 22px rgba(200,146,42,0.15);
-    color: #C8922A !important;
-}
-.nav-connexion.admin .admin-badge {
-    background: #C8922A;
-    color: #0D0D0D;
-    font-size: 0.5rem;
-    font-weight: 700;
-    padding: 1px 8px;
-    border-radius: 20px;
-    margin-left: 2px;
-    text-transform: uppercase;
-}
-.nav-connexion.admin i { 
-    font-size: 0.9rem;
-    color: #C8922A;
-}
-.nav-burger {
-    display: none;
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.15);
-    color: rgba(255,255,255,0.7);
-    font-size: 1.2rem;
-    padding: 6px 10px;
-    border-radius: 8px;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.75);
+    font-size: 1.15rem;
+    border-radius: 50%;
     cursor: pointer;
     transition: all 0.2s;
+    flex-shrink: 0;
 }
 .nav-burger:hover { border-color: #C8922A; color: #C8922A; }
-@media (max-width: 1100px) {
-    .nav-search input { width: 80px; }
-    .nav-container { padding: 0 20px; }
-    .logo-title-premium { font-size: 0.8rem; }
-    .logo-circle { width: 40px; height: 40px; }
+
+/* ===== BARRE DE NAVIGATION DU BAS — toujours affichée ===== */
+body { padding-bottom: 68px; }
+
+.bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 9999;
+    justify-content: center;
+    align-items: center;
+    background: #0D0D0D;
+    border-top: 1px solid rgba(200,146,42,0.25);
+    box-shadow: 0 -4px 25px rgba(0,0,0,0.35);
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
 }
-@media (max-width: 900px) {
-    .nav-menu { display: none; }
-    .nav-burger { display: block; }
-    .nav-container { flex-wrap: wrap; height: auto; padding: 10px 16px; }
-    .nav-actions { flex-wrap: wrap; justify-content: flex-end; }
-    .nav-menu.open {
-        display: flex;
-        flex-direction: column;
-        width: 100%;
-        background: #141414;
-        padding: 10px;
-        border-radius: 12px;
-        margin-top: 8px;
-        border: 1px solid rgba(200,146,42,0.2);
-        gap: 2px;
-    }
-    .nav-menu.open .nav-link {
-        width: 100%;
-        justify-content: flex-start;
-        padding: 10px 14px;
-        border-radius: 8px;
-    }
-    .nav-menu.open .nav-dropdown {
-        position: static;
-        opacity: 1;
-        visibility: visible;
-        transform: none;
-        background: transparent;
-        padding-left: 20px;
-        box-shadow: none;
-        border: none;
-    }
-    .nav-panier-text { display: none; }
-    .nav-connexion.admin .admin-badge { display: none; }
+.bottom-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    text-decoration: none;
+    color: rgba(255,255,255,0.45);
+    font-family: 'Jost', sans-serif;
+    font-size: 0.62rem;
+    font-weight: 500;
+    flex: 0 1 110px;
+    padding: 4px 8px;
+    position: relative;
+    transition: color 0.3s;
 }
+.bottom-nav-item i { font-size: 1.25rem; transition: transform 0.3s; }
+.bottom-nav-item.active { color: #C8922A; }
+.bottom-nav-item.active i { transform: translateY(-2px); }
+.bottom-nav-item .bn-badge {
+    position: absolute;
+    top: -2px; right: 22%;
+    background: linear-gradient(135deg, #C8922A, #E8B55A);
+    color: #0D0D0D;
+    font-size: 0.5rem;
+    font-weight: 800;
+    min-width: 15px; height: 15px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid #0D0D0D;
+}
+
+/* Header transparent au-dessus d'une bannière (catalogue, accueil...) */
+body.has-hero .site-header {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    background: transparent;
+    border-bottom-color: transparent;
+    box-shadow: none;
+    transition: background 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+}
+body.has-hero .site-header.scrolled {
+    background: #0D0D0D;
+    border-bottom-color: rgba(200,146,42,0.3);
+    box-shadow: 0 4px 30px rgba(0,0,0,0.4);
+}
+
 @media (max-width: 600px) {
-    .nav-search { flex: 1; }
-    .nav-search input { width: 100%; }
-    .nav-connexion span { display: none; }
-    .nav-connexion { padding: 0 12px; }
-    .logo-title-premium { font-size: 0.7rem; letter-spacing: 1px; }
+    .logo-title-premium { font-size: 0.68rem; letter-spacing: 1px; }
     .logo-slogan-premium { display: none; }
-    .logo-circle { width: 35px; height: 35px; }
-    .nav-container { padding: 8px 12px; }
+    .logo-circle { width: 34px; height: 34px; }
+    .nav-container { padding: 0 12px; gap: 8px; }
+    .bottom-nav-item span { font-size: 0.58rem; }
 }
 </style>
 
@@ -525,17 +650,28 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
         </ul>
 
         <div class="nav-actions">
-            <form class="nav-search" action="<?= SITE_URL ?>/boutique/catalogue.php" method="GET">
+
+            <button type="button" class="mobile-only-icon" id="mobileSearchToggle" title="Rechercher">
                 <i class="bi bi-search"></i>
-                <input type="search" name="q" placeholder="Rechercher..." value="<?= isset($_GET['q']) ? htmlspecialchars($_GET['q']) : '' ?>">
-            </form>
+            </button>
+
+            <div class="nav-search" id="globalSearch">
+                <i class="bi bi-search"></i>
+                <input type="search" id="searchInput" placeholder="Rechercher..." autocomplete="off">
+                <button type="button" class="nav-search-close" id="mobileSearchClose"><i class="bi bi-x-lg"></i></button>
+                <div class="search-results" id="searchResults"></div>
+            </div>
 
             <a href="<?= SITE_URL ?>/boutique/panier.php" class="nav-panier">
                 <i class="bi bi-cart3"></i>
-                <span class="nav-panier-text">Panier</span>
                 <?php if($nb_panier > 0): ?>
                     <span class="nav-badge"><?= $nb_panier ?></span>
                 <?php endif; ?>
+            </a>
+
+            <a href="<?= SITE_URL ?>/client/messagerie.php" class="mobile-only-icon" title="Messagerie">
+                <i class="bi bi-chat-dots"></i>
+                <!-- Badge messages non lus : à brancher quand la messagerie sera créée -->
             </a>
 
             <?php if($est_admin_connecte): ?>
@@ -562,7 +698,47 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
     </div>
 </header>
 
+<!-- ===== BARRE DE NAVIGATION DU BAS ===== -->
+<nav class="bottom-nav" id="bottomNav">
+    <a href="<?= SITE_URL ?>" class="bottom-nav-item <?= $page_actuelle == 'index.php' ? 'active' : '' ?>">
+        <i class="bi bi-house-door<?= $page_actuelle == 'index.php' ? '-fill' : '' ?>"></i>
+        <span>Accueil</span>
+    </a>
+    <a href="<?= SITE_URL ?>/boutique/catalogue.php" class="bottom-nav-item <?= $page_actuelle == 'catalogue.php' ? 'active' : '' ?>">
+        <i class="bi bi-grid<?= $page_actuelle == 'catalogue.php' ? '-fill' : '' ?>"></i>
+        <span>Catégories</span>
+    </a>
+    <a href="<?= SITE_URL ?>/boutique/suivi.php" class="bottom-nav-item <?= $page_actuelle == 'suivi.php' ? 'active' : '' ?>">
+        <i class="bi bi-truck"></i>
+        <span>Suivi</span>
+    </a>
+    <?php if($est_admin_connecte): ?>
+        <a href="<?= SITE_URL ?>/admin/dashboard.php" class="bottom-nav-item <?= $page_actuelle == 'dashboard.php' ? 'active' : '' ?>">
+            <i class="bi bi-person-circle"></i>
+            <span>Compte</span>
+        </a>
+    <?php elseif(isset($_SESSION['client_id'])): ?>
+        <a href="<?= SITE_URL ?>/client/mon_compte.php" class="bottom-nav-item <?= $page_actuelle == 'mon_compte.php' ? 'active' : '' ?>">
+            <i class="bi bi-person-check"></i>
+            <span>Compte</span>
+        </a>
+    <?php else: ?>
+        <a href="<?= SITE_URL ?>/client/connexion.php" class="bottom-nav-item <?= $page_actuelle == 'connexion.php' ? 'active' : '' ?>">
+            <i class="bi bi-person"></i>
+            <span>Compte</span>
+        </a>
+    <?php endif; ?>
+    <a href="<?= SITE_URL ?>/client/messagerie.php" class="bottom-nav-item <?= $page_actuelle == 'messagerie.php' ? 'active' : '' ?>">
+        <i class="bi bi-chat-dots"></i>
+        <span>Messages</span>
+        <!-- Badge messages non lus : à brancher quand la messagerie sera créée -->
+    </a>
+</nav>
+
 <script>
+// ============================================
+// NAVBAR BURGER
+// ============================================
 const burgerBtn = document.getElementById('burgerBtn');
 const navMenu   = document.getElementById('navMenu');
 
@@ -574,5 +750,187 @@ document.addEventListener('click', (e) => {
     if (!e.target.closest('.site-header') && navMenu?.classList.contains('open')) {
         navMenu.classList.remove('open');
     }
+});
+
+// ============================================
+// RECHERCHE GLOBALE AJAX - UNIVERSEL & RAPIDE
+// ============================================
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('searchInput');
+    const searchResults = document.getElementById('searchResults');
+    
+    if (!searchInput || !searchResults) return;
+    
+    let debounceTimer = null;
+    
+    searchResults.style.display = 'none';
+    
+    searchInput.addEventListener('input', function() {
+        clearTimeout(debounceTimer);
+        const query = this.value.trim();
+        
+        if (query.length < 1) {
+            searchResults.style.display = 'none';
+            searchResults.innerHTML = '';
+            return;
+        }
+        
+        searchResults.style.display = 'block';
+        searchResults.innerHTML = '<div class="search-loading">Recherche...</div>';
+        
+        debounceTimer = setTimeout(() => {
+            const baseUrl = window.location.origin + '/awakasugu';
+            const url = baseUrl + '/recherche.php?q=' + encodeURIComponent(query);
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    afficherResultats(data);
+                })
+                .catch(error => {
+                    console.error('Erreur recherche:', error);
+                    searchResults.innerHTML = '<div class="search-error">Erreur de recherche</div>';
+                });
+        }, 150);
+    });
+    
+    function afficherResultats(data) {
+        if (data.erreur) {
+            searchResults.innerHTML = '<div class="search-error">Erreur de recherche</div>';
+            return;
+        }
+        
+        const produits = data.produits || [];
+        const plats = data.plats || [];
+        const pages = data.pages || [];
+        const categories = data.categories || [];
+        
+        const total = produits.length + plats.length + pages.length + categories.length;
+        
+        if (total === 0) {
+            searchResults.innerHTML = '<div class="search-empty">Aucun résultat trouvé</div>';
+            return;
+        }
+        
+        let html = '';
+        
+        if (pages.length > 0) {
+            html += '<div class="search-category">📄 Pages</div>';
+            pages.forEach(page => {
+                html += `
+                    <a href="/awakasugu/${page.url}" class="search-item">
+                        <div class="search-icon"><i class="bi ${page.icone}"></i></div>
+                        <div>
+                            <div class="search-item-name">${page.titre}</div>
+                            <div class="search-item-price">Cliquez pour ouvrir</div>
+                        </div>
+                    </a>
+                `;
+            });
+        }
+        
+        if (categories.length > 0) {
+            html += '<div class="search-category">📂 Catégories</div>';
+            categories.forEach(cat => {
+                html += `
+                    <a href="/awakasugu/boutique/catalogue.php?categorie=${cat.id}" class="search-item">
+                        <div>
+                            <div class="search-item-name">${cat.nom}</div>
+                            <div class="search-item-price">Catégorie</div>
+                        </div>
+                    </a>
+                `;
+            });
+        }
+        
+        if (produits.length > 0) {
+            html += '<div class="search-category">🛍️ Produits</div>';
+            produits.forEach(p => {
+                const img = p.image_principale ? '/awakasugu/' + p.image_principale : 'https://placehold.co/50x50/C8922A/FFF?text=P';
+                const prix = p.prix_promo && p.prix_promo > 0 && p.prix_promo < p.prix 
+                    ? p.prix_promo 
+                    : p.prix;
+                
+                html += `
+                    <a href="/awakasugu/boutique/produit.php?id=${p.id}" class="search-item">
+                        <img src="${img}" alt="${p.nom}" onerror="this.src='https://placehold.co/50x50/F0F0F0/999?text=P'">
+                        <div>
+                            <div class="search-item-name">${p.nom}</div>
+                            <div class="search-item-price">${Number(prix).toLocaleString('fr-FR')} FCFA</div>
+                        </div>
+                    </a>
+                `;
+            });
+        }
+        
+        if (plats.length > 0) {
+            html += '<div class="search-category">🍽️ Restaurant Sofia</div>';
+            plats.forEach(plat => {
+                html += `
+                    <a href="/awakasugu/restaurant/menu.php#plat-${plat.id}" class="search-item">
+                        <div>
+                            <div class="search-item-name">${plat.nom}</div>
+                            <div class="search-item-price">${Number(plat.prix).toLocaleString('fr-FR')} FCFA</div>
+                        </div>
+                    </a>
+                `;
+            });
+        }
+        
+        searchResults.innerHTML = html;
+        searchResults.style.display = 'block';
+    }
+    
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('#globalSearch')) {
+            searchResults.style.display = 'none';
+        }
+    });
+    
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            searchResults.style.display = 'none';
+            searchInput.blur();
+        }
+    });
+});
+
+// ============================================
+// RECHERCHE EN OVERLAY (toujours actif)
+// ============================================
+const mobileSearchToggle = document.getElementById('mobileSearchToggle');
+const mobileSearchClose  = document.getElementById('mobileSearchClose');
+const navSearchBox       = document.getElementById('globalSearch');
+
+mobileSearchToggle?.addEventListener('click', () => {
+    navSearchBox?.classList.add('active');
+    document.getElementById('searchInput')?.focus();
+});
+mobileSearchClose?.addEventListener('click', () => {
+    navSearchBox?.classList.remove('active');
+    document.getElementById('searchResults')?.classList.remove('active');
+    document.getElementById('searchResults').style.display = 'none';
+});
+
+// ============================================
+// HEADER TRANSPARENT AU-DESSUS D'UNE BANNIÈRE
+// ============================================
+document.addEventListener('DOMContentLoaded', () => {
+    if (document.querySelector('.banner-vitrine')) {
+        document.body.classList.add('has-hero');
+    }
+    const siteHeader = document.getElementById('siteHeader');
+    function updateHeaderOnScroll() {
+        if (!siteHeader) return;
+        const banniere = document.querySelector('.banner-vitrine');
+        const seuil = banniere ? Math.max(banniere.offsetHeight - 90, 60) : 60;
+        if (window.scrollY > seuil) {
+            siteHeader.classList.add('scrolled');
+        } else {
+            siteHeader.classList.remove('scrolled');
+        }
+    }
+    window.addEventListener('scroll', updateHeaderOnScroll);
+    updateHeaderOnScroll();
 });
 </script>

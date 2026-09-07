@@ -2,6 +2,8 @@
 // ============================================
 // CONNEXION CLIENT - Awa Ka Sugu
 // ============================================
+// Version sécurisée avec blocage après 3 tentatives
+// ============================================
 
 // ============================================
 // SESSION PUBLIQUE SÉPARÉE
@@ -15,12 +17,13 @@ session_start();
 require_once '../includes/maintenance_check.php';
 
 // ============================================
-// INCLURE LES FONCTIONS DU PANIER
+// INCLURE LES FONCTIONS
 // ============================================
 require_once '../includes/panier_fonctions.php';
+require_once '../includes/functions_securite.php';
 
 // Si déjà connecté en tant que client, rediriger
-if (isset($_SESSION['client_id'])) {
+if (isset($_SESSION['client_id']) && isset($_SESSION['client_logged_in']) && $_SESSION['client_logged_in'] === true) {
     header('Location: mon_compte.php');
     exit;
 }
@@ -33,32 +36,80 @@ $pass = '';
 try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $user, $pass);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 } catch(PDOException $e) {
-    die("Erreur : " . $e->getMessage());
+    die("Erreur de connexion à la base de données.");
 }
 
-$error = '';
+// ============================================
+// NETTOYAGE AUTOMATIQUE
+// ============================================
+nettoyer_tentatives_anciennes($pdo);
+nettoyer_blocages_expires($pdo);
 
-// Traitement du formulaire
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+// ============================================
+// VÉRIFICATION DU BLOCAGE
+// ============================================
+$ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+$email = '';
+$error = '';
+$formulaire_bloque = false;
+$message_blocage = '';
+
+// Vérifier si l'IP est bloquée
+if (is_ip_bloquee($pdo, $ip)) {
+    $formulaire_bloque = true;
+    $message_blocage = '⛔ Votre adresse IP a été bloquée pour 15 minutes suite à trop de tentatives échouées.';
+}
+
+// ============================================
+// TRAITEMENT DU FORMULAIRE
+// ============================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$formulaire_bloque) {
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
     
     if (empty($email) || empty($password)) {
         $error = 'Veuillez remplir tous les champs.';
     } else {
-        $stmt = $pdo->prepare("SELECT * FROM clients WHERE email = ?");
-        $stmt->execute([$email]);
-        $client = $stmt->fetch();
+        // Vérifier si le compte est bloqué
+        $blocage_compte = is_compte_bloque($pdo, $email);
         
-        if ($client) {
-            if (isset($client['mot_de_passe']) && password_verify($password, $client['mot_de_passe'])) {
+        if ($blocage_compte['bloque']) {
+            $fin = new DateTime($blocage_compte['fin_blocage']);
+            $now = new DateTime();
+            $minutes_restantes = $now->diff($fin)->i + 1;
+            $formulaire_bloque = true;
+            $message_blocage = '⛔ Ce compte est bloqué pour ' . $minutes_restantes . ' minutes. Réessayez plus tard.';
+            enregistrer_tentative($pdo, $email, false);
+        } else {
+            // Rechercher le client
+            $stmt = $pdo->prepare("SELECT * FROM clients WHERE email = ?");
+            $stmt->execute([$email]);
+            $client = $stmt->fetch();
+            
+            if ($client && password_verify($password, $client['mot_de_passe'])) {
+                // ============================================
+                // ✅ CONNEXION RÉUSSIE
+                // ============================================
+                
+                enregistrer_tentative($pdo, $email, true);
+                
+                // Supprimer les anciennes tentatives échouées
+                $stmt = $pdo->prepare("DELETE FROM tentatives_connexion WHERE email = ? AND success = 0");
+                $stmt->execute([$email]);
+                
+                debloquer_compte($pdo, $email);
+                
+                // Démarrer la session client
                 $_SESSION['client_id'] = $client['id'];
                 $_SESSION['client_nom'] = ($client['prenom'] ?? '') . ' ' . ($client['nom'] ?? 'Client');
                 $_SESSION['client_email'] = $client['email'];
                 $_SESSION['client_telephone'] = $client['telephone'] ?? '';
+                $_SESSION['client_logged_in'] = true;
+                $_SESSION['client_created'] = time();
                 
-                // ✅ CHARGER LE PANIER DEPUIS LA BDD
+                // Charger le panier depuis la BDD
                 $_SESSION['panier'] = chargerPanierClient($client['id'], $pdo);
                 
                 // Si un panier temporaire existait, le sauvegarder en BDD
@@ -72,10 +123,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header("Location: $redirect");
                 exit;
             } else {
-                $error = 'Email ou mot de passe incorrect.';
+                // ============================================
+                // ❌ TENTATIVE ÉCHOUÉE
+                // ============================================
+                
+                enregistrer_tentative($pdo, $email, false);
+                
+                // Compter les tentatives échouées pour ce compte
+                $nb_tentatives = compter_tentatives_echouees($pdo, $email);
+                $tentatives_restantes = 3 - $nb_tentatives;
+                
+                if ($nb_tentatives >= 3) {
+                    // 🔒 Blocage du compte
+                    bloquer_compte($pdo, $email, '3 tentatives échouées sur le compte client ' . $email);
+                    
+                    // 📧 Alerte au Super Admin (si c'est un compte admin)
+                    if (function_exists('email_admin_existe') && email_admin_existe($pdo, $email)) {
+                        $sujet = "🔒 ALERTE - Compte client bloqué";
+                        $message = "
+                            <p><strong>Un compte client a été bloqué suite à 3 tentatives de connexion échouées.</strong></p>
+                            <p><strong>Compte visé :</strong> " . htmlspecialchars($email) . "</p>
+                            <p><strong>Adresse IP :</strong> " . $ip . "</p>
+                            <p><strong>Date/Heure :</strong> " . date('d/m/Y H:i:s') . "</p>
+                        ";
+                        envoyer_alerte_securite($pdo, $sujet, $message);
+                    }
+                    
+                    $formulaire_bloque = true;
+                    $message_blocage = '⛔ Compte bloqué pour 30 minutes suite à 3 tentatives échouées.';
+                } else {
+                    // Vérifier aussi les tentatives depuis la même IP
+                    $nb_tentatives_ip = compter_tentatives_ip_echouees($pdo, $ip);
+                    
+                    if ($nb_tentatives_ip >= 3) {
+                        // 🔒 Blocage IP
+                        bloquer_ip($pdo, $ip, '3 tentatives échouées depuis IP ' . $ip);
+                        
+                        // 📧 Alerte au Super Admin
+                        $sujet = "🔒 ALERTE - IP bloquée";
+                        $message = "
+                            <p><strong>Une adresse IP a été bloquée suite à 3 tentatives de connexion échouées.</strong></p>
+                            <p><strong>Adresse IP :</strong> " . $ip . "</p>
+                            <p><strong>Email tenté :</strong> " . htmlspecialchars($email) . "</p>
+                            <p><strong>Date/Heure :</strong> " . date('d/m/Y H:i:s') . "</p>
+                        ";
+                        envoyer_alerte_securite($pdo, $sujet, $message);
+                        
+                        $formulaire_bloque = true;
+                        $message_blocage = '⛔ IP bloquée pour 15 minutes suite à trop de tentatives échouées.';
+                    } else {
+                        $error = '❌ Email ou mot de passe incorrect. Il vous reste ' . $tentatives_restantes . ' tentative(s) avant blocage.';
+                    }
+                }
             }
-        } else {
-            $error = 'Email ou mot de passe incorrect.';
         }
     }
 }
@@ -140,6 +240,10 @@ require_once '../includes/navbar.php';
     border-color: #C8922A;
     box-shadow: 0 0 0 3px rgba(200,146,42,0.08);
 }
+.form-control:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
 .btn-connexion {
     width: 100%;
     background: linear-gradient(135deg, #C8922A, #E8B55A);
@@ -158,6 +262,13 @@ require_once '../includes/navbar.php';
     transform: translateY(-2px);
     box-shadow: 0 5px 20px rgba(200,146,42,0.3);
 }
+.btn-connexion:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+    background: #555;
+}
 .alert-error {
     background: #FEF3F2;
     border-left: 4px solid #E74C3C;
@@ -168,6 +279,22 @@ require_once '../includes/navbar.php';
     display: flex;
     align-items: center;
     gap: 10px;
+}
+.alert-blocked {
+    background: #FEF3F2;
+    border-left: 4px solid #E74C3C;
+    color: #721C24;
+    padding: 12px 16px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+}
+.alert-blocked i {
+    font-size: 1.2rem;
+    color: #E74C3C;
 }
 .inscription-link {
     text-align: center;
@@ -183,6 +310,15 @@ require_once '../includes/navbar.php';
 .inscription-link a:hover {
     text-decoration: underline;
 }
+.security-info {
+    text-align: center;
+    margin-top: 15px;
+    font-size: 0.7rem;
+    color: #8A99AA;
+}
+.security-info i {
+    color: #C8922A;
+}
 @media (max-width: 600px) {
     .connexion-card { padding: 25px 20px; }
 }
@@ -192,6 +328,13 @@ require_once '../includes/navbar.php';
     <div class="connexion-card">
         <h1>🔑 Connexion</h1>
         <p class="subtitle">Connectez-vous à votre compte Awa Ka Sugu</p>
+        
+        <?php if($message_blocage): ?>
+            <div class="alert-blocked">
+                <i class="bi bi-lock-fill"></i>
+                <span><?= htmlspecialchars($message_blocage) ?></span>
+            </div>
+        <?php endif; ?>
         
         <?php if($error): ?>
             <div class="alert-error">
@@ -203,15 +346,15 @@ require_once '../includes/navbar.php';
         <form method="POST">
             <div class="form-group">
                 <label>Email <span class="required">*</span></label>
-                <input type="email" name="email" class="form-control" placeholder="votre@email.com" required>
+                <input type="email" name="email" class="form-control" placeholder="votre@email.com" value="<?= htmlspecialchars($email) ?>" required <?= $formulaire_bloque ? 'disabled' : '' ?>>
             </div>
             
             <div class="form-group">
                 <label>Mot de passe <span class="required">*</span></label>
-                <input type="password" name="password" class="form-control" placeholder="Votre mot de passe" required>
+                <input type="password" name="password" class="form-control" placeholder="Votre mot de passe" required <?= $formulaire_bloque ? 'disabled' : '' ?>>
             </div>
             
-            <button type="submit" class="btn-connexion">
+            <button type="submit" class="btn-connexion" <?= $formulaire_bloque ? 'disabled' : '' ?>>
                 <i class="bi bi-box-arrow-in-right"></i> Se connecter
             </button>
         </form>
@@ -222,6 +365,16 @@ require_once '../includes/navbar.php';
         
         <div style="margin-top:15px;text-align:center;font-size:0.8rem;">
             <a href="mot_de_passe_oublie.php" style="color:#8A99AA;text-decoration:none;">Mot de passe oublié ?</a>
+        </div>
+        
+        <div class="security-info">
+            <i class="bi bi-shield-check"></i> 
+            Sécurisé : 3 tentatives avant blocage
+            <?php if($formulaire_bloque): ?>
+                <span style="color:#E74C3C;display:block;margin-top:3px;">
+                    <i class="bi bi-lock-fill"></i> Formulaire bloqué temporairement
+                </span>
+            <?php endif; ?>
         </div>
     </div>
 </div>
