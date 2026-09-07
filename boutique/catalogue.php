@@ -145,15 +145,17 @@ if (isset($_POST['action']) && $_POST['action'] == 'ajouter_panier') {
     }
     
     $total = 0;
+    $count_total = 0;
     foreach ($_SESSION['panier'] as $item) {
         $total += $item['prix'] * $item['quantite'];
+        $count_total += $item['quantite'];
     }
     
     echo json_encode([
         'success' => true, 
         'message' => 'Produit ajouté au panier',
         'total' => $total,
-        'count' => count($_SESSION['panier'])
+        'count' => $count_total
     ]);
     exit;
 }
@@ -383,52 +385,11 @@ switch ($tri) {
         $sql .= " ORDER BY p.created_at DESC";
 }
 
-$count_sql = "SELECT COUNT(*) FROM produits p WHERE p.est_visible = 1";
-$count_params = [];
-
-if ($categorie_id > 0) {
-    if ($sous_categorie_id > 0) {
-        if ($categorie_id == 5 && $sous_categorie_id == 51) {
-            $count_sql .= " AND (p.categorie_id = 5 OR p.categorie_id IN (51, 52, 53, 54))";
-        } else {
-            if ($sous_categorie_id != 34 && $sous_categorie_id != 42 && $sous_categorie_id != 43) {
-                $count_sql .= " AND p.categorie_id = ?";
-                $count_params[] = $sous_categorie_id;
-            }
-        }
-    } else {
-        if ($categorie_id == 5) {
-            $count_sql .= " AND (p.categorie_id = 5 OR p.categorie_id IN (51, 52, 53, 54))";
-        } else {
-            $sub_ids = [];
-            if (isset($subcategories_data[$categorie_id])) {
-                foreach ($subcategories_data[$categorie_id] as $sub) {
-                    $sub_ids[] = $sub['id'];
-                }
-            }
-            if (!empty($sub_ids)) {
-                $placeholders = implode(',', array_fill(0, count($sub_ids), '?'));
-                $count_sql .= " AND p.categorie_id IN ($placeholders)";
-                foreach ($sub_ids as $sub_id) {
-                    $count_params[] = $sub_id;
-                }
-            } else {
-                $count_sql .= " AND p.categorie_id = ?";
-                $count_params[] = $categorie_id;
-            }
-        }
-    }
-}
-
-if (!empty($search)) {
-    $count_sql .= " AND p.nom LIKE ?";
-    $term = "%" . $search . "%";
-    $count_params[] = $term;
-}
-
+// ✅ OPTIMISATION : Comptage avec la même requête
+$count_sql = str_replace("SELECT p.*", "SELECT COUNT(*) as total", $sql);
 $stmt_count = $pdo->prepare($count_sql);
-$stmt_count->execute($count_params);
-$total_products = $stmt_count->fetchColumn();
+$stmt_count->execute($params);
+$total_products = (int)$stmt_count->fetchColumn();
 $total_pages = ceil($total_products / $per_page);
 
 $offset = ($page - 1) * $per_page;
@@ -699,6 +660,16 @@ if ($action === "add") {
 }
 ?>';
     file_put_contents('../wishlist_ajax.php', $ajax_content);
+}
+
+// ============================================
+// COMPTEUR PANIER POUR LE HEADER
+// ============================================
+$cart_count = 0;
+if (isset($_SESSION['panier'])) {
+    foreach ($_SESSION['panier'] as $item) {
+        $cart_count += $item['quantite'];
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -2331,6 +2302,8 @@ function confirmSheetAdd() {
             if (data.success) {
                 showToast(data.message || 'Produit ajouté au panier', 'success');
                 closeOptionsSheet();
+                // ✅ MISE À JOUR IMMÉDIATE DU COMPTEUR
+                updateCartCounter(data.count);
             } else {
                 showToast(data.message || "Erreur lors de l'ajout", 'error');
             }
@@ -2340,6 +2313,44 @@ function confirmSheetAdd() {
             btn.disabled = false;
             showToast('Erreur de connexion', 'error');
         });
+}
+
+// ============================================
+// ✅ MISE À JOUR IMMÉDIATE DU COMPTEUR PANIER
+// ============================================
+function updateCartCounter(count) {
+    // 1️⃣ Met à jour le badge dans le header
+    const badges = document.querySelectorAll('.cart-badge, #cart-count, .nb-articles');
+    badges.forEach(badge => {
+        badge.textContent = count;
+        if (count > 0) {
+            badge.style.display = 'inline-block';
+        } else {
+            badge.style.display = 'inline-block';
+        }
+    });
+    
+    // 2️⃣ Met à jour le texte du panier si présent
+    const cartTexts = document.querySelectorAll('.panier-count, .cart-count');
+    cartTexts.forEach(el => {
+        el.textContent = count;
+    });
+    
+    // 3️⃣ Met à jour les icônes de panier avec badge
+    const cartIcons = document.querySelectorAll('.panier-icon, .cart-icon');
+    cartIcons.forEach(el => {
+        if (count > 0) {
+            el.innerHTML = '<i class="bi bi-cart-fill"></i> <span class="badge">' + count + '</span>';
+        } else {
+            el.innerHTML = '<i class="bi bi-cart"></i>';
+        }
+    });
+    
+    // 4️⃣ Force le re-rendu du compteur si dans le menu
+    const menuCart = document.querySelector('.menu-cart-count');
+    if (menuCart) {
+        menuCart.textContent = count;
+    }
 }
 
 function closeOptionsSheet() {

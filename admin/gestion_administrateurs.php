@@ -7,6 +7,7 @@
 
 require_once '../includes/session_config.php';
 require_once '../includes/functions_securite.php';
+require_once '../includes/fonctions_email.php'; // ✅ CORRIGÉ : le bon nom du fichier
 
 // ============================================
 // VÉRIFICATION DE CONNEXION
@@ -77,6 +78,7 @@ $role_icons = [
 // ============================================
 $success = '';
 $error = '';
+$email_envoye = false;
 
 // AJOUTER UN ADMIN
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_admin') {
@@ -100,16 +102,87 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             ");
             $stmt->execute([$nom, $email, $hashed_password, $role, $admin_id]);
             
+            // ============================================
+            // ✅ ENVOI DE L'EMAIL DE CONFIRMATION
+            // ============================================
+            $sujet = "🔐 Vos identifiants de connexion - Awa Ka Sugu";
+            
+            $message_html = "
+            <html>
+            <head>
+                <style>
+                    body { font-family: Arial, sans-serif; background: #f5f5f5; }
+                    .container { max-width: 600px; margin: 0 auto; padding: 20px; background: #ffffff; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                    .header { background: linear-gradient(135deg, #C8922A, #8E44AD); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+                    .header h1 { margin: 0; font-size: 24px; }
+                    .content { padding: 30px 20px; }
+                    .info-box { background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #C8922A; margin: 15px 0; }
+                    .info-box p { margin: 8px 0; }
+                    .label { font-weight: 600; color: #555; }
+                    .password-box { background: #fff3cd; padding: 12px; border-radius: 5px; border: 1px dashed #ffc107; text-align: center; font-size: 18px; font-weight: bold; color: #856404; margin: 10px 0; }
+                    .btn { display: inline-block; background: #C8922A; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin-top: 15px; }
+                    .btn:hover { background: #b07a1a; }
+                    .footer { text-align: center; padding: 15px; font-size: 12px; color: #888; border-top: 1px solid #eee; margin-top: 20px; }
+                    .role-badge { display: inline-block; padding: 3px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; color: white; background: #C8922A; }
+                </style>
+            </head>
+            <body>
+                <div class='container'>
+                    <div class='header'>
+                        <h1>🏆 Awa Ka Sugu</h1>
+                        <p>Bienvenue dans l'équipe !</p>
+                    </div>
+                    <div class='content'>
+                        <h2>Bonjour <strong>$nom</strong> ! 👋</h2>
+                        <p>Un compte administrateur a été créé pour vous sur la plateforme <strong>Awa Ka Sugu</strong>.</p>
+                        
+                        <div class='info-box'>
+                            <p><span class='label'>📧 Email :</span> <strong>$email</strong></p>
+                            <p><span class='label'>👤 Rôle :</span> <span class='role-badge'>" . ($role_labels[$role] ?? $role) . "</span></p>
+                            <p><span class='label'>🆔 Créé par :</span> $admin_nom</p>
+                        </div>
+                        
+                        <p><strong>🔑 Vos identifiants de connexion :</strong></p>
+                        <div class='password-box'>
+                            📝 Mot de passe : <strong>$password</strong>
+                        </div>
+                        
+                        <p style='font-size: 14px; color: #e74c3c;'><strong>⚠️ Important :</strong> Nous vous recommandons de changer votre mot de passe lors de votre première connexion.</p>
+                        
+                        <div style='text-align: center;'>
+                            <a href='http://localhost/awakasugu/admin/login.php' class='btn'>🔐 Se connecter</a>
+                        </div>
+                        
+                        <p style='margin-top: 20px; font-size: 14px; color: #888;'>Ce compte vous donne accès à l'espace d'administration. Si vous avez des questions, contactez votre administrateur.</p>
+                    </div>
+                    <div class='footer'>
+                        <p>&copy; 2026 Awa Ka Sugu - Tous droits réservés</p>
+                        <p>Cet email a été généré automatiquement. Merci de ne pas y répondre.</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            ";
+            
+            // ✅ Envoi de l'email
+            $email_envoye = envoyerEmail($email, $sujet, $message_html);
+            
+            // Log de l'action
             enregistrer_log_action(
                 $pdo,
                 $admin_id,
                 $admin_nom,
                 $admin_info['email'] ?? '',
                 'Ajout administrateur',
-                "Ajout de l'administrateur '$nom' avec le rôle '$role'"
+                "Ajout de l'administrateur '$nom' avec le rôle '$role'" . ($email_envoye ? " - Email envoyé" : " - Email NON envoyé")
             );
             
-            $success = "L'administrateur <strong>$nom</strong> a été créé avec succès.";
+            // Message de succès
+            if ($email_envoye) {
+                $success = "✅ L'administrateur <strong>$nom</strong> a été créé avec succès.<br>📧 Un email de confirmation a été envoyé à <strong>$email</strong>.";
+            } else {
+                $success = "⚠️ L'administrateur <strong>$nom</strong> a été créé.<br>❌ Mais l'email de confirmation n'a pas pu être envoyé. Vérifiez la configuration.";
+            }
         }
     }
 }
@@ -140,7 +213,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 "Modification de l'administrateur '{$admin_modifie['nom']}' - Nouveau rôle: $new_role"
             );
             
-            $success = "L'administrateur a été modifié avec succès.";
+            $success = "✅ L'administrateur a été modifié avec succès.";
         } else {
             $error = "Administrateur introuvable.";
         }
@@ -171,7 +244,7 @@ if (isset($_GET['toggle']) && is_numeric($_GET['toggle'])) {
                 "Compte '{$admin_toggle['nom']}' $status_text"
             );
             
-            $success = "Le compte de l'administrateur a été " . $status_text . ".";
+            $success = "✅ Le compte de l'administrateur a été " . $status_text . ".";
         } else {
             $error = "Administrateur introuvable.";
         }
@@ -200,7 +273,7 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
                 "Suppression de l'administrateur '{$admin_delete['nom']}'"
             );
             
-            $success = "L'administrateur a été supprimé avec succès.";
+            $success = "✅ L'administrateur a été supprimé avec succès.";
         } else {
             $error = "Administrateur introuvable.";
         }
@@ -262,50 +335,54 @@ include 'includes/sidebar.php';
     <div class="content">
 
         <?php if($success): ?>
-            <div class="alert-success"><i class="bi bi-check-circle-fill"></i> <?= $success ?></div>
+            <div class="alert-success" style="background:#d4edda;padding:15px 20px;border-radius:8px;color:#155724;border:1px solid #c3e6cb;margin-bottom:20px;">
+                <i class="bi bi-check-circle-fill"></i> <?= $success ?>
+            </div>
         <?php endif; ?>
         <?php if($error): ?>
-            <div class="alert-danger"><i class="bi bi-exclamation-triangle-fill"></i> <?= $error ?></div>
+            <div class="alert-danger" style="background:#f8d7da;padding:15px 20px;border-radius:8px;color:#721c24;border:1px solid #f5c6cb;margin-bottom:20px;">
+                <i class="bi bi-exclamation-triangle-fill"></i> <?= $error ?>
+            </div>
         <?php endif; ?>
 
         <!-- ===== STATISTIQUES ===== -->
-        <div class="stats-row">
-            <div class="stat-box">
-                <div class="stat-icon ic-purple"><i class="bi bi-people"></i></div>
+        <div class="stats-row" style="display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:25px;">
+            <div class="stat-box" style="background:#fff;padding:20px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.06);display:flex;align-items:center;gap:15px;">
+                <div class="stat-icon ic-purple" style="width:45px;height:45px;border-radius:10px;background:#f3e8ff;display:flex;align-items:center;justify-content:center;font-size:1.3rem;color:#8E44AD;"><i class="bi bi-people"></i></div>
                 <div>
-                    <div class="stat-val"><?= $total_admins ?></div>
-                    <div class="stat-lbl">Total administrateurs</div>
+                    <div class="stat-val" style="font-size:1.5rem;font-weight:700;color:#1A2C3E;"><?= $total_admins ?></div>
+                    <div class="stat-lbl" style="font-size:0.75rem;color:#8A99AA;">Total administrateurs</div>
                 </div>
             </div>
-            <div class="stat-box">
-                <div class="stat-icon ic-green"><i class="bi bi-check-circle"></i></div>
+            <div class="stat-box" style="background:#fff;padding:20px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.06);display:flex;align-items:center;gap:15px;">
+                <div class="stat-icon ic-green" style="width:45px;height:45px;border-radius:10px;background:#e8f5e9;display:flex;align-items:center;justify-content:center;font-size:1.3rem;color:#2E7D32;"><i class="bi bi-check-circle"></i></div>
                 <div>
-                    <div class="stat-val"><?= $admins_actifs ?></div>
-                    <div class="stat-lbl">Comptes actifs</div>
+                    <div class="stat-val" style="font-size:1.5rem;font-weight:700;color:#1A2C3E;"><?= $admins_actifs ?></div>
+                    <div class="stat-lbl" style="font-size:0.75rem;color:#8A99AA;">Comptes actifs</div>
                 </div>
             </div>
-            <div class="stat-box">
-                <div class="stat-icon ic-red"><i class="bi bi-person-x"></i></div>
+            <div class="stat-box" style="background:#fff;padding:20px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.06);display:flex;align-items:center;gap:15px;">
+                <div class="stat-icon ic-red" style="width:45px;height:45px;border-radius:10px;background:#fbe9e7;display:flex;align-items:center;justify-content:center;font-size:1.3rem;color:#C62828;"><i class="bi bi-person-x"></i></div>
                 <div>
-                    <div class="stat-val"><?= $total_admins - $admins_actifs ?></div>
-                    <div class="stat-lbl">Comptes inactifs</div>
+                    <div class="stat-val" style="font-size:1.5rem;font-weight:700;color:#1A2C3E;"><?= $total_admins - $admins_actifs ?></div>
+                    <div class="stat-lbl" style="font-size:0.75rem;color:#8A99AA;">Comptes inactifs</div>
                 </div>
             </div>
-            <div class="stat-box">
-                <div class="stat-icon ic-gold"><i class="bi bi-shield-fill-check"></i></div>
+            <div class="stat-box" style="background:#fff;padding:20px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.06);display:flex;align-items:center;gap:15px;">
+                <div class="stat-icon ic-gold" style="width:45px;height:45px;border-radius:10px;background:#fff8e1;display:flex;align-items:center;justify-content:center;font-size:1.3rem;color:#C8922A;"><i class="bi bi-shield-fill-check"></i></div>
                 <div>
-                    <div class="stat-val">1</div>
-                    <div class="stat-lbl">Super Admin</div>
+                    <div class="stat-val" style="font-size:1.5rem;font-weight:700;color:#1A2C3E;">1</div>
+                    <div class="stat-lbl" style="font-size:0.75rem;color:#8A99AA;">Super Admin</div>
                 </div>
             </div>
         </div>
 
         <!-- ===== FORMULAIRE D'AJOUT ===== -->
-        <div class="card-white">
-            <div class="card-header">
-                <div class="card-title"><i class="bi bi-person-plus" style="color:#C8922A;"></i> Ajouter un administrateur</div>
+        <div class="card-white" style="background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.06);margin-bottom:25px;">
+            <div class="card-header" style="padding:18px 25px;border-bottom:1px solid #E8ECF0;display:flex;justify-content:space-between;align-items:center;">
+                <div class="card-title" style="font-weight:600;color:#1A2C3E;font-size:1rem;"><i class="bi bi-person-plus" style="color:#C8922A;"></i> Ajouter un administrateur</div>
             </div>
-            <div class="card-body">
+            <div class="card-body" style="padding:25px;">
                 <form method="POST">
                     <input type="hidden" name="action" value="add_admin">
                     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
@@ -339,7 +416,7 @@ include 'includes/sidebar.php';
                                 <option value="admin2">Agent / Vendeur</option>
                             </select>
                         </div>
-                        <button type="submit" class="btn-admin btn-primary" style="padding:10px 30px;white-space:nowrap;">
+                        <button type="submit" class="btn-admin btn-primary" style="padding:10px 30px;white-space:nowrap;background:#C8922A;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;transition:background 0.3s;" onmouseover="this.style.background='#b07a1a'" onmouseout="this.style.background='#C8922A'">
                             <i class="bi bi-plus-circle"></i> Ajouter
                         </button>
                     </div>
@@ -348,16 +425,16 @@ include 'includes/sidebar.php';
         </div>
 
         <!-- ===== LISTE DES ADMINISTRATEURS ===== -->
-        <div class="card-white">
-            <div class="card-header">
-                <div class="card-title">
+        <div class="card-white" style="background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+            <div class="card-header" style="padding:18px 25px;border-bottom:1px solid #E8ECF0;display:flex;justify-content:space-between;align-items:center;">
+                <div class="card-title" style="font-weight:600;color:#1A2C3E;font-size:1rem;">
                     <i class="bi bi-people"></i> Tous les administrateurs
                 </div>
                 <div style="font-size:0.7rem;color:#8A99AA;background:#F8F9FA;padding:4px 16px;border-radius:20px;border:1px solid #E8ECF0;">
                     <strong style="color:#C8922A;"><?= count($admins) ?></strong> administrateur(s)
                 </div>
             </div>
-            <div class="card-body">
+            <div class="card-body" style="padding:5px 0;">
                 <?php if(empty($admins)): ?>
                     <div class="empty-state" style="text-align:center;padding:40px;color:#8A99AA;">
                         <i class="bi bi-people" style="font-size:2.5rem;display:block;margin-bottom:10px;color:#D5D5D5;"></i>
@@ -433,8 +510,8 @@ include 'includes/sidebar.php';
 <!-- ============================================
      MODAL D'ÉDITION
      ============================================ -->
-<div class="modal-overlay" id="editModal" onclick="if(event.target===this) closeEditModal()">
-    <div class="modal-content" style="max-width:480px;width:95%;padding:28px;">
+<div class="modal-overlay" id="editModal" onclick="if(event.target===this) closeEditModal()" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;">
+    <div class="modal-content" style="max-width:480px;width:95%;padding:28px;background:#fff;border-radius:12px;position:relative;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
             <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;margin:0;">
                 <i class="bi bi-pencil-square" style="color:#C8922A;"></i> Modifier l'administrateur
@@ -461,10 +538,10 @@ include 'includes/sidebar.php';
                 </select>
             </div>
             <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #E8ECF0;padding-top:16px;">
-                <button type="button" class="btn-admin btn-secondary" onclick="closeEditModal()" style="padding:10px 24px;">
+                <button type="button" class="btn-admin btn-secondary" onclick="closeEditModal()" style="padding:10px 24px;background:#f0f0f0;border:none;border-radius:8px;cursor:pointer;font-weight:600;">
                     Annuler
                 </button>
-                <button type="submit" class="btn-admin btn-primary" style="padding:10px 28px;">
+                <button type="submit" class="btn-admin btn-primary" style="padding:10px 28px;background:#C8922A;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;transition:background 0.3s;" onmouseover="this.style.background='#b07a1a'" onmouseout="this.style.background='#C8922A'">
                     <i class="bi bi-save"></i> Enregistrer
                 </button>
             </div>
@@ -482,12 +559,12 @@ function openEditModal(id, nom, role) {
     document.getElementById('edit_admin_id').value = id;
     document.getElementById('edit_nom').value = nom;
     document.getElementById('edit_role').value = role;
-    document.getElementById('editModal').classList.add('active');
+    document.getElementById('editModal').style.display = 'flex';
     document.body.style.overflow = 'hidden';
 }
 
 function closeEditModal() {
-    document.getElementById('editModal').classList.remove('active');
+    document.getElementById('editModal').style.display = 'none';
     document.body.style.overflow = '';
 }
 

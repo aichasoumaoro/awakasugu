@@ -425,11 +425,11 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
             $produitPrix = number_format($prixValeur, 0, ',', ' ') . ' FCFA';
             $produitImg = !empty($video['produit_image']) ? '../uploads/produits/' . $video['produit_image'] : 'https://placehold.co/100x100/C8922A/FFF?text=Article';
         ?>
-        <!-- AJOUT : data-video-id pour le saut direct depuis le catalogue -->
         <div class="video-item" data-index="<?= $index ?>" data-video-id="<?= (int)$video['id'] ?>">
             <div class="video-player">
                 <?php if($isLocal): ?>
-                    <video muted playsinline loop preload="metadata">
+                    <!-- ✅ CORRECTION : Suppression de muted et preload pour permettre le son -->
+                    <video playsinline loop preload="metadata" id="video-<?= $index ?>" data-index="<?= $index ?>">
                         <source src="<?= $videoUrl ?>" type="video/mp4">
                     </video>
                 <?php else: ?>
@@ -545,23 +545,48 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
     let currentIndex = 0;
     let currentSelectedProduct = null;
     let qty = 1;
+    let isFirstInteraction = true;
 
-    // AJOUT : id de la vidéo demandée en arrivant depuis le catalogue
     const videoCibleId = <?= (int)$video_cible ?>;
 
     videoItems.forEach((item, index) => {
-        const vid = item.querySelector('video');
+        const vid = document.getElementById('video-' + index);
         if (vid) {
             videoElements[index] = vid;
+            
+            // ✅ CORRECTION : Gestion de l'audio automatique
+            vid.addEventListener('loadedmetadata', function() {
+                // La vidéo est chargée, on peut la démarrer sans son puis l'activer au premier clic
+                console.log('Vidéo ' + index + ' chargée');
+            });
+            
             vid.addEventListener('timeupdate', () => {
                 const bar = document.getElementById('progressBar-' + index);
                 if (bar && vid.duration) {
                     bar.style.width = (vid.currentTime / vid.duration * 100) + '%';
                 }
             });
+            
+            // ✅ CORRECTION : Activation automatique du son au clic
+            vid.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (this.muted) {
+                    this.muted = false;
+                    updatePlayState(index, true);
+                    showToast('🔊 Son activé');
+                } else {
+                    // Alterner lecture/pause au clic
+                    if (this.paused) {
+                        this.play();
+                    } else {
+                        this.pause();
+                    }
+                }
+            });
         }
     });
 
+    // ✅ CORRECTION : Observer pour la lecture automatique avec son activé
     const observerOptions = {
         root: container,
         threshold: 0.6
@@ -572,16 +597,41 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
             if (entry.isIntersecting) {
                 const idx = parseInt(entry.target.getAttribute('data-index'));
                 if (idx !== currentIndex) {
+                    // Mettre en pause l'ancienne vidéo
                     if (videoElements[currentIndex]) {
                         videoElements[currentIndex].pause();
                         updatePlayState(currentIndex, false);
                     }
                     currentIndex = idx;
-                    if (videoElements[currentIndex]) {
-                        videoElements[currentIndex].play().then(() => {
+                    
+                    // Lire la nouvelle vidéo
+                    const vid = videoElements[currentIndex];
+                    if (vid) {
+                        // ✅ CORRECTION : Démarrer avec le son actif (pas de muted)
+                        vid.muted = false;
+                        vid.play().then(() => {
                             updatePlayState(currentIndex, true);
-                        }).catch(() => {
+                            // ✅ CORRECTION : Activer le son automatiquement dès que possible
+                            if (vid.muted) {
+                                vid.muted = false;
+                            }
+                        }).catch((err) => {
+                            // Si la lecture échoue (autoplay bloqué), on attend une interaction
+                            console.log('Lecture automatique bloquée, attente interaction');
                             updatePlayState(currentIndex, false);
+                            // ✅ CORRECTION : Au premier clic sur la page, tout se débloque
+                            if (isFirstInteraction) {
+                                document.addEventListener('click', function unblockAudio() {
+                                    document.removeEventListener('click', unblockAudio);
+                                    isFirstInteraction = false;
+                                    if (videoElements[currentIndex]) {
+                                        videoElements[currentIndex].muted = false;
+                                        videoElements[currentIndex].play().then(() => {
+                                            updatePlayState(currentIndex, true);
+                                        }).catch(() => {});
+                                    }
+                                }, { once: true });
+                            }
                         });
                     }
                 }
@@ -591,15 +641,30 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
 
     videoItems.forEach(item => observer.observe(item));
 
+    // ✅ CORRECTION : Activer le son sur toute interaction avec la page
+    document.addEventListener('click', function() {
+        if (isFirstInteraction) {
+            isFirstInteraction = false;
+            const vid = videoElements[currentIndex];
+            if (vid) {
+                vid.muted = false;
+                vid.play().then(() => {
+                    updatePlayState(currentIndex, true);
+                }).catch(() => {});
+            }
+        }
+    }, { once: false });
+
     function togglePlayPause(index) {
         const vid = videoElements[index];
         if (!vid) return;
 
         if (vid.paused) {
+            // ✅ CORRECTION : Désactiver le mute avant de jouer
             vid.muted = false;
             vid.play().then(() => {
                 updatePlayState(index, true);
-            });
+            }).catch(() => {});
         } else {
             vid.pause();
             updatePlayState(index, false);
@@ -630,11 +695,27 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
 
         document.getElementById('sheetOverlay').classList.add('active');
         document.getElementById('bottomSheet').classList.add('active');
+        
+        // ✅ CORRECTION : Pause de la vidéo pendant le panier
+        const vid = videoElements[currentIndex];
+        if (vid) {
+            vid.pause();
+            updatePlayState(currentIndex, false);
+        }
     }
 
     function closeBottomSheet() {
         document.getElementById('sheetOverlay').classList.remove('active');
         document.getElementById('bottomSheet').classList.remove('active');
+        
+        // ✅ CORRECTION : Remettre la vidéo en lecture après fermeture
+        const vid = videoElements[currentIndex];
+        if (vid && vid.paused) {
+            vid.muted = false;
+            vid.play().then(() => {
+                updatePlayState(currentIndex, true);
+            }).catch(() => {});
+        }
     }
 
     function selectOption(chip, type) {
@@ -695,9 +776,7 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
         }
     }
 
-    // ============================================
-    // AJOUT : saute directement à la vidéo demandée par le catalogue
-    // ============================================
+    // ✅ CORRECTION : Démarrage automatique avec son dès que la page est chargée
     window.addEventListener('load', () => {
         let startIndex = 0;
 
@@ -711,14 +790,27 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
 
         currentIndex = startIndex;
 
-        if (videoElements[startIndex]) {
-            videoElements[startIndex].play().then(() => {
+        const vid = videoElements[startIndex];
+        if (vid) {
+            // ✅ CORRECTION : Démarrer avec le son activé
+            vid.muted = false;
+            vid.play().then(() => {
                 updatePlayState(startIndex, true);
             }).catch(() => {
+                // Si autoplay bloqué, on attend une interaction
                 updatePlayState(startIndex, false);
+                isFirstInteraction = true;
             });
         }
     });
+
+    // ✅ CORRECTION : Gestion du volume au survol (pour desktop)
+    document.addEventListener('mouseenter', function() {
+        const vid = videoElements[currentIndex];
+        if (vid && !vid.muted) {
+            vid.volume = 0.5;
+        }
+    }, { once: false });
 </script>
 
 <?php require_once '../includes/footer.php'; ?>
