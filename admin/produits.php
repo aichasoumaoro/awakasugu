@@ -21,7 +21,7 @@ $admin_role = $admin_info['role'] ?? 'admin';
 $admin_nom = $admin_info['nom'] ?? 'Awa Doumbia';
 $admin_id = $admin_info['id'] ?? 0;
 
-// Vérification des permissions (Produits visible pour super_admin et directeur uniquement)
+// Vérification des permissions
 if ($admin_role !== 'super_admin' && $admin_role !== 'directeur') {
     header('Location: dashboard.php?error=Accès non autorisé');
     exit;
@@ -64,6 +64,25 @@ if (isset($_GET['supprimer'])) {
 }
 
 // ============================================
+// RECALCULER LA MARGE POUR UN PRODUIT
+// ============================================
+if (isset($_GET['recalculer_marge']) && is_numeric($_GET['recalculer_marge'])) {
+    $id = (int)$_GET['recalculer_marge'];
+    $stmt = $pdo->prepare("SELECT prix, prix_achat FROM produits WHERE id = ?");
+    $stmt->execute([$id]);
+    $p = $stmt->fetch();
+    if ($p) {
+        $marge = $p['prix'] - $p['prix_achat'];
+        $marge_pourcentage = ($p['prix_achat'] > 0) ? round(($marge / $p['prix_achat']) * 100, 2) : 0;
+        $pdo->prepare("UPDATE produits SET marge = ?, marge_pourcentage = ? WHERE id = ?")
+            ->execute([$marge, $marge_pourcentage, $id]);
+        $_SESSION['message_produit'] = 'Marge recalculée avec succès.';
+    }
+    header('Location: produits.php');
+    exit;
+}
+
+// ============================================
 // RECHERCHE ET FILTRES
 // ============================================
 $search = trim($_GET['search'] ?? '');
@@ -81,6 +100,10 @@ if ($filtre === 'rupture') {
     $where .= " AND p.stock > 0 AND p.stock <= p.seuil_alerte";
 } elseif ($filtre === 'promo') {
     $where .= " AND p.est_promo = 1";
+} elseif ($filtre === 'marge_elevee') {
+    $where .= " AND p.marge_pourcentage > 50";
+} elseif ($filtre === 'marge_faible') {
+    $where .= " AND p.marge_pourcentage < 10 AND p.marge_pourcentage > 0";
 }
 
 $stmt = $pdo->prepare("
@@ -100,6 +123,16 @@ $total = $pdo->query("SELECT COUNT(*) FROM produits")->fetchColumn();
 $en_promo = $pdo->query("SELECT COUNT(*) FROM produits WHERE est_promo=1")->fetchColumn();
 $ruptures = $pdo->query("SELECT COUNT(*) FROM produits WHERE stock<=0")->fetchColumn();
 $alertes = $pdo->query("SELECT COUNT(*) FROM produits WHERE stock>0 AND stock<=seuil_alerte")->fetchColumn();
+
+// Statistiques de marge
+$stats_marge = $pdo->query("
+    SELECT 
+        COALESCE(AVG(marge_pourcentage), 0) as marge_moyenne,
+        COUNT(CASE WHEN marge_pourcentage > 50 THEN 1 END) as nb_marge_elevee,
+        COUNT(CASE WHEN marge_pourcentage < 10 AND marge_pourcentage > 0 THEN 1 END) as nb_marge_faible
+    FROM produits 
+    WHERE prix_achat > 0
+")->fetch();
 
 $message = $_SESSION['message_produit'] ?? '';
 unset($_SESSION['message_produit']);
@@ -180,6 +213,40 @@ include 'includes/sidebar.php';
             </div>
         </div>
 
+        <!-- ===== STATISTIQUES MARGE ===== -->
+        <div class="stats-row" style="margin-top:10px;">
+            <div class="stat-box" style="border-left: 4px solid #8E44AD;">
+                <div class="stat-icon ic-purple"><i class="bi bi-percent"></i></div>
+                <div>
+                    <div class="stat-val" style="color:#8E44AD;"><?= number_format($stats_marge['marge_moyenne'] ?? 0, 1) ?>%</div>
+                    <div class="stat-lbl">Marge moyenne</div>
+                </div>
+            </div>
+            <div class="stat-box" style="border-left: 4px solid #27AE60;">
+                <div class="stat-icon ic-green"><i class="bi bi-arrow-up-circle"></i></div>
+                <div>
+                    <div class="stat-val" style="color:#27AE60;"><?= $stats_marge['nb_marge_elevee'] ?? 0 ?></div>
+                    <div class="stat-lbl">Marge élevée &gt;50%</div>
+                </div>
+            </div>
+            <div class="stat-box" style="border-left: 4px solid #E74C3C;">
+                <div class="stat-icon ic-red"><i class="bi bi-arrow-down-circle"></i></div>
+                <div>
+                    <div class="stat-val" style="color:#E74C3C;"><?= $stats_marge['nb_marge_faible'] ?? 0 ?></div>
+                    <div class="stat-lbl">Marge faible &lt;10%</div>
+                </div>
+            </div>
+            <div class="stat-box" style="border-left: 4px solid #F39C12;">
+                <div class="stat-icon ic-orange"><i class="bi bi-calculator"></i></div>
+                <div>
+                    <div class="stat-val" style="color:#F39C12;font-size:1.2rem;">
+                        <a href="achats.php" style="color:#F39C12;text-decoration:none;">← Gérer achats</a>
+                    </div>
+                    <div class="stat-lbl">Pour calculer la marge</div>
+                </div>
+            </div>
+        </div>
+
         <!-- ===== TOOLBAR ===== -->
         <div class="toolbar">
             <form method="GET" style="display:flex;gap:10px;flex:1;max-width:380px;">
@@ -212,6 +279,12 @@ include 'includes/sidebar.php';
                 <a href="produits.php?filtre=rupture" class="btn-small <?= $filtre==='rupture' ? 'red' : 'gray' ?>" style="padding:6px 14px;">
                     <i class="bi bi-x-circle"></i> Rupture
                 </a>
+                <a href="produits.php?filtre=marge_elevee" class="btn-small <?= $filtre==='marge_elevee' ? 'green' : 'gray' ?>" style="padding:6px 14px;">
+                    <i class="bi bi-arrow-up"></i> Marge &gt;50%
+                </a>
+                <a href="produits.php?filtre=marge_faible" class="btn-small <?= $filtre==='marge_faible' ? 'red' : 'gray' ?>" style="padding:6px 14px;">
+                    <i class="bi bi-arrow-down"></i> Marge &lt;10%
+                </a>
             </div>
         </div>
 
@@ -230,17 +303,18 @@ include 'includes/sidebar.php';
                                 <th style="width:60px;">Image</th>
                                 <th>Produit</th>
                                 <th>Catégorie</th>
-                                <th style="text-align:right;">Prix</th>
+                                <th style="text-align:right;">Prix Vente</th>
+                                <th style="text-align:right;">Prix Achat</th>
+                                <th style="text-align:right;">Marge</th>
                                 <th style="text-align:center;">Stock</th>
                                 <th style="text-align:center;">Statut</th>
-                                <th style="text-align:center;">Tags</th>
-                                <th style="text-align:center;width:90px;">Actions</th>
+                                <th style="text-align:center;width:110px;">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if(empty($produits)): ?>
                                 <tr>
-                                    <td colspan="9">
+                                    <td colspan="10">
                                         <div class="empty-state">
                                             <i class="bi bi-box-seam"></i>
                                             <p>Aucun produit trouvé</p>
@@ -251,7 +325,10 @@ include 'includes/sidebar.php';
                                     </td>
                                 </tr>
                             <?php else: ?>
-                                <?php foreach($produits as $p): ?>
+                                <?php foreach($produits as $p): 
+                                    $marge = $p['prix'] - $p['prix_achat'];
+                                    $marge_pct = ($p['prix_achat'] > 0) ? round(($marge / $p['prix_achat']) * 100, 1) : 0;
+                                ?>
                                 <tr>
                                     <td style="color:#8A99AA;font-size:0.75rem;">#<?= $p['id'] ?></td>
                                     <td>
@@ -274,8 +351,28 @@ include 'includes/sidebar.php';
                                     </td>
                                     <td style="text-align:right;">
                                         <span style="font-weight:700;color:#C8922A;font-size:0.9rem;"><?= number_format($p['prix'], 0, ',', ' ') ?> F</span>
-                                        <?php if($p['prix_promo']): ?>
-                                            <br><span style="font-size:0.7rem;color:#bbb;text-decoration:line-through;"><?= number_format($p['prix_promo'], 0, ',', ' ') ?> F</span>
+                                        <?php if($p['prix_promo'] && $p['prix_promo'] > 0): ?>
+                                            <br><span style="font-size:0.65rem;color:#E74C3C;font-weight:600;">Promo: <?= number_format($p['prix_promo'], 0, ',', ' ') ?> F</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td style="text-align:right;font-size:0.85rem;color:#666;">
+                                        <?php if($p['prix_achat'] > 0): ?>
+                                            <?= number_format($p['prix_achat'], 0, ',', ' ') ?> F
+                                        <?php else: ?>
+                                            <span style="color:#bbb;font-size:0.7rem;">Non défini</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td style="text-align:right;">
+                                        <?php if($p['prix_achat'] > 0): ?>
+                                            <span style="font-weight:700;color:<?= $marge_pct > 50 ? '#27AE60' : ($marge_pct > 20 ? '#F39C12' : '#E74C3C') ?>;">
+                                                <?= number_format($marge, 0, ',', ' ') ?> F
+                                            </span>
+                                            <br>
+                                            <span style="font-size:0.65rem;color:<?= $marge_pct > 50 ? '#27AE60' : ($marge_pct > 20 ? '#F39C12' : '#E74C3C') ?>;">
+                                                (<?= $marge_pct ?>%)
+                                            </span>
+                                        <?php else: ?>
+                                            <span style="color:#bbb;font-size:0.7rem;">—</span>
                                         <?php endif; ?>
                                     </td>
                                     <td style="text-align:center;">
@@ -303,22 +400,20 @@ include 'includes/sidebar.php';
                                                 <i class="bi bi-eye-slash"></i> Masqué
                                             </span>
                                         <?php endif; ?>
+                                        <?php if($p['est_promo']): ?>
+                                            <br><span style="display:inline-flex;gap:4px;padding:2px 8px;border-radius:12px;font-size:0.55rem;font-weight:600;background:rgba(231,76,60,0.1);color:#E74C3C;margin-top:2px;">Promo</span>
+                                        <?php endif; ?>
                                     </td>
                                     <td style="text-align:center;">
-                                        <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;">
-                                            <?php if($p['est_nouveau']): ?>
-                                                <span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;font-size:0.55rem;font-weight:600;background:rgba(200,146,42,0.1);color:#C8922A;">Nouveau</span>
-                                            <?php endif; ?>
-                                            <?php if($p['est_promo']): ?>
-                                                <span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;font-size:0.55rem;font-weight:600;background:rgba(231,76,60,0.1);color:#E74C3C;">Promo</span>
-                                            <?php endif; ?>
-                                        </div>
-                                    </td>
-                                    <td style="text-align:center;">
-                                        <div style="display:flex;gap:4px;justify-content:center;">
+                                        <div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;">
                                             <a href="produit_modifier.php?id=<?= $p['id'] ?>" class="btn-small blue" title="Modifier">
                                                 <i class="bi bi-pencil"></i>
                                             </a>
+                                            <?php if($p['prix_achat'] > 0): ?>
+                                            <a href="produits.php?recalculer_marge=<?= $p['id'] ?>" class="btn-small purple" title="Recalculer la marge" style="background:#8E44AD;color:#fff;">
+                                                <i class="bi bi-calculator"></i>
+                                            </a>
+                                            <?php endif; ?>
                                             <a href="produits.php?supprimer=<?= $p['id'] ?>" class="btn-small red" onclick="return confirm('Supprimer ce produit définitivement ?')" title="Supprimer">
                                                 <i class="bi bi-trash3"></i>
                                             </a>
@@ -335,6 +430,22 @@ include 'includes/sidebar.php';
 
     </div><!-- /content -->
 </div><!-- /main -->
+
+<!-- ============================================
+     STYLES SUPPLÉMENTAIRES
+     ============================================ -->
+<style>
+.btn-small.purple {
+    background: #8E44AD;
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    text-decoration: none;
+}
+.btn-small.purple:hover {
+    background: #6C3483;
+}
+</style>
 
 <!-- ============================================
      FOOTER

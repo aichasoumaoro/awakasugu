@@ -48,6 +48,18 @@ if (!isset($commandes_attente_count)) {
         $commandes_attente_count = 0;
     }
 }
+
+// ============================================
+// ✅ MISE À JOUR DE LA DERNIÈRE ACTIVITÉ DE L'ADMIN
+// ============================================
+if (isset($_SESSION['admin_id']) && isset($pdo)) {
+    try {
+        $stmt = $pdo->prepare("UPDATE admin SET last_activity = NOW() WHERE id = ?");
+        $stmt->execute([$_SESSION['admin_id']]);
+    } catch(PDOException $e) {
+        // Ignorer silencieusement
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="fr">

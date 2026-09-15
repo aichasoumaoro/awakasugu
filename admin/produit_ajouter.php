@@ -133,19 +133,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $couleurs_selectionnees = isset($_POST['couleurs']) ? $_POST['couleurs'] : [];
     $tailles_selectionnees = isset($_POST['tailles']) ? $_POST['tailles'] : [];
     
+    // ============================================
+    // UPLOAD MULTIPLE DE PHOTOS
+    // La 1ère photo uploadée devient l'image de couverture (image_principale)
+    // TOUTES les photos (y compris la 1ère) sont enregistrées dans produit_images
+    // pour alimenter la galerie de la fiche produit.
+    // ============================================
     $image_principale = '';
-    if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+    $photos_uploadees = []; // liste ordonnée des noms de fichiers uploadés
+
+    if (isset($_FILES['images']) && !empty($_FILES['images']['name'][0])) {
         $upload_dir = '../uploads/produits/';
         if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
-        
-        $ext = strtolower(pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION));
+
         $allowed = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
-        
-        if (in_array($ext, $allowed)) {
-            $image_principale = uniqid() . '.' . $ext;
-            move_uploaded_file($_FILES['image']['tmp_name'], $upload_dir . $image_principale);
-        } else {
-            $error = 'Format d\'image non autorisé (JPG, PNG, WEBP, GIF)';
+        $nb_fichiers = count($_FILES['images']['name']);
+
+        for ($i = 0; $i < $nb_fichiers; $i++) {
+            if ($_FILES['images']['error'][$i] !== UPLOAD_ERR_OK) {
+                continue; // on ignore les emplacements vides / en erreur
+            }
+
+            $ext = strtolower(pathinfo($_FILES['images']['name'][$i], PATHINFO_EXTENSION));
+
+            if (!in_array($ext, $allowed)) {
+                $error = 'Format d\'image non autorisé (JPG, PNG, WEBP, GIF)';
+                continue;
+            }
+
+            $nom_fichier = uniqid() . '_' . $i . '.' . $ext;
+            move_uploaded_file($_FILES['images']['tmp_name'][$i], $upload_dir . $nom_fichier);
+
+            if ($image_principale === '') {
+                $image_principale = $nom_fichier; // 1ère photo = couverture
+            }
+            $photos_uploadees[] = $nom_fichier;
         }
     }
     
@@ -168,6 +190,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $pdo->prepare("INSERT INTO produit_tailles (produit_id, taille_id) VALUES (?, ?)");
             foreach ($tailles_selectionnees as $taille_id) {
                 $stmt->execute([$produit_id, $taille_id]);
+            }
+        }
+
+        // Enregistrement de toutes les photos dans la galerie produit_images
+        if (!empty($photos_uploadees)) {
+            $stmt = $pdo->prepare("INSERT INTO produit_images (produit_id, nom_fichier, ordre) VALUES (?, ?, ?)");
+            foreach ($photos_uploadees as $index => $fichier) {
+                $stmt->execute([$produit_id, $fichier, $index]);
             }
         }
         
@@ -413,13 +443,16 @@ include 'includes/sidebar.php';
                             </div>
                             <div>
                                 <label style="display:block;font-size:0.75rem;font-weight:600;color:#1A2C3E;margin-bottom:5px;">
-                                    Image principale
+                                    Photos du produit
+                                    <span style="font-weight:400;color:#8A99AA;font-size:0.65rem;margin-left:6px;">(la 1ère sera la couverture)</span>
                                 </label>
-                                <input type="file" name="image" accept="image/*" 
+                                <input type="file" name="images[]" accept="image/*" multiple
                                        style="width:100%;padding:10px 16px;border:2px solid #E8ECF0;border-radius:10px;font-size:0.9rem;font-family:'Jost',sans-serif;background:#FAF9F7;transition:border-color 0.3s;"
                                        onfocus="this.style.borderColor='#C8922A';this.style.boxShadow='0 0 0 4px rgba(200,146,42,0.08)'"
-                                       onblur="this.style.borderColor='#E8ECF0';this.style.boxShadow='none'">
-                                <div style="font-size:0.65rem;color:#8A99AA;margin-top:4px;">Formats : JPG, PNG, WEBP, GIF</div>
+                                       onblur="this.style.borderColor='#E8ECF0';this.style.boxShadow='none'"
+                                       onchange="previewNewImages(this)">
+                                <div style="font-size:0.65rem;color:#8A99AA;margin-top:4px;">Formats : JPG, PNG, WEBP, GIF — vous pouvez en sélectionner plusieurs à la fois</div>
+                                <div id="previewNewImages" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;"></div>
                             </div>
                         </div>
                         
@@ -451,6 +484,27 @@ include 'includes/sidebar.php';
 
     </div><!-- /content -->
 </div><!-- /main -->
+
+<script>
+// Aperçu des nouvelles photos sélectionnées avant l'envoi du formulaire
+function previewNewImages(input) {
+    const container = document.getElementById('previewNewImages');
+    container.innerHTML = '';
+    if (!input.files) return;
+
+    Array.from(input.files).forEach((file, index) => {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const wrapper = document.createElement('div');
+            wrapper.style.cssText = 'position:relative;width:70px;height:70px;border-radius:8px;overflow:hidden;border:2px solid ' + (index === 0 ? '#C8922A' : '#E8ECF0') + ';';
+            wrapper.innerHTML = '<img src="' + e.target.result + '" style="width:100%;height:100%;object-fit:cover;">' +
+                (index === 0 ? '<span style="position:absolute;bottom:0;left:0;right:0;background:#C8922A;color:#fff;font-size:0.55rem;text-align:center;padding:2px 0;">Couverture</span>' : '');
+            container.appendChild(wrapper);
+        };
+        reader.readAsDataURL(file);
+    });
+}
+</script>
 
 <!-- ============================================
      FOOTER

@@ -124,6 +124,41 @@ function getAchatsMois($pdo) {
     return (float)$stmt->fetchColumn();
 }
 
+// ============================================
+// STATISTIQUES DE MARGE
+// ============================================
+function getStatsMarge($pdo) {
+    $stmt = $pdo->query("
+        SELECT 
+            COALESCE(SUM((prix - prix_achat) * stock), 0) as marge_totale_potentielle,
+            COALESCE(SUM(prix * stock), 0) as valeur_stock_vente,
+            COALESCE(SUM(prix_achat * stock), 0) as valeur_stock_achat,
+            COALESCE(AVG(marge_pourcentage), 0) as marge_moyenne,
+            COUNT(*) as nb_produits_avec_marge
+        FROM produits 
+        WHERE est_visible = 1 AND prix_achat > 0
+    ");
+    return $stmt->fetch();
+}
+
+// ============================================
+// RÉCUPÉRER LES ADMINISTRATEURS CONNECTÉS
+// ============================================
+function getAdminsConnectes($pdo) {
+    try {
+        $stmt = $pdo->query("
+            SELECT nom, email, role, last_activity 
+            FROM admin 
+            WHERE is_active = 1 
+            AND last_activity IS NOT NULL 
+            AND TIMESTAMPDIFF(MINUTE, last_activity, NOW()) < 5
+        ");
+        return $stmt->fetchAll();
+    } catch(PDOException $e) {
+        return [];
+    }
+}
+
 $total_produits = getTotalProduits($pdo);
 $produits_rupture = getProduitsRupture($pdo);
 $total_clients = getTotalClients($pdo);
@@ -142,6 +177,22 @@ $ca_total_mois = $ca_commandes_mois + $ca_ventes_boutique_mois;
 $ca_total_global = $ca_commandes_total + $ca_ventes_boutique_total;
 $benefice_brut = $ca_total_mois - $achats_mois;
 
+// Statistiques de marge
+$stats_marge = getStatsMarge($pdo);
+$marge_totale_potentielle = $stats_marge['marge_totale_potentielle'] ?? 0;
+$valeur_stock_vente = $stats_marge['valeur_stock_vente'] ?? 0;
+$valeur_stock_achat = $stats_marge['valeur_stock_achat'] ?? 0;
+$marge_moyenne = $stats_marge['marge_moyenne'] ?? 0;
+$nb_produits_avec_marge = $stats_marge['nb_produits_avec_marge'] ?? 0;
+
+// ============================================
+// RÉCUPÉRER LES ADMINS CONNECTÉS (SEULEMENT POUR SUPER_ADMIN ET DIRECTEUR)
+// ============================================
+$admins_connectes = [];
+if ($admin_role === 'super_admin' || $admin_role === 'directeur') {
+    $admins_connectes = getAdminsConnectes($pdo);
+}
+
 $reservations_aujourdhui = $pdo->query("SELECT COUNT(*) FROM reservations WHERE date_reservation = CURDATE()")->fetchColumn();
 $reservations_attente = $pdo->query("SELECT COUNT(*) FROM reservations WHERE statut = 'en_attente'")->fetchColumn();
 
@@ -158,6 +209,22 @@ $commandes_en_attente = $pdo->query("
 
 $alertes_stock = $pdo->query("
     SELECT * FROM produits WHERE stock <= seuil_alerte AND stock > 0 ORDER BY stock ASC LIMIT 5
+")->fetchAll();
+
+// Top produits par marge
+$top_produits_marge = $pdo->query("
+    SELECT 
+        id, nom, 
+        prix_achat, 
+        prix, 
+        (prix - prix_achat) as marge, 
+        marge_pourcentage,
+        stock,
+        (prix - prix_achat) * stock as marge_potentielle
+    FROM produits 
+    WHERE est_visible = 1 AND prix_achat > 0 
+    ORDER BY marge_potentielle DESC 
+    LIMIT 5
 ")->fetchAll();
 
 $ventes_mois = [];
@@ -181,7 +248,7 @@ for($i = 1; $i <= 12; $i++) {
 }
 
 // ============================================
-// TOP CATÉGORIES (barres horizontales)
+// TOP CATÉGORIES
 // ============================================
 $top_categories = [];
 try {
@@ -271,6 +338,36 @@ include 'includes/sidebar.php';
             <div class="alert-danger"><i class="bi bi-exclamation-triangle-fill"></i> <?= htmlspecialchars($delete_error) ?></div>
         <?php endif; ?>
 
+        <!-- ============================================
+             AFFICHAGE DES ADMINISTRATEURS CONNECTÉS
+             (SEULEMENT POUR SUPER_ADMIN ET DIRECTEUR)
+             ============================================ -->
+        <?php if($admin_role === 'super_admin' || $admin_role === 'directeur'): ?>
+            <?php if(!empty($admins_connectes)): ?>
+            <div style="background:#E8F5E9;padding:10px 18px;border-radius:8px;margin-bottom:15px;border-left:4px solid #27AE60;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <i class="bi bi-circle-fill" style="color:#27AE60;font-size:0.6rem;"></i>
+                <span style="font-weight:600;color:#155724;font-size:0.85rem;">👤 Admin(s) connecté(s) :</span>
+                <?php 
+                $role_labels_short = ['super_admin' => '⭐ Super', 'directeur' => '👑 Dir.', 'admin' => '🛠️ Admin', 'admin2' => '📦 Agent'];
+                foreach($admins_connectes as $admin_conn):
+                ?>
+                <span style="background:rgba(200,146,42,0.12);padding:2px 14px;border-radius:12px;font-size:0.7rem;color:#0D0D0D;">
+                    <?= htmlspecialchars($admin_conn['nom']) ?>
+                    <span style="color:#8A99AA;font-size:0.6rem;">(<?= $role_labels_short[$admin_conn['role']] ?? $admin_conn['role'] ?>)</span>
+                </span>
+                <?php endforeach; ?>
+                <span style="font-size:0.65rem;color:#8A99AA;margin-left:auto;">
+                    <i class="bi bi-clock"></i> Actif(s) depuis moins de 5 min
+                </span>
+            </div>
+            <?php else: ?>
+            <div style="background:#FFF8E1;padding:8px 18px;border-radius:8px;margin-bottom:15px;border-left:4px solid #F39C12;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <i class="bi bi-person" style="color:#F39C12;font-size:0.9rem;"></i>
+                <span style="font-size:0.8rem;color:#856404;">Aucun administrateur connecté actuellement</span>
+            </div>
+            <?php endif; ?>
+        <?php endif; ?>
+
         <div class="welcome-card">
             <div>
                 <h2>
@@ -299,6 +396,7 @@ include 'includes/sidebar.php';
              STATISTIQUES - SUPER ADMIN & DIRECTEUR
              ============================================ -->
         <?php if($admin_role === 'super_admin' || $admin_role === 'directeur'): ?>
+        <!-- Ligne 1 - Activité principale -->
         <div class="stats-row">
             <div class="stat-box">
                 <div class="stat-box-top">
@@ -326,14 +424,15 @@ include 'includes/sidebar.php';
             </div>
             <div class="stat-box">
                 <div class="stat-box-top">
-                    <span class="stat-box-label">Bénéfice</span>
+                    <span class="stat-box-label">Bénéfice brut</span>
                     <div class="stat-icon ic-purple"><i class="bi bi-graph-up-arrow"></i></div>
                 </div>
                 <div class="stat-val"><?= number_format($benefice_brut, 0, ',', ' ') ?> F</div>
-                <div class="stat-lbl">Bénéfice brut du mois</div>
+                <div class="stat-lbl">CA - Achats du mois</div>
             </div>
         </div>
 
+        <!-- Ligne 2 - Commandes et ventes -->
         <div class="stats-row">
             <div class="stat-box">
                 <div class="stat-box-top">
@@ -366,6 +465,42 @@ include 'includes/sidebar.php';
                 </div>
                 <div class="stat-val"><?= $commandes_attente_count ?></div>
                 <div class="stat-lbl">En attente</div>
+            </div>
+        </div>
+
+        <!-- Ligne 3 - MARGE ET RENTABILITÉ -->
+        <div class="stats-row">
+            <div class="stat-box" style="border-left: 4px solid #27AE60;">
+                <div class="stat-box-top">
+                    <span class="stat-box-label">Marge brute potentielle</span>
+                    <div class="stat-icon ic-green"><i class="bi bi-cash-stack"></i></div>
+                </div>
+                <div class="stat-val" style="color:#27AE60;"><?= number_format($marge_totale_potentielle, 0, ',', ' ') ?> F</div>
+                <div class="stat-lbl">Sur stock actuel</div>
+            </div>
+            <div class="stat-box" style="border-left: 4px solid #2980B9;">
+                <div class="stat-box-top">
+                    <span class="stat-box-label">Valeur stock (vente)</span>
+                    <div class="stat-icon ic-blue"><i class="bi bi-cart"></i></div>
+                </div>
+                <div class="stat-val" style="color:#2980B9;"><?= number_format($valeur_stock_vente, 0, ',', ' ') ?> F</div>
+                <div class="stat-lbl">Prix de vente</div>
+            </div>
+            <div class="stat-box" style="border-left: 4px solid #E67E22;">
+                <div class="stat-box-top">
+                    <span class="stat-box-label">Valeur stock (achat)</span>
+                    <div class="stat-icon ic-or"><i class="bi bi-bag"></i></div>
+                </div>
+                <div class="stat-val" style="color:#E67E22;"><?= number_format($valeur_stock_achat, 0, ',', ' ') ?> F</div>
+                <div class="stat-lbl">Prix d'achat</div>
+            </div>
+            <div class="stat-box" style="border-left: 4px solid #8E44AD;">
+                <div class="stat-box-top">
+                    <span class="stat-box-label">Marge moyenne</span>
+                    <div class="stat-icon ic-purple"><i class="bi bi-percent"></i></div>
+                </div>
+                <div class="stat-val" style="color:#8E44AD;"><?= number_format($marge_moyenne, 1) ?>%</div>
+                <div class="stat-lbl"><?= $nb_produits_avec_marge ?> produits</div>
             </div>
         </div>
         <?php endif; ?>
@@ -446,6 +581,40 @@ include 'includes/sidebar.php';
                 </div>
                 <div class="stat-val" style="font-size:1.1rem;"><?= date('d/m/Y') ?></div>
                 <div class="stat-lbl">Date du jour</div>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <!-- ============================================
+             TOP PRODUITS PAR MARGE - SUPER ADMIN & DIRECTEUR
+             ============================================ -->
+        <?php if(($admin_role === 'super_admin' || $admin_role === 'directeur') && !empty($top_produits_marge)): ?>
+        <div class="card-white">
+            <div class="card-header">
+                <div class="card-title"><i class="bi bi-trophy"></i> Top 5 produits par marge potentielle</div>
+                <a href="produits.php" class="btn-small or">Voir tout</a>
+            </div>
+            <div class="card-body" style="padding:0;">
+                <?php foreach($top_produits_marge as $p): ?>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid #F0F0F0;">
+                    <div>
+                        <div style="font-weight:600;font-size:0.9rem;"><?= htmlspecialchars($p['nom']) ?></div>
+                        <div style="font-size:0.75rem;color:#888;">
+                            Achat: <?= number_format($p['prix_achat'], 0, ',', ' ') ?> F | 
+                            Vente: <?= number_format($p['prix'], 0, ',', ' ') ?> F | 
+                            Stock: <?= $p['stock'] ?>
+                        </div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-weight:700;color:#27AE60;">
+                            <?= number_format($p['marge_potentielle'], 0, ',', ' ') ?> F
+                        </div>
+                        <div style="font-size:0.7rem;color:<?= $p['marge_pourcentage'] > 50 ? '#27AE60' : ($p['marge_pourcentage'] > 20 ? '#F39C12' : '#E74C3C') ?>;">
+                            Marge: <?= $p['marge_pourcentage'] ?>%
+                        </div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
             </div>
         </div>
         <?php endif; ?>
@@ -577,7 +746,7 @@ include 'includes/sidebar.php';
         </div>
 
         <!-- ============================================
-             DONUT (répartition CA) + TOP CATÉGORIES
+             DONUT + TOP CATÉGORIES
              ============================================ -->
         <div class="dashboard-grid">
             <div class="card-white">
@@ -634,110 +803,6 @@ include 'includes/sidebar.php';
         <?php endif; ?>
 
         <!-- ============================================
-             GRILLE 2 COLONNES - ADMIN
-             ============================================ -->
-        <?php if($admin_role === 'admin'): ?>
-        <div class="dashboard-grid">
-            <div class="card-white">
-                <div class="card-header">
-                    <div class="card-title"><i class="bi bi-calendar-check"></i> Réservations</div>
-                    <a href="reservations.php" class="btn-small or">Voir tout</a>
-                </div>
-                <div class="card-body" style="padding:0;">
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px;">
-                        <div style="text-align:center;background:var(--border-soft);border-radius:8px;padding:12px;border:1px solid var(--border-color);">
-                            <div style="font-size:1.3rem;font-weight:700;color:#2980B9;"><?= $reservations_aujourdhui ?></div>
-                            <div style="font-size:0.6rem;color:var(--text-secondary);">Aujourd'hui</div>
-                        </div>
-                        <div style="text-align:center;background:var(--border-soft);border-radius:8px;padding:12px;border:1px solid var(--border-color);">
-                            <div style="font-size:1.3rem;font-weight:700;color:#E67E22;"><?= $reservations_attente ?></div>
-                            <div style="font-size:0.6rem;color:var(--text-secondary);">En attente</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="card-white">
-                <div class="card-header">
-                    <div class="card-title"><i class="bi bi-receipt"></i> Commandes récentes</div>
-                    <a href="commandes.php" class="btn-small or">Voir tout</a>
-                </div>
-                <div class="card-body" style="padding:0;">
-                    <?php if(empty($commandes_en_attente)): ?>
-                        <div class="empty-state"><i class="bi bi-receipt"></i><p>Aucune commande récente</p></div>
-                    <?php else: 
-                        $commandes_recentes = array_slice($commandes_en_attente, 0, 5);
-                        foreach($commandes_recentes as $c): ?>
-                        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border-soft);">
-                            <div>
-                                <div class="fw-600"><?= htmlspecialchars($c['numero_commande'] ?? 'N/A') ?></div>
-                                <div class="text-muted" style="font-size:0.75rem;"><?= htmlspecialchars($c['client_nom'] ?? 'Inconnu') ?></div>
-                            </div>
-                            <span style="color:var(--text-secondary);font-size:0.65rem;"><?= number_format($c['total'], 0, ',', ' ') ?> F</span>
-                        </div>
-                    <?php endforeach; endif; ?>
-                </div>
-            </div>
-        </div>
-        <?php endif; ?>
-
-        <!-- ============================================
-             GRILLE 2 COLONNES - AGENT
-             ============================================ -->
-        <?php if($admin_role === 'admin2'): ?>
-        <div class="dashboard-grid">
-            <div class="card-white">
-                <div class="card-header">
-                    <div class="card-title"><i class="bi bi-truck"></i> Commandes à livrer</div>
-                    <a href="commandes.php?filtre=en_attente" class="btn-small green">Voir tout</a>
-                </div>
-                <div class="card-body" style="padding:0;">
-                    <?php if(empty($commandes_en_attente)): ?>
-                        <div class="empty-state"><i class="bi bi-check-circle" style="color:#27AE60;"></i><p>Aucune commande à livrer</p></div>
-                    <?php else: 
-                        foreach(array_slice($commandes_en_attente, 0, 5) as $c): ?>
-                        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border-soft);">
-                            <div>
-                                <div class="fw-600"><?= htmlspecialchars($c['numero_commande'] ?? 'N/A') ?></div>
-                                <div class="text-muted" style="font-size:0.75rem;">
-                                    <?= htmlspecialchars($c['client_nom'] ?? 'Inconnu') ?>
-                                    <span style="display:block;font-size:0.6rem;">📍 Livraison à Bamako</span>
-                                </div>
-                            </div>
-                            <a href="commande_detail.php?id=<?= $c['id'] ?>" class="btn-small blue"><i class="bi bi-eye"></i></a>
-                        </div>
-                    <?php endforeach; endif; ?>
-                </div>
-            </div>
-            <div class="card-white">
-                <div class="card-header"><div class="card-title"><i class="bi bi-calendar-check"></i> Livraisons du jour</div></div>
-                <div class="card-body" style="padding:0;">
-                    <div style="padding:14px;text-align:center;">
-                        <div style="font-size:1.8rem;font-weight:700;color:#C8922A;"><?= $total_commandes ?></div>
-                        <div style="color:var(--text-secondary);font-size:0.75rem;">Commandes à livrer aujourd'hui</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <?php endif; ?>
-
-        <!-- ============================================
-             GRAPHIQUE - SUPER ADMIN & DIRECTEUR
-             ============================================ -->
-        <?php if($admin_role === 'super_admin' || $admin_role === 'directeur'): ?>
-        <div class="card-white">
-            <div class="card-header">
-                <div class="card-title">
-                    <i class="bi bi-graph-up"></i> Ventes mensuelles
-                    <span style="font-size:0.65rem;font-weight:normal;background:var(--border-soft);padding:2px 8px;border-radius:12px;margin-left:8px;"><?= date('Y') ?></span>
-                </div>
-            </div>
-            <div class="card-body">
-                <canvas id="ventesChart" height="200"></canvas>
-            </div>
-        </div>
-        <?php endif; ?>
-
-        <!-- ============================================
              ALERTES STOCK
              ============================================ -->
         <?php if(!empty($alertes_stock) && ($admin_role === 'super_admin' || $admin_role === 'directeur' || $admin_role === 'admin')): ?>
@@ -751,9 +816,12 @@ include 'includes/sidebar.php';
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;background:rgba(230,126,34,0.08);border-left:3px solid #E67E22;border-radius:6px;margin-bottom:6px;gap:10px;flex-wrap:wrap;">
                     <span style="color:var(--text-primary);font-size:0.8rem;">
                         <strong><?= htmlspecialchars($p['nom']) ?></strong> — Stock restant : <strong><?= $p['stock'] ?></strong>
+                        <?php if($p['prix_achat'] > 0): ?>
+                            <span style="font-size:0.7rem;color:#888;">| Achat: <?= number_format($p['prix_achat'], 0, ',', ' ') ?> F | Vente: <?= number_format($p['prix'], 0, ',', ' ') ?> F</span>
+                        <?php endif; ?>
                     </span>
                     <?php if($admin_role === 'super_admin' || $admin_role === 'directeur'): ?>
-                    <a href="produit_modifier.php?id=<?= $p['id'] ?>" class="btn-small or">Réapprovisionner</a>
+                    <a href="achats.php" class="btn-small or">Réapprovisionner</a>
                     <?php endif; ?>
                 </div>
                 <?php endforeach; ?>
@@ -834,7 +902,6 @@ new Chart(donutCtx, {
     }
 });
 
-// Redessiner les graphiques en cas de rotation d'écran mobile
 window.addEventListener('resize', function() {
     Chart.instances && Object.values(Chart.instances).forEach(c => c.resize());
 });

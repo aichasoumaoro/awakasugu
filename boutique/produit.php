@@ -63,8 +63,23 @@ $stmt->execute([$id]);
 $tailles_produit = $stmt->fetchAll();
 
 // ============================================
+// AJOUT : GALLERIE D'IMAGES SUPPLÉMENTAIRES
+// ============================================
+$images_supplementaires = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT nom_fichier FROM produit_images 
+        WHERE produit_id = ? 
+        ORDER BY ordre ASC, id ASC
+    ");
+    $stmt->execute([$id]);
+    $images_supplementaires = $stmt->fetchAll(PDO::FETCH_COLUMN);
+} catch(PDOException $e) {
+    $images_supplementaires = [];
+}
+
+// ============================================
 // AJOUT : PRODUIT PRÉCÉDENT / SUIVANT (mêmes catégorie)
-// Pour naviguer avec des flèches sans repasser par le catalogue
 // ============================================
 $produit_precedent = null;
 $produit_suivant = null;
@@ -243,7 +258,7 @@ require_once '../includes/navbar.php';
 .produit-page { padding: 40px 0 60px; }
 .container-custom { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
 
-/* ===== BANDEAU DE RÉASSURANCE (comme catalogue.php) ===== */
+/* ===== BANDEAU DE RÉASSURANCE ===== */
 .trust-bar {
     display: flex;
     gap: 24px;
@@ -280,8 +295,14 @@ require_once '../includes/navbar.php';
     border: 1px solid rgba(200,146,42,0.08);
 }
 
-/* ===== BLOC IMAGE : petit cadre + bouton grand cadre + flèches produit ===== */
-.produit-image-wrap { position: relative; }
+/* ===== BLOC IMAGE : image principale + galerie de vignettes ===== */
+.produit-image-wrap {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
 .produit-image {
     display: flex;
     align-items: center;
@@ -293,9 +314,53 @@ require_once '../includes/navbar.php';
     position: relative;
     overflow: hidden;
 }
-.produit-image img { max-width: 100%; max-height: 420px; object-fit: contain; transition: transform 0.3s; cursor: zoom-in; }
+.produit-image img {
+    max-width: 100%;
+    max-height: 420px;
+    object-fit: contain;
+    transition: transform 0.3s;
+    cursor: zoom-in;
+}
 .produit-image img:hover { transform: scale(1.02); }
 
+/* --- GALERIE DE VIGNETTES --- */
+.galerie-vignettes {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    padding: 4px 0;
+}
+.galerie-vignettes .vignette-item {
+    width: 72px;
+    height: 72px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: #F8F9FA;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.galerie-vignettes .vignette-item:hover {
+    border-color: #C8922A;
+    transform: translateY(-3px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.galerie-vignettes .vignette-item.active {
+    border-color: #C8922A;
+    box-shadow: 0 0 0 3px rgba(200,146,42,0.25);
+}
+.galerie-vignettes .vignette-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Bouton "Grand cadre" */
 .btn-grand-cadre {
     position: absolute;
     bottom: 16px;
@@ -313,6 +378,7 @@ require_once '../includes/navbar.php';
     cursor: pointer;
     backdrop-filter: blur(4px);
     z-index: 5;
+    transition: background 0.3s ease;
 }
 .btn-grand-cadre:hover { background: rgba(0,0,0,0.9); }
 
@@ -547,7 +613,7 @@ require_once '../includes/navbar.php';
 }
 
 /* ============================================
-   PRODUITS SIMILAIRES - petites cartes cliquables
+   PRODUITS SIMILAIRES
    ============================================ */
 .similaires { margin-top: 60px; }
 .similaires h3 {
@@ -780,9 +846,17 @@ require_once '../includes/navbar.php';
         flex: none;
     }
     .produit-nav-arrow { width: 36px; height: 36px; font-size: 0.95rem; }
+    .galerie-vignettes .vignette-item {
+        width: 56px;
+        height: 56px;
+    }
 }
 @media (max-width: 500px) {
     .similaires-grid { grid-template-columns: 1fr; }
+    .galerie-vignettes .vignette-item {
+        width: 48px;
+        height: 48px;
+    }
 }
 </style>
 
@@ -798,11 +872,12 @@ require_once '../includes/navbar.php';
 
         <div class="produit-grid">
             <div class="produit-image-wrap">
-                <div class="produit-image">
+                <!-- Image principale -->
+                <div class="produit-image" id="produitImageContainer">
                     <?php 
-                    $image = getProductImageDetail($produit['image_principale'] ?? '');
+                    $image_principale = getProductImageDetail($produit['image_principale'] ?? '');
                     ?>
-                    <img src="<?= $image ?>" alt="<?= htmlspecialchars($produit['nom']) ?>" onclick="openImageLightbox('<?= $image ?>')">
+                    <img id="produitImagePrincipale" src="<?= $image_principale ?>" alt="<?= htmlspecialchars($produit['nom']) ?>" onclick="openImageLightbox(this.src)">
 
                     <?php if ($produit_precedent): ?>
                         <a href="produit.php?id=<?= $produit_precedent['id'] ?>" class="produit-nav-arrow prev" title="Produit précédent : <?= htmlspecialchars($produit_precedent['nom']) ?>">
@@ -815,10 +890,28 @@ require_once '../includes/navbar.php';
                         </a>
                     <?php endif; ?>
 
-                    <button type="button" class="btn-grand-cadre" onclick="openImageLightbox('<?= $image ?>')">
+                    <button type="button" class="btn-grand-cadre" onclick="openImageLightbox(document.getElementById('produitImagePrincipale').src)">
                         <i class="bi bi-arrows-fullscreen"></i> Grand cadre
                     </button>
                 </div>
+
+                <!-- === GALERIE DE VIGNETTES === -->
+                <div class="galerie-vignettes" id="galerieVignettes">
+                    <!-- Vignette de l'image principale -->
+                    <div class="vignette-item active" data-src="<?= $image_principale ?>" onclick="changerImagePrincipale(this, '<?= $image_principale ?>')">
+                        <img src="<?= $image_principale ?>" alt="Image principale">
+                    </div>
+                    
+                    <!-- Vignettes des images supplémentaires -->
+                    <?php foreach($images_supplementaires as $img_path): 
+                        $img_url = getProductImageDetail($img_path);
+                    ?>
+                        <div class="vignette-item" data-src="<?= $img_url ?>" onclick="changerImagePrincipale(this, '<?= $img_url ?>')">
+                            <img src="<?= $img_url ?>" alt="Image supplémentaire">
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+
                 <?php if ($produit_precedent || $produit_suivant): ?>
                 <div class="produit-nav-hint">
                     <i class="bi bi-arrow-left-right"></i> Parcourez les autres produits de cette catégorie
@@ -1000,7 +1093,7 @@ require_once '../includes/navbar.php';
         </div>
 
         <!-- ============================================
-             PRODUITS SIMILAIRES - petites cartes cliquables
+             PRODUITS SIMILAIRES
              ============================================ -->
         <?php if(!empty($similaires)): ?>
         <div class="similaires">
@@ -1026,7 +1119,7 @@ require_once '../includes/navbar.php';
 </div>
 
 <!-- ============================================
-     LIGHTBOX "GRAND CADRE" (photo en plein écran)
+     LIGHTBOX "GRAND CADRE"
      ============================================ -->
 <div class="image-lightbox-overlay" id="imageLightbox" onclick="closeImageLightbox(event)">
     <button class="image-lightbox-close" onclick="closeImageLightbox(event)"><i class="bi bi-x-lg"></i></button>
@@ -1034,7 +1127,27 @@ require_once '../includes/navbar.php';
 </div>
 
 <script>
-// Sélection de la couleur
+// ============================================
+// GALERIE D'IMAGES : changer l'image principale
+// ============================================
+function changerImagePrincipale(element, src) {
+    // Mettre à jour l'image principale
+    document.getElementById('produitImagePrincipale').src = src;
+    
+    // Mettre à jour le bouton "Grand cadre" avec la nouvelle source
+    const btnGrandCadre = document.querySelector('.btn-grand-cadre');
+    if (btnGrandCadre) {
+        btnGrandCadre.setAttribute('onclick', "openImageLightbox('" + src + "')");
+    }
+    
+    // Activer la vignette cliquée
+    document.querySelectorAll('.vignette-item').forEach(el => el.classList.remove('active'));
+    element.classList.add('active');
+}
+
+// ============================================
+// SÉLECTION DE LA COULEUR
+// ============================================
 function selectionnerCouleur(element) {
     document.querySelectorAll('.couleur-item').forEach(el => el.classList.remove('active'));
     element.classList.add('active');
@@ -1049,7 +1162,9 @@ function selectionnerCouleur(element) {
     verifierSelection();
 }
 
-// Sélection de la taille
+// ============================================
+// SÉLECTION DE LA TAILLE
+// ============================================
 function selectionnerTaille(element) {
     document.querySelectorAll('.taille-item').forEach(el => el.classList.remove('active'));
     element.classList.add('active');
@@ -1064,7 +1179,9 @@ function selectionnerTaille(element) {
     verifierSelection();
 }
 
-// Mise à jour de la quantité
+// ============================================
+// MISE À JOUR DE LA QUANTITÉ
+// ============================================
 document.addEventListener('DOMContentLoaded', function() {
     const qteInput = document.getElementById('quantite_produit');
     const qteAjouter = document.getElementById('quantite_ajouter');
@@ -1085,6 +1202,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+// ============================================
+// VÉRIFICATION DE LA SÉLECTION (couleur + taille)
+// ============================================
 function verifierSelection() {
     const couleur = document.getElementById('couleur_input').value;
     const taille = document.getElementById('taille_input').value;
@@ -1121,9 +1241,9 @@ function verifierSelection() {
     }
 }
 
-// ==========================================
-// FONCTION POUR AFFICHER/MASQUER LES AVIS
-// ==========================================
+// ============================================
+// AFFICHER / MASQUER LES AVIS
+// ============================================
 function toggleAvis() {
     const container = document.getElementById('avisListContainer');
     const icon = document.getElementById('avisIcon');
@@ -1142,17 +1262,20 @@ function toggleAvis() {
     }
 }
 
-// ==========================================
+// ============================================
 // LIGHTBOX "GRAND CADRE"
-// ==========================================
+// ============================================
 function openImageLightbox(src) {
+    if (!src) return;
     document.getElementById('imageLightboxImg').src = src;
     document.getElementById('imageLightbox').classList.add('show');
 }
+
 function closeImageLightbox(event) {
     if (event) event.stopPropagation();
     document.getElementById('imageLightbox').classList.remove('show');
 }
+
 document.addEventListener('keydown', function(event) {
     if (event.key === 'Escape') closeImageLightbox();
     // Navigation clavier entre produits (gauche/droite)
@@ -1164,7 +1287,9 @@ document.addEventListener('keydown', function(event) {
     <?php endif; ?>
 });
 
-// Initialisation
+// ============================================
+// INITIALISATION AU CHARGEMENT
+// ============================================
 document.addEventListener('DOMContentLoaded', function() {
     verifierSelection();
 });

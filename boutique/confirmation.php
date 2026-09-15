@@ -53,6 +53,77 @@ $details = $stmt->fetchAll();
 $success_msg = isset($_SESSION['commande_success']) ? $_SESSION['commande_success'] : null;
 unset($_SESSION['commande_success']);
 
+// ============================================
+// AJOUT DES POINTS DE FIDÉLITÉ
+// ============================================
+
+// Vérifier si des points ont déjà été ajoutés pour cette commande
+$points_deja_ajoutes = false;
+if (isset($_SESSION['points_ajoutes']) && $_SESSION['points_ajoutes'] == $commande['id']) {
+    $points_deja_ajoutes = true;
+}
+
+// Si pas encore ajoutés et que la commande est confirmée
+if (!$points_deja_ajoutes && in_array($commande['statut'], ['confirmee', 'livree', 'terminee'])) {
+    
+    // Récupérer les paramètres de fidélité
+    $stmt = $pdo->query("SELECT cle, valeur FROM parametres_fonctionnalites WHERE cle LIKE 'fidelite_%'");
+    $params_fidelite = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+    
+    $seuil_points = $params_fidelite['fidelite_seuil_points'] ?? 50000;
+    $points_par_seuil = $params_fidelite['fidelite_points_par_seuil'] ?? 1;
+    $fidelite_actif = $params_fidelite['fidelite_actif'] ?? 1;
+    
+    // Si le client est connecté et la fidélité est active
+    if (isset($_SESSION['client_id']) && $fidelite_actif == 1) {
+        $client_id = $_SESSION['client_id'];
+        $total_commande = $commande['total'] ?? 0;
+        
+        // Calculer les points gagnés
+        $points_gagnes = floor($total_commande / $seuil_points) * $points_par_seuil;
+        
+        if ($points_gagnes > 0) {
+            try {
+                // Vérifier si le client a déjà un compte de points
+                $stmt = $pdo->prepare("SELECT id FROM points_fidelite WHERE client_id = ?");
+                $stmt->execute([$client_id]);
+                $existing = $stmt->fetch();
+                
+                if ($existing) {
+                    $pdo->prepare("UPDATE points_fidelite SET points = points + ?, total_points = total_points + ? WHERE client_id = ?")
+                        ->execute([$points_gagnes, $points_gagnes, $client_id]);
+                } else {
+                    $pdo->prepare("INSERT INTO points_fidelite (client_id, points, total_points) VALUES (?, ?, ?)")
+                        ->execute([$client_id, $points_gagnes, $points_gagnes]);
+                }
+                
+                // Enregistrer dans l'historique
+                $description = "Commande #" . ($commande['numero_commande'] ?? '') . " - " . $points_gagnes . " points gagnés";
+                $pdo->prepare("INSERT INTO historique_points (client_id, points, type, reference_id, description) VALUES (?, ?, 'gain', ?, ?)")
+                    ->execute([$client_id, $points_gagnes, $commande['id'], $description]);
+                
+                // Marquer les points comme ajoutés pour cette commande
+                $_SESSION['points_ajoutes'] = $commande['id'];
+                
+                // Ajouter l'info dans la session pour l'affichage
+                $_SESSION['points_gagnes'] = [
+                    'points' => $points_gagnes,
+                    'seuil' => $seuil_points,
+                    'commande' => $commande['numero_commande']
+                ];
+                
+            } catch(PDOException $e) {
+                // Silencieux - ne pas bloquer la page
+                error_log("Erreur ajout points: " . $e->getMessage());
+            }
+        }
+    }
+}
+
+// Récupérer les points gagnés pour affichage
+$points_gagnes_affichage = isset($_SESSION['points_gagnes']) ? $_SESSION['points_gagnes'] : null;
+unset($_SESSION['points_gagnes']);
+
 $titre_page = 'Confirmation - Awa Ka Sugu';
 require_once '../includes/header.php';
 require_once '../includes/navbar.php';
@@ -280,12 +351,60 @@ require_once '../includes/navbar.php';
             background: #F8D7DA;
             color: #721C24;
         }
+
+        /* ============================================
+           STYLES POUR LA SECTION POINTS FIDÉLITÉ
+           ============================================ */
+        .points-section {
+            background: #FEFBF5;
+            border-radius: 12px;
+            padding: 15px 20px;
+            margin: 15px 0;
+            border: 1px solid rgba(200,146,42,0.15);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .points-section .points-icon {
+            font-size: 2rem;
+            color: #C8922A;
+        }
+        .points-section .points-info {
+            flex: 1;
+            text-align: left;
+        }
+        .points-section .points-info .title {
+            font-weight: 600;
+            color: #0D0D0D;
+            font-size: 0.95rem;
+        }
+        .points-section .points-info .sub {
+            font-size: 0.75rem;
+            color: #8A99AA;
+        }
+        .points-section .points-amount {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #C8922A;
+        }
         
+        /* ============================================
+           RESPONSIVE
+           ============================================ */
         @media (max-width: 600px) {
             .confirmation-card { padding: 25px 20px; }
             .info-box { padding: 15px; }
             .table-produits { font-size: 0.75rem; }
             .confirmation-card h2 { font-size: 1.4rem; }
+            .points-section {
+                flex-direction: column;
+                text-align: center;
+            }
+            .points-section .points-info {
+                text-align: center;
+            }
         }
 
         /* Styles professionnels - sans emojis */
@@ -425,6 +544,28 @@ require_once '../includes/navbar.php';
             <div style="text-align:left;">
                 <strong>Commande #<?= htmlspecialchars($success_msg['numero']) ?></strong><br>
                 <span>Merci <?= htmlspecialchars($success_msg['nom']) ?>, votre commande a été enregistrée.</span>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <!-- ============================================
+        SECTION POINTS DE FIDÉLITÉ GAGNÉS
+        ============================================ -->
+        <?php if(isset($_SESSION['client_id']) && $points_gagnes_affichage && $points_gagnes_affichage['points'] > 0): ?>
+        <div class="points-section">
+            <div class="points-icon">
+                <i class="bi bi-star"></i>
+            </div>
+            <div class="points-info">
+                <div class="title">
+                    <i class="bi bi-gift" style="color:#C8922A;"></i> Points de fidélité gagnés
+                </div>
+                <div class="sub">
+                    Pour cette commande #<?= htmlspecialchars($points_gagnes_affichage['commande'] ?? '') ?>
+                </div>
+            </div>
+            <div class="points-amount">
+                +<?= $points_gagnes_affichage['points'] ?> pts
             </div>
         </div>
         <?php endif; ?>

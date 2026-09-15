@@ -46,7 +46,9 @@ if (empty($telephone)) {
     exit;
 }
 
-// Récupérer les commandes du client
+// ============================================
+// RÉCUPÉRER LES COMMANDES DU CLIENT
+// ============================================
 $stmt = $pdo->prepare("
     SELECT * FROM commandes 
     WHERE telephone = ? 
@@ -61,10 +63,70 @@ if (empty($commandes)) {
 }
 
 $client_nom = $commandes[0]['nom_client'];
+
+// ============================================
+// CALCUL DU TOTAL DÉPENSÉ (EXCLUT LES COMMANDES ANNULÉES)
+// ============================================
 $total_global = 0;
+$total_annule = 0;
+$nb_commandes = 0;
+$nb_annulees = 0;
+
 foreach($commandes as $c) {
-    $total_global += $c['total'];
+    if ($c['statut'] == 'annulee') {
+        $total_annule += $c['total'];
+        $nb_annulees++;
+    } else {
+        $total_global += $c['total'];
+        $nb_commandes++;
+    }
 }
+
+// ============================================
+// STATUTS POUR L'AFFICHAGE
+// ============================================
+$statut_labels = [
+    'en_attente' => 'En attente',
+    'confirmee' => 'Confirmée',
+    'en_preparation' => 'Préparation',
+    'en_livraison' => 'Livraison',
+    'livree' => 'Livrée',
+    'terminee' => 'Terminée',
+    'annulee' => 'Annulée'
+];
+
+$statut_colors = [
+    'en_attente' => '#FFC107',
+    'confirmee' => '#28A745',
+    'en_preparation' => '#17A2B8',
+    'en_livraison' => '#6C757D',
+    'livree' => '#27AE60',
+    'terminee' => '#28A745',
+    'annulee' => '#DC3545'
+];
+
+// ============================================
+// SUPPRIMER UNE COMMANDE (ACTION)
+// ============================================
+if (isset($_GET['supprimer']) && is_numeric($_GET['supprimer'])) {
+    $commande_id = (int)$_GET['supprimer'];
+    // Vérifier que la commande appartient bien au client
+    $stmt = $pdo->prepare("SELECT id FROM commandes WHERE id = ? AND telephone = ?");
+    $stmt->execute([$commande_id, $telephone]);
+    if ($stmt->fetch()) {
+        $pdo->prepare("DELETE FROM details_commande WHERE commande_id = ?")->execute([$commande_id]);
+        $pdo->prepare("DELETE FROM commandes WHERE id = ?")->execute([$commande_id]);
+        $_SESSION['message_commande'] = "Commande supprimée avec succès.";
+        header("Location: commandes_client.php?telephone=" . urlencode($telephone));
+        exit;
+    }
+}
+
+// ============================================
+// RÉCUPÉRER LE MESSAGE DE SESSION
+// ============================================
+$message = $_SESSION['message_commande'] ?? '';
+unset($_SESSION['message_commande']);
 
 // Maintenance
 $maintenance_status = $pdo->query("
@@ -108,6 +170,12 @@ include 'includes/sidebar.php';
     <!-- ===== CONTENT ===== -->
     <div class="content">
 
+        <?php if($message): ?>
+            <div class="alert-success" style="background:#D4EDDA;color:#155724;padding:12px 18px;border-radius:10px;margin-bottom:20px;border-left:4px solid #28A745;">
+                <i class="bi bi-check-circle-fill"></i> <?= htmlspecialchars($message) ?>
+            </div>
+        <?php endif; ?>
+
         <!-- ===== CARTE CLIENT ===== -->
         <div style="background:#fff;border-radius:12px;padding:20px 24px;margin-bottom:24px;border:1px solid rgba(200,146,42,0.12);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:15px;">
             <div>
@@ -118,14 +186,23 @@ include 'includes/sidebar.php';
                     <i class="bi bi-telephone"></i> <?= htmlspecialchars($telephone) ?>
                 </p>
                 <p style="color:#8A99AA;font-size:0.85rem;margin:0;">
-                    <i class="bi bi-receipt"></i> <?= count($commandes) ?> commande(s)
+                    <i class="bi bi-receipt"></i> 
+                    <?= $nb_commandes ?> commande(s) validée(s)
+                    <?php if($nb_annulees > 0): ?>
+                        <span style="color:#E74C3C;">• <?= $nb_annulees ?> annulée(s)</span>
+                    <?php endif; ?>
                 </p>
             </div>
             <div style="text-align:right;">
-                <div style="color:#8A99AA;font-size:0.7rem;">Total dépensé</div>
+                <div style="color:#8A99AA;font-size:0.7rem;">Total dépensé (hors annulations)</div>
                 <div style="font-family:'Playfair Display',serif;font-size:1.8rem;color:#C8922A;font-weight:700;">
                     <?= number_format($total_global, 0, ',', ' ') ?> F
                 </div>
+                <?php if($total_annule > 0): ?>
+                    <div style="font-size:0.7rem;color:#E74C3C;">
+                        <i class="bi bi-x-circle"></i> Annulé: <?= number_format($total_annule, 0, ',', ' ') ?> F
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -133,7 +210,12 @@ include 'includes/sidebar.php';
         <div class="card-white">
             <div class="card-header">
                 <div class="card-title"><i class="bi bi-list"></i> Toutes ses commandes</div>
-                <div class="text-muted" style="font-size:0.8rem;"><?= count($commandes) ?> commande(s)</div>
+                <div class="text-muted" style="font-size:0.8rem;">
+                    <?= count($commandes) ?> commande(s) au total
+                    <?php if($nb_annulees > 0): ?>
+                        <span style="color:#E74C3C;">• <?= $nb_annulees ?> annulée(s)</span>
+                    <?php endif; ?>
+                </div>
             </div>
             <div class="card-body" style="padding:0;">
                 <div class="table-container">
@@ -158,24 +240,26 @@ include 'includes/sidebar.php';
                                 'carte' => '💳 Carte',
                                 'especes' => '💰 Espèces'
                             ];
-                            $statut_labels = [
-                                'en_attente' => 'En attente',
-                                'confirmee' => 'Confirmée',
-                                'en_preparation' => 'Préparation',
-                                'en_livraison' => 'Livraison',
-                                'livree' => 'Livrée',
-                                'annulee' => 'Annulée'
-                            ];
                             ?>
-                            <?php foreach($commandes as $c): ?>
-                            <tr>
+                            <?php foreach($commandes as $c): 
+                                $statut = $c['statut'];
+                                $statut_label = $statut_labels[$statut] ?? $statut;
+                                $statut_color = $statut_colors[$statut] ?? '#6C757D';
+                                $est_annulee = ($statut == 'annulee');
+                            ?>
+                            <tr style="<?= $est_annulee ? 'opacity:0.6;' : '' ?>">
                                 <td>
                                     <strong><?= htmlspecialchars($c['numero_commande']) ?></strong>
+                                    <?php if($est_annulee): ?>
+                                        <span style="display:inline-block;padding:1px 8px;border-radius:10px;font-size:0.55rem;font-weight:600;background:#F8D7DA;color:#721C24;margin-left:5px;">
+                                            ANNULÉE
+                                        </span>
+                                    <?php endif; ?>
                                 </td>
                                 <td style="font-size:0.8rem;color:#8A99AA;">
                                     <?= date('d/m/Y H:i', strtotime($c['created_at'])) ?>
                                 </td>
-                                <td style="text-align:right;font-weight:600;color:#C8922A;">
+                                <td style="text-align:right;font-weight:600;color:<?= $est_annulee ? '#E74C3C' : '#C8922A' ?>;">
                                     <?= number_format($c['total'], 0, ',', ' ') ?> F
                                 </td>
                                 <td>
@@ -184,17 +268,27 @@ include 'includes/sidebar.php';
                                     </span>
                                 </td>
                                 <td>
-                                    <span class="badge-statut statut-<?= $c['statut'] ?>">
-                                        <?= $statut_labels[$c['statut']] ?? $c['statut'] ?>
+                                    <span class="badge-statut statut-<?= $statut ?>" style="background:<?= $statut_color ?>20;color:<?= $statut_color ?>;padding:3px 12px;border-radius:20px;font-size:0.65rem;font-weight:600;">
+                                        <?= $statut_label ?>
                                     </span>
                                 </td>
                                 <td style="text-align:center;white-space:nowrap;">
                                     <a href="commande_detail.php?id=<?= $c['id'] ?>" class="btn-small blue" title="Voir détails">
                                         <i class="bi bi-eye"></i> Détail
                                     </a>
+                                    <?php if(!$est_annulee): ?>
                                     <a href="generer_facture.php?id=<?= $c['id'] ?>" class="btn-small red" title="Générer la facture">
                                         <i class="bi bi-file-pdf"></i> PDF
                                     </a>
+                                    <?php if($admin_role === 'super_admin' || $admin_role === 'directeur'): ?>
+                                    <a href="commandes_client.php?telephone=<?= urlencode($telephone) ?>&supprimer=<?= $c['id'] ?>" 
+                                       class="btn-small red" 
+                                       onclick="return confirm('Supprimer définitivement cette commande ?')" 
+                                       title="Supprimer">
+                                        <i class="bi bi-trash3"></i>
+                                    </a>
+                                    <?php endif; ?>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
@@ -204,8 +298,45 @@ include 'includes/sidebar.php';
             </div>
         </div>
 
+        <!-- ===== RÉSUMÉ DES STATISTIQUES ===== -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-top:20px;">
+            <div style="background:#fff;border-radius:12px;padding:15px;text-align:center;border:1px solid #F0EDEA;">
+                <div style="font-size:0.7rem;color:#8A99AA;">Total commandes</div>
+                <div style="font-size:1.3rem;font-weight:700;color:#0D0D0D;"><?= count($commandes) ?></div>
+            </div>
+            <div style="background:#fff;border-radius:12px;padding:15px;text-align:center;border:1px solid #F0EDEA;">
+                <div style="font-size:0.7rem;color:#8A99AA;">Commandes validées</div>
+                <div style="font-size:1.3rem;font-weight:700;color:#27AE60;"><?= $nb_commandes ?></div>
+            </div>
+            <div style="background:#fff;border-radius:12px;padding:15px;text-align:center;border:1px solid #F0EDEA;">
+                <div style="font-size:0.7rem;color:#8A99AA;">Commandes annulées</div>
+                <div style="font-size:1.3rem;font-weight:700;color:#E74C3C;"><?= $nb_annulees ?></div>
+            </div>
+            <div style="background:#fff;border-radius:12px;padding:15px;text-align:center;border:1px solid #F0EDEA;">
+                <div style="font-size:0.7rem;color:#8A99AA;">Total dépensé</div>
+                <div style="font-size:1.3rem;font-weight:700;color:#C8922A;"><?= number_format($total_global, 0, ',', ' ') ?> F</div>
+            </div>
+        </div>
+
     </div><!-- /content -->
 </div><!-- /main -->
+
+<!-- ============================================
+     STYLES SUPPLÉMENTAIRES
+     ============================================ -->
+<style>
+.statut-annulee {
+    background: #F8D7DA !important;
+    color: #721C24 !important;
+}
+.alert-success {
+    animation: fadeIn 0.5s ease;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>
 
 <!-- ============================================
      FOOTER

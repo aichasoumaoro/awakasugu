@@ -33,6 +33,29 @@ $stmt = $pdo->prepare("SELECT telephone, email, nom FROM clients WHERE id = ?");
 $stmt->execute([$client_id]);
 $client = $stmt->fetch();
 
+// ============================================
+// RÉCUPÉRER LES POINTS DU CLIENT
+// ============================================
+$stmt = $pdo->prepare("
+    SELECT points, total_points, points_utilises 
+    FROM points_fidelite 
+    WHERE client_id = ?
+");
+$stmt->execute([$client_id]);
+$points_data = $stmt->fetch();
+
+// Récupérer les paramètres de fidélité
+$stmt = $pdo->query("SELECT cle, valeur FROM parametres_fonctionnalites WHERE cle LIKE 'fidelite_%'");
+$params_fidelite = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+
+$seuil_points = $params_fidelite['fidelite_seuil_points'] ?? 50000;
+$reduction_points = $params_fidelite['fidelite_reduction_points'] ?? 10;
+$reduction_montant = $params_fidelite['fidelite_reduction_montant'] ?? 1000;
+
+if (!$points_data) {
+    $points_data = ['points' => 0, 'total_points' => 0, 'points_utilises' => 0];
+}
+
 $commandes = [];
 $reservations = [];
 
@@ -72,7 +95,6 @@ try {
 try {
     $stmt = $pdo->query("SHOW TABLES LIKE 'commandes_repas'");
     if ($stmt->rowCount() > 0) {
-        // Récupérer les commandes repas par téléphone (pas de client_id)
         if ($client && !empty($client['telephone'])) {
             $stmt = $pdo->prepare("
                 SELECT *, 'repas' as type_commande 
@@ -359,12 +381,64 @@ $statuts_labels = [
     box-shadow: 0 5px 20px rgba(200,146,42,0.3);
     color: white;
 }
+
+/* ============================================
+   SECTION FIDÉLITÉ DANS MES COMMANDES
+   ============================================ */
+.fidelite-summary {
+    background: #FEFBF5;
+    border-radius: 12px;
+    padding: 15px 20px;
+    margin-bottom: 20px;
+    border: 1px solid rgba(200,146,42,0.12);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.fidelite-summary .info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.fidelite-summary .info i {
+    font-size: 1.8rem;
+    color: #C8922A;
+}
+.fidelite-summary .info .text {
+    font-size: 0.85rem;
+    color: #666;
+}
+.fidelite-summary .info .text strong {
+    color: #C8922A;
+}
+.fidelite-summary .points-display {
+    text-align: right;
+}
+.fidelite-summary .points-display .number {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #C8922A;
+}
+.fidelite-summary .points-display .label {
+    font-size: 0.7rem;
+    color: #8A99AA;
+}
+.fidelite-summary .points-display .reduction {
+    font-size: 0.8rem;
+    color: #27AE60;
+    font-weight: 600;
+}
+
 @media (max-width: 768px) {
     .compte-grid { grid-template-columns: 1fr; gap: 20px; }
     .compte-header { flex-direction: column; text-align: center; gap: 20px; padding: 25px 20px; }
     .compte-stats { justify-content: center; }
     .table-commandes th, .table-commandes td { padding: 8px 10px; font-size: 0.8rem; }
     .compte-content { padding: 20px; }
+    .fidelite-summary { flex-direction: column; text-align: center; }
+    .fidelite-summary .points-display { text-align: center; }
 }
 @media (max-width: 600px) {
     .table-commandes { display: block; overflow-x: auto; }
@@ -422,6 +496,28 @@ $statuts_labels = [
         </aside>
         
         <main class="compte-content">
+            
+            <!-- ============================================
+            SECTION RÉSUMÉ FIDÉLITÉ
+            ============================================ -->
+            <div class="fidelite-summary">
+                <div class="info">
+                    <i class="bi bi-star"></i>
+                    <div class="text">
+                        <strong>Points de fidélité</strong><br>
+                        <span><?= $seuil_points ?> FCFA = 1 point • <?= $reduction_points ?> points = <?= number_format($reduction_montant, 0, ' ', ' ') ?> FCFA</span>
+                    </div>
+                </div>
+                <div class="points-display">
+                    <div class="number"><?= number_format($points_data['points']) ?></div>
+                    <div class="label">points disponibles</div>
+                    <div class="reduction">
+                        <i class="bi bi-gift"></i> 
+                        <?= floor($points_data['points'] / $reduction_points) * $reduction_montant ?> FCFA de réduction
+                    </div>
+                </div>
+            </div>
+            
             <h2 class="section-title"><i class="bi bi-clock-history"></i> Historique</h2>
             
             <?php if(empty($items)): ?>

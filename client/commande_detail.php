@@ -1,19 +1,32 @@
 <?php
 // ============================================
-// DÉTAIL D'UNE COMMANDE - Awa Ka Sugu
+// PAGE DE CONFIRMATION DE COMMANDE - Awa Ka Sugu
 // ============================================
 
+// ============================================
+// SESSION PUBLIQUE SÉPARÉE
+// ============================================
 session_name('PUBLIC_SESSION');
 session_start();
 
+// ============================================
+// VÉRIFICATION MAINTENANCE
+// ============================================
 require_once '../includes/maintenance_check.php';
 
-// Vérifier si le client est connecté
-if (!isset($_SESSION['client_id']) || empty($_SESSION['client_id'])) {
-    header('Location: connexion.php');
+// ============================================
+// INCLURE LES FONCTIONS DU PANIER
+// ============================================
+require_once '../includes/panier_fonctions.php';
+
+$numero_commande = isset($_GET['numero']) ? $_GET['numero'] : '';
+
+if (empty($numero_commande)) {
+    header('Location: catalogue.php');
     exit;
 }
 
+// Connexion à la base de données
 $host = 'localhost';
 $dbname = 'awakasugu_db';
 $user = 'root';
@@ -26,401 +39,671 @@ try {
     die("Erreur de connexion : " . $e->getMessage());
 }
 
-$commande_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-$type = isset($_GET['type']) ? $_GET['type'] : 'boutique';
+// Récupérer la commande
+$stmt = $pdo->prepare("SELECT * FROM commandes WHERE numero_commande = ?");
+$stmt->execute([$numero_commande]);
+$commande = $stmt->fetch();
 
-if ($commande_id <= 0) {
-    header('Location: mes_commandes.php');
-    exit;
-}
-
-$client_id = (int)$_SESSION['client_id'];
-
-// Récupérer le téléphone du client
-$stmt = $pdo->prepare("SELECT telephone, nom FROM clients WHERE id = ?");
-$stmt->execute([$client_id]);
-$client = $stmt->fetch();
-
-// ============================================
-// RÉCUPÉRER LA COMMANDE
-// ============================================
-$commande = null;
-
-if ($type == 'repas') {
-    // Récupérer la commande repas
-    // On utilise le téléphone pour identifier le client puisque client_id n'existe pas
-    $stmt = $pdo->prepare("
-        SELECT *, 'repas' as type_commande 
-        FROM commandes_repas 
-        WHERE id = ? 
-    ");
-    $stmt->execute([$commande_id]);
-    $commande = $stmt->fetch();
-    
-    // Vérifier que la commande appartient bien au client (par téléphone)
-    if ($commande && $client && $commande['telephone'] != $client['telephone']) {
-        $commande = null;
-    }
-} else {
-    // Commande boutique
-    $stmt = $pdo->prepare("
-        SELECT *, 'boutique' as type_commande 
-        FROM commandes 
-        WHERE id = ? AND (client_id = ? OR telephone = ?)
-    ");
-    $stmt->execute([$commande_id, $client_id, $client['telephone'] ?? '']);
-    $commande = $stmt->fetch();
-}
-
-// Si la commande n'est pas trouvée, rediriger
 if (!$commande) {
-    $_SESSION['message_error'] = 'Commande non trouvée ou vous n\'avez pas accès à cette commande.';
-    header('Location: mes_commandes.php');
+    header('Location: catalogue.php');
     exit;
 }
 
-// ============================================
-// RÉCUPÉRER LES DÉTAILS
-// ============================================
-$details = [];
+// Récupérer les détails
+$stmt = $pdo->prepare("SELECT * FROM details_commande WHERE commande_id = ?");
+$stmt->execute([$commande['id']]);
+$details = $stmt->fetchAll();
 
-if ($type == 'repas') {
-    // Détails repas
-    $stmt = $pdo->prepare("
-        SELECT d.*, p.nom as plat_nom, p.photo, p.description as plat_description
-        FROM details_commande_repas d
-        LEFT JOIN plats p ON d.plat_id = p.id
-        WHERE d.commande_id = ?
-    ");
-    $stmt->execute([$commande_id]);
-    $details = $stmt->fetchAll();
-    
-    // Si pas de détails, essayer depuis details_commande_repas sans jointure
-    if (empty($details)) {
-        $stmt = $pdo->prepare("SELECT * FROM details_commande_repas WHERE commande_id = ?");
-        $stmt->execute([$commande_id]);
-        $details = $stmt->fetchAll();
-    }
-} else {
-    // Détails boutique
-    $stmt = $pdo->prepare("SELECT * FROM details_commande WHERE commande_id = ?");
-    $stmt->execute([$commande_id]);
-    $details = $stmt->fetchAll();
+// Récupérer le message de succès de la session
+$success_msg = isset($_SESSION['commande_success']) ? $_SESSION['commande_success'] : null;
+unset($_SESSION['commande_success']);
+
+// ============================================
+// AJOUT DES POINTS DE FIDÉLITÉ
+// ============================================
+
+// Vérifier si des points ont déjà été ajoutés pour cette commande
+$points_deja_ajoutes = false;
+if (isset($_SESSION['points_ajoutes']) && $_SESSION['points_ajoutes'] == $commande['id']) {
+    $points_deja_ajoutes = true;
 }
 
-$titre_page = 'Détail commande';
+// Si pas encore ajoutés et que la commande est confirmée
+if (!$points_deja_ajoutes && in_array($commande['statut'], ['confirmee', 'livree', 'terminee'])) {
+    
+    // Récupérer les paramètres de fidélité
+    $stmt = $pdo->query("SELECT cle, valeur FROM parametres_fonctionnalites WHERE cle LIKE 'fidelite_%'");
+    $params_fidelite = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+    
+    $seuil_points = $params_fidelite['fidelite_seuil_points'] ?? 50000;
+    $points_par_seuil = $params_fidelite['fidelite_points_par_seuil'] ?? 1;
+    $fidelite_actif = $params_fidelite['fidelite_actif'] ?? 1;
+    
+    // Si le client est connecté et la fidélité est active
+    if (isset($_SESSION['client_id']) && $fidelite_actif == 1) {
+        $client_id = $_SESSION['client_id'];
+        $total_commande = $commande['total'] ?? 0;
+        
+        // Calculer les points gagnés
+        $points_gagnes = floor($total_commande / $seuil_points) * $points_par_seuil;
+        
+        if ($points_gagnes > 0) {
+            try {
+                // Vérifier si le client a déjà un compte de points
+                $stmt = $pdo->prepare("SELECT id FROM points_fidelite WHERE client_id = ?");
+                $stmt->execute([$client_id]);
+                $existing = $stmt->fetch();
+                
+                if ($existing) {
+                    $pdo->prepare("UPDATE points_fidelite SET points = points + ?, total_points = total_points + ? WHERE client_id = ?")
+                        ->execute([$points_gagnes, $points_gagnes, $client_id]);
+                } else {
+                    $pdo->prepare("INSERT INTO points_fidelite (client_id, points, total_points) VALUES (?, ?, ?)")
+                        ->execute([$client_id, $points_gagnes, $points_gagnes]);
+                }
+                
+                // Enregistrer dans l'historique
+                $description = "Commande #" . ($commande['numero_commande'] ?? '') . " - " . $points_gagnes . " points gagnés";
+                $pdo->prepare("INSERT INTO historique_points (client_id, points, type, reference_id, description) VALUES (?, ?, 'gain', ?, ?)")
+                    ->execute([$client_id, $points_gagnes, $commande['id'], $description]);
+                
+                // Marquer les points comme ajoutés pour cette commande
+                $_SESSION['points_ajoutes'] = $commande['id'];
+                
+                // Ajouter l'info dans la session pour l'affichage
+                $_SESSION['points_gagnes'] = [
+                    'points' => $points_gagnes,
+                    'seuil' => $seuil_points,
+                    'commande' => $commande['numero_commande']
+                ];
+                
+            } catch(PDOException $e) {
+                // Silencieux - ne pas bloquer la page
+                error_log("Erreur ajout points: " . $e->getMessage());
+            }
+        }
+    }
+}
+
+// ============================================
+// VIDER LE PANIER (après confirmation)
+// ============================================
+if (!isset($_SESSION['panier_vide'])) {
+    // Vider le panier de la session
+    unset($_SESSION['panier']);
+    unset($_SESSION['code_promo']);
+    unset($_SESSION['reduction_points']);
+    
+    // Vider le panier en BDD si client connecté
+    if (isset($_SESSION['client_id'])) {
+        try {
+            viderPanierBDD($_SESSION['client_id'], $pdo);
+        } catch(PDOException $e) {
+            // Silencieux
+        }
+    }
+    
+    // Marquer comme vidé pour ne pas le refaire
+    $_SESSION['panier_vide'] = true;
+}
+
+// Récupérer les points gagnés pour affichage
+$points_gagnes_affichage = isset($_SESSION['points_gagnes']) ? $_SESSION['points_gagnes'] : null;
+unset($_SESSION['points_gagnes']);
+
+$titre_page = 'Confirmation - Awa Ka Sugu';
 require_once '../includes/header.php';
 require_once '../includes/navbar.php';
-
-// Statuts
-$statuts = [
-    'en_attente' => ['label' => 'En attente', 'class' => 'statut-en_attente'],
-    'confirmee' => ['label' => 'Confirmée', 'class' => 'statut-confirmee'],
-    'en_preparation' => ['label' => 'En préparation', 'class' => 'statut-en_preparation'],
-    'en_livraison' => ['label' => 'En livraison', 'class' => 'statut-en_livraison'],
-    'livree' => ['label' => 'Livrée', 'class' => 'statut-livree'],
-    'annulee' => ['label' => 'Annulée', 'class' => 'statut-annulee']
-];
-$statut_key = $commande['statut'] ?? 'en_attente';
-$statut_info = $statuts[$statut_key] ?? ['label' => $statut_key, 'class' => 'statut-en_attente'];
-
-// Modes de paiement
-$modes_paiement = [
-    'livraison' => '💵 Paiement à la livraison',
-    'orange_money' => '🟠 Orange Money',
-    'wave' => '🌊 Wave',
-    'moov_money' => '📱 Moov Money',
-    'carte' => '💳 Carte bancaire',
-    'especes' => '💰 Espèces'
-];
-$mode_paiement = $commande['mode_paiement'] ?? 'livraison';
-$mode_paiement_label = $modes_paiement[$mode_paiement] ?? $mode_paiement;
 ?>
 
-<style>
-.commande-container { max-width: 950px; margin: 40px auto; padding: 0 20px; }
-.commande-header {
-    background: linear-gradient(135deg, #0D0D0D, #1A1A1A);
-    border-radius: 20px;
-    padding: 30px 35px;
-    margin-bottom: 30px;
-    color: white;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 15px;
-    border: 1px solid rgba(200,146,42,0.15);
-    position: relative;
-    overflow: hidden;
-}
-.commande-header::after {
-    content: '📦';
-    position: absolute;
-    right: -10px;
-    top: -10px;
-    font-size: 80px;
-    opacity: 0.05;
-}
-.commande-header h1 {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.6rem;
-    color: #C8922A;
-    margin-bottom: 4px;
-}
-.commande-header p {
-    color: rgba(255,255,255,0.5);
-    font-size: 0.85rem;
-}
-.commande-header .badge-statut {
-    padding: 8px 20px;
-    border-radius: 30px;
-    font-weight: 600;
-    font-size: 0.85rem;
-}
-.card-commande { 
-    background: white; 
-    border-radius: 20px; 
-    padding: 35px; 
-    border: 1px solid #F0EDEA;
-}
-.section-title { 
-    font-family: 'Playfair Display', serif;
-    font-size: 1.2rem; 
-    font-weight: 600;
-    margin: 25px 0 15px; 
-    padding-bottom: 12px; 
-    border-bottom: 2px solid rgba(200,146,42,0.2);
-    color: #0D0D0D;
-}
-.section-title i {
-    color: #C8922A;
-    margin-right: 10px;
-}
-.info-grid { 
-    display: grid; 
-    grid-template-columns: repeat(2, 1fr); 
-    gap: 15px; 
-    margin-bottom: 10px;
-}
-.info-item { 
-    background: #F8F9FA;
-    padding: 12px 16px;
-    border-radius: 12px;
-}
-.info-item label { 
-    font-weight: 600; 
-    color: #8A99AA; 
-    display: block; 
-    margin-bottom: 4px;
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-.info-item p {
-    margin: 0;
-    font-size: 0.95rem;
-    color: #1A2C3E;
-}
-.badge-statut {
-    display: inline-block;
-    padding: 6px 18px;
-    border-radius: 30px;
-    font-size: 0.8rem;
-    font-weight: 600;
-}
-.statut-en_attente { background: #FFF3CD; color: #856404; }
-.statut-confirmee { background: #D1ECF1; color: #0C5460; }
-.statut-en_preparation { background: #CCE5FF; color: #004085; }
-.statut-en_livraison { background: #E8D5F5; color: #6A1B9A; }
-.statut-livree { background: #D4EDDA; color: #155724; }
-.statut-annulee { background: #F8D7DA; color: #721C24; }
-.table-produits { 
-    width: 100%; 
-    border-collapse: collapse; 
-    margin-top: 10px;
-}
-.table-produits th, 
-.table-produits td { 
-    padding: 12px 15px; 
-    text-align: left; 
-    border-bottom: 1px solid #F0EDEA; 
-}
-.table-produits th { 
-    background: #F8F9FA; 
-    color: #C8922A;
-    font-weight: 600;
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-.table-produits tr:hover td {
-    background: #FEFBF5;
-}
-.total-ligne {
-    text-align: right;
-    padding-top: 15px;
-    border-top: 2px solid rgba(200,146,42,0.2);
-}
-.total-ligne span {
-    font-family: 'Playfair Display', serif;
-    color: #C8922A;
-    font-size: 1.5rem;
-    font-weight: 700;
-}
-.btn-retour {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: #0D0D0D;
-    color: white;
-    padding: 12px 25px;
-    border-radius: 12px;
-    text-decoration: none;
-    font-weight: 600;
-    transition: all 0.3s;
-    margin-top: 25px;
-}
-.btn-retour:hover {
-    background: #C8922A;
-    color: white;
-    transform: translateX(-5px);
-}
-.paiement-badge {
-    display: inline-block;
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 0.75rem;
-    background: rgba(200,146,42,0.1);
-    color: #C8922A;
-}
-.photo-mini-detail {
-    width: 40px;
-    height: 40px;
-    border-radius: 6px;
-    object-fit: cover;
-    border: 1px solid #F0EDEA;
-    margin-right: 10px;
-    vertical-align: middle;
-}
-@media (max-width: 768px) { 
-    .info-grid { grid-template-columns: 1fr; }
-    .commande-header { flex-direction: column; text-align: center; }
-    .card-commande { padding: 20px; }
-    .table-produits th, .table-produits td { padding: 8px 10px; font-size: 0.8rem; }
-}
-</style>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Confirmation - Awa Ka Sugu</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Jost:wght@300;400;500;600;700;800&display=swap');
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Jost', sans-serif; 
+            background: #F8F7F5; 
+            color: #1A1A1A;
+        }
+        
+        .banner {
+            background: linear-gradient(135deg, #0D0D0D 0%, #1A1A1A 50%, #0D0D0D 100%);
+            padding: 50px 20px 40px;
+            text-align: center;
+        }
+        .banner h1 {
+            font-size: 2.2rem;
+            color: #C8922A;
+            font-weight: 700;
+        }
+        .banner p {
+            color: rgba(255,255,255,0.5);
+            margin-top: 8px;
+        }
+        
+        .confirmation-container { 
+            max-width: 800px; 
+            margin: 40px auto; 
+            padding: 0 20px; 
+        }
+        .confirmation-card { 
+            background: white; 
+            border-radius: 20px; 
+            padding: 40px; 
+            text-align: center; 
+            box-shadow: 0 5px 25px rgba(0,0,0,0.08);
+            border: 1px solid rgba(200,146,42,0.1);
+            animation: fadeInUp 0.6s ease-out;
+        }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .check-icon { 
+            width: 80px; 
+            height: 80px; 
+            background: #D4EDDA; 
+            border-radius: 50%; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            margin: 0 auto 20px;
+            animation: popIn 0.6s ease-out;
+        }
+        @keyframes popIn {
+            0% { transform: scale(0); opacity: 0; }
+            70% { transform: scale(1.1); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .check-icon i { 
+            font-size: 3rem; 
+            color: #28A745; 
+        }
+        .confirmation-card h2 {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.8rem;
+            color: #1A1A1A;
+            margin-bottom: 10px;
+        }
+        .confirmation-card .sub-text {
+            color: #8A99AA;
+            font-size: 0.95rem;
+            margin-bottom: 20px;
+        }
+        .info-box { 
+            background: #F8F9FA; 
+            border-radius: 12px; 
+            padding: 20px 25px; 
+            text-align: left; 
+            margin: 20px 0;
+            border-left: 3px solid #C8922A;
+        }
+        .info-box h5 {
+            font-family: 'Playfair Display', serif;
+            color: #C8922A;
+            margin-bottom: 15px;
+        }
+        .info-box p {
+            margin-bottom: 6px;
+            font-size: 0.9rem;
+            color: #333;
+        }
+        .info-box strong {
+            color: #0D0D0D;
+        }
+        .info-box .total-amount {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.3rem;
+            color: #C8922A;
+            font-weight: 700;
+        }
+        
+        .table-produits {
+            width: 100%;
+            margin-top: 10px;
+            font-size: 0.85rem;
+        }
+        .table-produits th {
+            color: #C8922A;
+            font-weight: 600;
+            border-bottom: 2px solid rgba(200,146,42,0.2);
+            padding: 8px 5px;
+        }
+        .table-produits td {
+            padding: 8px 5px;
+            border-bottom: 1px solid #F0F2F5;
+        }
+        .table-produits tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .alert-email {
+            background: #E8F4FD;
+            border-left: 4px solid #2980B9;
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: left;
+        }
+        .alert-email i {
+            color: #2980B9;
+            margin-right: 10px;
+        }
+        .alert-email strong {
+            color: #1A3A5C;
+        }
+        
+        .btn-continuer { 
+            background: linear-gradient(135deg, #C8922A, #E8B55A); 
+            color: white; 
+            padding: 12px 35px; 
+            border-radius: 30px; 
+            text-decoration: none; 
+            font-weight: 600; 
+            display: inline-block; 
+            transition: all 0.3s;
+            border: none;
+            font-size: 0.95rem;
+        }
+        .btn-continuer:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 5px 20px rgba(200,146,42,0.3);
+            color: white;
+        }
+        .btn-continuer i {
+            margin-right: 8px;
+        }
+        
+        .paiement-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            background: rgba(200,146,42,0.1);
+            color: #C8922A;
+        }
+        
+        .info-delivery {
+            background: #FEFBF5;
+            border-radius: 12px;
+            padding: 15px 20px;
+            margin: 15px 0;
+            border: 1px solid rgba(200,146,42,0.1);
+        }
+        .info-delivery i {
+            color: #C8922A;
+            margin-right: 8px;
+        }
+        
+        /* Message de succès */
+        .success-message {
+            background: #D4EDDA;
+            border: 1px solid #C3E6CB;
+            border-radius: 12px;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+            color: #155724;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: fadeInUp 0.5s ease-out;
+        }
+        .success-message i {
+            font-size: 1.5rem;
+        }
+        
+        .email-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 14px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .email-sent {
+            background: #D4EDDA;
+            color: #155724;
+        }
+        .email-failed {
+            background: #F8D7DA;
+            color: #721C24;
+        }
 
-<div class="commande-container">
-    
-    <div class="commande-header">
-        <div>
-            <h1>📦 Commande #<?= htmlspecialchars($commande['numero_commande'] ?? '#'.str_pad($commande['id'], 6, '0', STR_PAD_LEFT)) ?></h1>
-            <p>Passée le <?= date('d/m/Y à H:i', strtotime($commande['created_at'] ?? 'now')) ?></p>
-            <p style="font-size:0.8rem;color:rgba(255,255,255,0.3);">
-                Type : <?= $type == 'repas' ? '🍽️ Repas' : '🛍️ Boutique' ?>
-            </p>
-        </div>
-        <div>
-            <span class="badge-statut <?= $statut_info['class'] ?>">
-                <?= $statut_info['label'] ?>
-            </span>
-        </div>
-    </div>
-    
-    <div class="card-commande">
+        /* ============================================
+           STYLES POUR LA SECTION POINTS FIDÉLITÉ
+           ============================================ */
+        .points-section {
+            background: #FEFBF5;
+            border-radius: 12px;
+            padding: 15px 20px;
+            margin: 15px 0;
+            border: 1px solid rgba(200,146,42,0.15);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .points-section .points-icon {
+            font-size: 2rem;
+            color: #C8922A;
+        }
+        .points-section .points-info {
+            flex: 1;
+            text-align: left;
+        }
+        .points-section .points-info .title {
+            font-weight: 600;
+            color: #0D0D0D;
+            font-size: 0.95rem;
+        }
+        .points-section .points-info .sub {
+            font-size: 0.75rem;
+            color: #8A99AA;
+        }
+        .points-section .points-amount {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #C8922A;
+        }
         
-        <h3 class="section-title"><i class="bi bi-info-circle"></i> Informations</h3>
-        <div class="info-grid">
-            <div class="info-item">
-                <label>Statut</label>
-                <p><span class="badge-statut <?= $statut_info['class'] ?>" style="font-size:0.8rem;"><?= $statut_info['label'] ?></span></p>
-            </div>
-            <div class="info-item">
-                <label>Mode de paiement</label>
-                <p><?= $mode_paiement_label ?></p>
-            </div>
-            <div class="info-item">
-                <label>Nom complet</label>
-                <p><?= htmlspecialchars($commande['nom_client'] ?? '') ?></p>
-            </div>
-            <div class="info-item">
-                <label>Téléphone</label>
-                <p><?= htmlspecialchars($commande['telephone'] ?? '') ?></p>
-            </div>
-            <div class="info-item">
-                <label>Commune</label>
-                <p><?= htmlspecialchars($commande['commune'] ?? 'Non renseignée') ?></p>
-            </div>
-            <div class="info-item">
-                <label>Mode de livraison</label>
-                <p><?= htmlspecialchars($commande['mode_livraison'] ?? 'livraison') ?></p>
-            </div>
-            <div class="info-item" style="grid-column: 1 / -1;">
-                <label>Adresse de livraison</label>
-                <p><?= nl2br(htmlspecialchars($commande['adresse_livraison'] ?? '')) ?></p>
-            </div>
-            <?php if (!empty($commande['notes'])): ?>
-            <div class="info-item" style="grid-column: 1 / -1;">
-                <label>Instructions spéciales</label>
-                <p><?= nl2br(htmlspecialchars($commande['notes'])) ?></p>
-            </div>
-            <?php endif; ?>
+        /* ============================================
+           RESPONSIVE
+           ============================================ */
+        @media (max-width: 600px) {
+            .confirmation-card { padding: 25px 20px; }
+            .info-box { padding: 15px; }
+            .table-produits { font-size: 0.75rem; }
+            .confirmation-card h2 { font-size: 1.4rem; }
+            .points-section {
+                flex-direction: column;
+                text-align: center;
+            }
+            .points-section .points-info {
+                text-align: center;
+            }
+        }
+
+        /* Styles professionnels - sans emojis */
+        .section-title {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .order-number {
+            font-weight: 700;
+            color: #C8922A;
+            letter-spacing: 1px;
+        }
+
+        .label-text {
+            font-weight: 500;
+            color: #4A4A4A;
+            min-width: 140px;
+            display: inline-block;
+        }
+
+        .detail-row {
+            display: flex;
+            padding: 4px 0;
+            align-items: baseline;
+        }
+
+        .badge-payment {
+            display: inline-block;
+            padding: 4px 14px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            background: #F0EDE6;
+            color: #8A7A5A;
+            letter-spacing: 0.3px;
+        }
+
+        .delivery-info {
+            display: flex;
+            gap: 12px;
+            padding: 4px 0;
+            font-size: 0.9rem;
+        }
+
+        .delivery-info i {
+            color: #C8922A;
+            margin-top: 2px;
+        }
+
+        .email-alert {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+
+        .email-alert i {
+            color: #2980B9;
+            font-size: 1.2rem;
+            margin-top: 2px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 3px 12px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .status-success {
+            background: #D4EDDA;
+            color: #155724;
+        }
+
+        .status-pending {
+            background: #FFF3CD;
+            color: #856404;
+        }
+
+        .header-divider {
+            width: 60px;
+            height: 2px;
+            background: #C8922A;
+            margin: 6px auto 0;
+        }
+
+        .amount-display {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.4rem;
+            color: #C8922A;
+            font-weight: 700;
+        }
+
+        .btn-outline-gold {
+            background: transparent;
+            color: #C8922A;
+            border: 2px solid #C8922A;
+            padding: 10px 30px;
+            border-radius: 30px;
+            text-decoration: none;
+            font-weight: 600;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+        .btn-outline-gold:hover {
+            background: #C8922A;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(200,146,42,0.2);
+        }
+    </style>
+</head>
+<body>
+
+<div class="banner">
+    <h1>Commande confirmée</h1>
+    <p>Merci pour votre confiance, <?= htmlspecialchars($commande['nom_client'] ?? '') ?></p>
+</div>
+
+<div class="confirmation-container">
+    <div class="confirmation-card">
+        <div class="check-icon">
+            <i class="bi bi-check-lg"></i>
         </div>
         
-        <h3 class="section-title"><i class="bi bi-bag"></i> Articles commandés</h3>
+        <h2>Commande confirmée</h2>
+        <p class="sub-text">Votre commande a été enregistrée avec succès.</p>
         
-        <?php if(empty($details)): ?>
-            <div style="text-align:center;padding:30px;color:#8A99AA;">
-                <i class="bi bi-inbox" style="font-size:2rem;display:block;margin-bottom:10px;"></i>
-                <p>Aucun détail disponible pour cette commande.</p>
+        <!-- Message de succès -->
+        <?php if($success_msg): ?>
+        <div class="success-message">
+            <i class="bi bi-check-circle-fill"></i>
+            <div style="text-align:left;">
+                <strong>Commande #<?= htmlspecialchars($success_msg['numero']) ?></strong><br>
+                <span>Merci <?= htmlspecialchars($success_msg['nom']) ?>, votre commande a été enregistrée.</span>
             </div>
-        <?php else: ?>
+        </div>
+        <?php endif; ?>
+
+        <!-- ============================================
+        SECTION POINTS DE FIDÉLITÉ GAGNÉS
+        ============================================ -->
+        <?php if(isset($_SESSION['client_id']) && $points_gagnes_affichage && $points_gagnes_affichage['points'] > 0): ?>
+        <div class="points-section">
+            <div class="points-icon">
+                <i class="bi bi-star"></i>
+            </div>
+            <div class="points-info">
+                <div class="title">
+                    <i class="bi bi-gift" style="color:#C8922A;"></i> Points de fidélité gagnés
+                </div>
+                <div class="sub">
+                    Pour cette commande #<?= htmlspecialchars($points_gagnes_affichage['commande'] ?? '') ?>
+                </div>
+            </div>
+            <div class="points-amount">
+                +<?= $points_gagnes_affichage['points'] ?> pts
+            </div>
+        </div>
+        <?php endif; ?>
+        
+        <div class="info-box">
+            <h5><i class="bi bi-receipt"></i> Détails de la commande</h5>
+            
+            <div class="detail-row">
+                <span class="label-text">Numéro de commande</span>
+                <span class="order-number">#<?= htmlspecialchars($commande['numero_commande'] ?? '') ?></span>
+            </div>
+            <div class="detail-row">
+                <span class="label-text">Date</span>
+                <span><?= date('d/m/Y à H:i', strtotime($commande['created_at'] ?? 'now')) ?></span>
+            </div>
+            <div class="detail-row">
+                <span class="label-text">Client</span>
+                <span><?= htmlspecialchars($commande['nom_client'] ?? '') ?></span>
+            </div>
+            <div class="detail-row">
+                <span class="label-text">Téléphone</span>
+                <span><?= htmlspecialchars($commande['telephone'] ?? 'Non renseigné') ?></span>
+            </div>
+            <div class="detail-row" style="align-items: flex-start;">
+                <span class="label-text">Adresse de livraison</span>
+                <span><?= nl2br(htmlspecialchars($commande['adresse_livraison'] ?? '')) ?></span>
+            </div>
+            <div class="detail-row">
+                <span class="label-text">Mode de paiement</span>
+                <?php 
+                $paiements = [
+                    'livraison' => 'Paiement à la livraison',
+                    'orange_money' => 'Orange Money',
+                    'wave' => 'Wave',
+                    'moov_money' => 'Moov Money',
+                    'carte' => 'Carte bancaire',
+                    'especes' => 'Espèces'
+                ];
+                $mode = $commande['mode_paiement'] ?? 'livraison';
+                echo '<span class="badge-payment">' . ($paiements[$mode] ?? $mode) . '</span>';
+                ?>
+            </div>
+            <div class="detail-row" style="margin-top: 6px; border-top: 1px solid rgba(200,146,42,0.15); padding-top: 12px;">
+                <span class="label-text" style="font-weight: 600;">Montant total</span>
+                <span class="amount-display"><?= number_format($commande['total'] ?? 0, 0, ',', ' ') ?> FCFA</span>
+            </div>
+            
+            <hr style="border-color: rgba(200,146,42,0.15); margin: 18px 0;">
+            
+            <h6 style="font-weight:600;color:#0D0D0D;margin-bottom:12px;letter-spacing:0.3px;">Articles commandés</h6>
             <table class="table-produits">
                 <thead>
                     <tr>
                         <th>Produit</th>
                         <th style="text-align:center;">Qté</th>
-                        <th style="text-align:right;">Prix unitaire</th>
+                        <th style="text-align:right;">Prix</th>
                         <th style="text-align:right;">Total</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach($details as $d): 
-                        $nom_produit = $d['plat_nom'] ?? $d['nom_produit'] ?? $d['nom'] ?? 'Produit';
-                        $photo = $d['photo'] ?? null;
-                        $quantite = $d['quantite'] ?? 1;
-                        $prix_unitaire = $d['prix_unitaire'] ?? 0;
-                    ?>
+                    <?php foreach($details as $d): ?>
                     <tr>
-                        <td>
-                            <?php if ($photo): ?>
-                                <img src="../admin/<?= htmlspecialchars($photo) ?>" alt="" class="photo-mini-detail">
-                            <?php endif; ?>
-                            <?= htmlspecialchars($nom_produit) ?>
-                        </td>
-                        <td style="text-align:center;"><?= $quantite ?></td>
-                        <td style="text-align:right;"><?= number_format($prix_unitaire, 0, ',', ' ') ?> FCFA</td>
+                        <td><?= htmlspecialchars($d['nom_produit'] ?? '') ?></td>
+                        <td style="text-align:center;"><?= $d['quantite'] ?? 0 ?></td>
+                        <td style="text-align:right;"><?= number_format($d['prix_unitaire'] ?? 0, 0, ',', ' ') ?> F</td>
                         <td style="text-align:right;font-weight:600;color:#C8922A;">
-                            <?= number_format($prix_unitaire * $quantite, 0, ',', ' ') ?> FCFA
+                            <?= number_format(($d['prix_unitaire'] ?? 0) * ($d['quantite'] ?? 0), 0, ',', ' ') ?> F
                         </td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
-        <?php endif; ?>
-        
-        <div class="total-ligne">
-            <span>Total : <?= number_format($commande['total'] ?? 0, 0, ',', ' ') ?> FCFA</span>
-            <?php if (!empty($commande['frais_livraison']) && $commande['frais_livraison'] > 0): ?>
-                <br><small style="font-size:0.85rem;color:#8A99AA;">dont frais de livraison : <?= number_format($commande['frais_livraison'], 0, ',', ' ') ?> FCFA</small>
-            <?php endif; ?>
         </div>
         
-        <a href="mes_commandes.php" class="btn-retour">
-            <i class="bi bi-arrow-left"></i> Retour à mes commandes
+        <div class="alert-email">
+            <div class="email-alert">
+                <i class="bi bi-envelope-fill"></i>
+                <div>
+                    <strong>Un email de confirmation vous a été envoyé.</strong><br>
+                    <small style="color:#666;">Vérifiez votre boîte de réception (pensez à vérifier les spams).</small>
+                    <br>
+                    <?php if(isset($success_msg['email_envoye']) && $success_msg['email_envoye']): ?>
+                        <span class="status-badge status-success">Email envoyé</span>
+                    <?php else: ?>
+                        <span class="status-badge status-pending">Envoi en cours</span>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+        
+        <div class="info-delivery">
+            <div class="delivery-info">
+                <i class="bi bi-clock-history"></i>
+                <div>
+                    <strong>Traitement :</strong> Votre commande sera traitée dans les 24h.
+                </div>
+            </div>
+            <div class="delivery-info" style="margin-top: 6px;">
+                <i class="bi bi-truck"></i>
+                <div>
+                    <strong>Livraison :</strong> Livraison express partout à Bamako.
+                </div>
+            </div>
+        </div>
+        
+        <a href="catalogue.php" class="btn-continuer">
+            <i class="bi bi-arrow-left"></i> Continuer mes achats
         </a>
     </div>
 </div>
 
 <?php require_once '../includes/footer.php'; ?>
+</body>
+</html>

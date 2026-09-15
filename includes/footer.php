@@ -42,7 +42,7 @@ if (session_status() === PHP_SESSION_NONE) {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 40px;
-    margin-bottom: 35px; /* Réduit pour laisser place aux ressources */
+    margin-bottom: 35px;
 }
 
 .footer-logo {
@@ -308,10 +308,21 @@ if (session_status() === PHP_SESSION_NONE) {
                     Mode modeste et cuisine malienne authentique à Bamako.
                 </p>
                 <div class="footer-social">
-                    <a href="https://www.instagram.com/awadoumbia223" target="_blank"><i class="bi bi-instagram"></i></a>
-                    <a href="https://www.facebook.com/awadoumbia223" target="_blank"><i class="bi bi-facebook"></i></a>
-                    <a href="https://www.tiktok.com/@awadoumbia223" target="_blank"><i class="bi bi-tiktok"></i></a>
-                    <a href="https://wa.me/22366746985" target="_blank"><i class="bi bi-whatsapp"></i></a>
+                    <a href="https://www.instagram.com/iba_design_223" target="_blank" rel="noopener" title="Instagram IBA Design">
+                        <i class="bi bi-instagram"></i>
+                    </a>
+                    <a href="https://www.facebook.com/awadoumbia51" target="_blank" rel="noopener" title="Facebook Awa Doumbia">
+                        <i class="bi bi-facebook"></i>
+                    </a>
+                    <a href="https://www.tiktok.com/@ibadesign77774343" target="_blank" rel="noopener" title="TikTok IBA Design">
+                        <i class="bi bi-tiktok"></i>
+                    </a>
+                    <a href="https://www.snapchat.com/@awadoumbia51" target="_blank" rel="noopener" title="Snapchat Awa Doumbia">
+                        <i class="bi bi-snapchat"></i>
+                    </a>
+                    <a href="https://wa.me/22366746985" target="_blank" rel="noopener" title="WhatsApp">
+                        <i class="bi bi-whatsapp"></i>
+                    </a>
                 </div>
             </div>
 
@@ -338,7 +349,6 @@ if (session_status() === PHP_SESSION_NONE) {
                 <ul class="footer-links">
                     <li><a href="<?= SITE_URL ?>/restaurant/menu.php">Menu complet</a></li>
                     <li><a href="<?= SITE_URL ?>/restaurant/reservation.php">Réservation</a></li>
-                    <!-- SUPPRESSION DU LIEN PLAT DU JOUR -->
                 </ul>
                 <div class="footer-contact">
                     <i class="bi bi-geo-alt"></i> Sebenikoro, face mosquée
@@ -370,11 +380,10 @@ if (session_status() === PHP_SESSION_NONE) {
             </div>
         </div>
 
-        <!-- ===== NOUVELLE SECTION RESSOURCES ===== -->
+        <!-- ===== SECTION RESSOURCES ===== -->
         <div class="footer-ressources">
             <h4>Ressources</h4>
             <div class="ressources-grid">
-                <!-- Les 4 liens pointent vers le dossier includes/ comme demandé -->
                 <a href="<?= SITE_URL ?>/includes/mentions_legales.php"><i class="bi bi-file-earmark-person"></i> Mentions légales</a>
                 <a href="<?= SITE_URL ?>/includes/faq.php"><i class="bi bi-question-circle"></i> FAQ</a>
                 <a href="<?= SITE_URL ?>/includes/cgv.php"><i class="bi bi-file-check"></i> CGV</a>
@@ -382,7 +391,7 @@ if (session_status() === PHP_SESSION_NONE) {
             </div>
         </div>
 
-        <!-- ===== COPYRIGHT AVEC VOTRE NOM ===== -->
+        <!-- ===== COPYRIGHT ===== -->
         <div class="footer-bottom">
             <p>© <?= date('Y') ?> <span>Awa Ka Sugu</span> — Tous droits réservés | <span style="color: #C8922A; font-weight: 500;">Développé par Aïchatou SOUMAORO</span></p>
         </div>

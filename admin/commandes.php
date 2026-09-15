@@ -21,9 +21,6 @@ $admin_role = $admin_info['role'] ?? 'admin';
 $admin_nom = $admin_info['nom'] ?? 'Awa Doumbia';
 $admin_id = $admin_info['id'] ?? 0;
 
-// Vérification des permissions (Commandes visible pour tous les rôles)
-// Tous les admins peuvent voir les commandes
-
 $page_title = 'Gestion des Commandes';
 
 // ============================================
@@ -83,7 +80,7 @@ $per_page = 15;
 $offset = ($page - 1) * $per_page;
 
 // ============================================
-// REQUÊTE GROUPÉE PAR CLIENT
+// REQUÊTE GROUPÉE PAR CLIENT AVEC STATUTS
 // ============================================
 $sql = "
     SELECT 
@@ -96,14 +93,16 @@ $sql = "
         GROUP_CONCAT(c.numero_commande SEPARATOR ', ') as commandes,
         GROUP_CONCAT(c.statut SEPARATOR ', ') as statuts,
         GROUP_CONCAT(c.id SEPARATOR ',') as commande_ids,
-        MAX(c.id) as derniere_id
+        MAX(c.id) as derniere_id,
+        SUM(CASE WHEN c.statut = 'annulee' THEN 1 ELSE 0 END) as nb_annulees,
+        SUM(CASE WHEN c.statut != 'annulee' THEN c.total ELSE 0 END) as total_valide
     FROM commandes c
     WHERE 1=1
 ";
 
 $params = [];
 if ($filtre != 'toutes') {
-    $sql .= " AND c.statut = ?";
+    $sql .= " AND EXISTS (SELECT 1 FROM commandes c2 WHERE c2.nom_client = c.nom_client AND c2.telephone = c.telephone AND c2.statut = ?)";
     $params[] = $filtre;
 }
 
@@ -117,7 +116,11 @@ $sql .= " GROUP BY c.nom_client, c.telephone
           ORDER BY derniere_commande DESC";
 
 // Compter le nombre de groupes
-$count_sql = "SELECT COUNT(DISTINCT nom_client, telephone) FROM commandes WHERE 1=1";
+$count_sql = "
+    SELECT COUNT(DISTINCT CONCAT(nom_client, '||', telephone)) 
+    FROM commandes 
+    WHERE 1=1
+";
 $count_params = [];
 if ($filtre != 'toutes') {
     $count_sql .= " AND statut = ?";
@@ -140,20 +143,31 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $groupes = $stmt->fetchAll();
 
-// Statistiques
-$stats = [
-    'toutes' => (int)$pdo->query("SELECT COUNT(DISTINCT nom_client, telephone) FROM commandes")->fetchColumn(),
-    'en_attente' => (int)$pdo->query("SELECT COUNT(DISTINCT nom_client, telephone) FROM commandes WHERE statut = 'en_attente'")->fetchColumn(),
-    'confirmee' => (int)$pdo->query("SELECT COUNT(DISTINCT nom_client, telephone) FROM commandes WHERE statut = 'confirmee'")->fetchColumn(),
-    'en_preparation' => (int)$pdo->query("SELECT COUNT(DISTINCT nom_client, telephone) FROM commandes WHERE statut = 'en_preparation'")->fetchColumn(),
-    'en_livraison' => (int)$pdo->query("SELECT COUNT(DISTINCT nom_client, telephone) FROM commandes WHERE statut = 'en_livraison'")->fetchColumn(),
-    'livree' => (int)$pdo->query("SELECT COUNT(DISTINCT nom_client, telephone) FROM commandes WHERE statut = 'livree'")->fetchColumn(),
-    'annulee' => (int)$pdo->query("SELECT COUNT(DISTINCT nom_client, telephone) FROM commandes WHERE statut = 'annulee'")->fetchColumn(),
-];
+// ============================================
+// STATISTIQUES (basées sur les commandes individuelles)
+// ============================================
+$stats_sql = "
+    SELECT 
+        COUNT(*) as total_commandes,
+        SUM(CASE WHEN statut = 'en_attente' THEN 1 ELSE 0 END) as en_attente,
+        SUM(CASE WHEN statut = 'confirmee' THEN 1 ELSE 0 END) as confirmee,
+        SUM(CASE WHEN statut = 'en_preparation' THEN 1 ELSE 0 END) as en_preparation,
+        SUM(CASE WHEN statut = 'en_livraison' THEN 1 ELSE 0 END) as en_livraison,
+        SUM(CASE WHEN statut = 'livree' THEN 1 ELSE 0 END) as livree,
+        SUM(CASE WHEN statut = 'annulee' THEN 1 ELSE 0 END) as annulee
+    FROM commandes
+";
+$stats = $pdo->query($stats_sql)->fetch();
 
-$message = $_SESSION['message_commande'] ?? '';
-unset($_SESSION['message_commande']);
+// Nombre de clients uniques
+$nb_clients = (int)$pdo->query("SELECT COUNT(DISTINCT CONCAT(nom_client, '||', telephone)) FROM commandes")->fetchColumn();
 
+// Ajouter dans le tableau des stats
+$stats['toutes'] = $nb_clients;
+
+// ============================================
+// STATUTS POUR L'AFFICHAGE
+// ============================================
 $statut_labels = [
     'en_attente' => ['label' => 'En attente', 'class' => 'statut-en_attente'],
     'confirmee' => ['label' => 'Confirmée', 'class' => 'statut-confirmee'],
@@ -162,6 +176,9 @@ $statut_labels = [
     'livree' => ['label' => 'Livrée', 'class' => 'statut-livree'],
     'annulee' => ['label' => 'Annulée', 'class' => 'statut-annulee']
 ];
+
+$message = $_SESSION['message_commande'] ?? '';
+unset($_SESSION['message_commande']);
 
 // Maintenance
 $maintenance_status = $pdo->query("
@@ -199,37 +216,39 @@ include 'includes/sidebar.php';
     <div class="content">
 
         <?php if($message): ?>
-            <div class="alert-success"><i class="bi bi-check-circle-fill"></i> <?= htmlspecialchars($message) ?></div>
+            <div class="alert-success" style="background:#D4EDDA;color:#155724;padding:12px 18px;border-radius:10px;margin-bottom:20px;border-left:4px solid #28A745;">
+                <i class="bi bi-check-circle-fill"></i> <?= htmlspecialchars($message) ?>
+            </div>
         <?php endif; ?>
 
         <!-- ===== STATISTIQUES ===== -->
         <div class="stats-row" style="grid-template-columns: repeat(7, 1fr);">
             <div class="stat-box" style="border-top: 3px solid #1A2C3E;">
-                <div class="stat-val" style="color:#1A2C3E;"><?= $stats['toutes'] ?></div>
+                <div class="stat-val" style="color:#1A2C3E;"><?= $stats['toutes'] ?? 0 ?></div>
                 <div class="stat-lbl">Clients</div>
             </div>
             <div class="stat-box" style="border-top: 3px solid #E67E22;">
-                <div class="stat-val" style="color:#E67E22;"><?= $stats['en_attente'] ?></div>
+                <div class="stat-val" style="color:#E67E22;"><?= $stats['en_attente'] ?? 0 ?></div>
                 <div class="stat-lbl">En attente</div>
             </div>
             <div class="stat-box" style="border-top: 3px solid #2980B9;">
-                <div class="stat-val" style="color:#2980B9;"><?= $stats['confirmee'] ?></div>
+                <div class="stat-val" style="color:#2980B9;"><?= $stats['confirmee'] ?? 0 ?></div>
                 <div class="stat-lbl">Confirmées</div>
             </div>
             <div class="stat-box" style="border-top: 3px solid #8E44AD;">
-                <div class="stat-val" style="color:#8E44AD;"><?= $stats['en_preparation'] ?></div>
+                <div class="stat-val" style="color:#8E44AD;"><?= $stats['en_preparation'] ?? 0 ?></div>
                 <div class="stat-lbl">Préparation</div>
             </div>
             <div class="stat-box" style="border-top: 3px solid #C8922A;">
-                <div class="stat-val" style="color:#C8922A;"><?= $stats['en_livraison'] ?></div>
+                <div class="stat-val" style="color:#C8922A;"><?= $stats['en_livraison'] ?? 0 ?></div>
                 <div class="stat-lbl">Livraison</div>
             </div>
             <div class="stat-box" style="border-top: 3px solid #27AE60;">
-                <div class="stat-val" style="color:#27AE60;"><?= $stats['livree'] ?></div>
+                <div class="stat-val" style="color:#27AE60;"><?= $stats['livree'] ?? 0 ?></div>
                 <div class="stat-lbl">Livrées</div>
             </div>
             <div class="stat-box" style="border-top: 3px solid #E74C3C;">
-                <div class="stat-val" style="color:#E74C3C;"><?= $stats['annulee'] ?></div>
+                <div class="stat-val" style="color:#E74C3C;"><?= $stats['annulee'] ?? 0 ?></div>
                 <div class="stat-lbl">Annulées</div>
             </div>
         </div>
@@ -259,7 +278,13 @@ include 'includes/sidebar.php';
         <div class="card-white">
             <div class="card-header">
                 <div class="card-title"><i class="bi bi-people"></i> Clients avec leurs commandes</div>
-                <div class="text-muted" style="font-size:0.8rem;"><?= $total_groupes ?> client(s)</div>
+                <div class="text-muted" style="font-size:0.8rem;">
+                    <?= $total_groupes ?> client(s) • 
+                    <?= $stats['total_commandes'] ?? 0 ?> commande(s) au total
+                    <?php if(($stats['annulee'] ?? 0) > 0): ?>
+                        <span style="color:#E74C3C;">• <?= $stats['annulee'] ?> annulée(s)</span>
+                    <?php endif; ?>
+                </div>
             </div>
             <div class="card-body" style="padding:0;">
                 <div class="table-container">
@@ -270,17 +295,19 @@ include 'includes/sidebar.php';
                                 <th>Téléphone</th>
                                 <th style="text-align:center;">Commandes</th>
                                 <th style="text-align:right;">Total</th>
+                                <th style="text-align:right;">Total valide</th>
                                 <th>Dernière</th>
+                                <th style="text-align:center;">Statut</th>
                                 <th style="text-align:center;">Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if(empty($groupes)): ?>
                             <tr>
-                                <td colspan="6">
-                                    <div class="empty-state">
-                                        <i class="bi bi-inbox"></i>
-                                        <p>Aucun client trouvé</p>
+                                <td colspan="8">
+                                    <div class="empty-state" style="text-align:center;padding:40px;">
+                                        <i class="bi bi-inbox" style="font-size:2.5rem;color:#ccc;display:block;margin-bottom:10px;"></i>
+                                        <p style="color:#999;">Aucun client trouvé</p>
                                     </div>
                                 </td>
                             </tr>
@@ -295,32 +322,42 @@ include 'includes/sidebar.php';
                                         $statut_global = $s;
                                     }
                                 }
+                                $nb_annulees = $g['nb_annulees'] ?? 0;
+                                $nb_valides = $g['nb_commandes'] - $nb_annulees;
+                                $total_valide = $g['total_valide'] ?? 0;
                             ?>
                             <tr>
                                 <td>
                                     <strong><?= htmlspecialchars($g['nom_client']) ?></strong>
-                                    <br><span style="color:#8A99AA;font-size:0.65rem;"><?= $g['nb_commandes'] ?> commande(s)</span>
+                                    <br><span style="color:#8A99AA;font-size:0.65rem;">
+                                        <?= $g['nb_commandes'] ?> commande(s)
+                                        <?php if($nb_annulees > 0): ?>
+                                            <span style="color:#E74C3C;">• <?= $nb_annulees ?> annulée(s)</span>
+                                        <?php endif; ?>
+                                    </span>
                                 </td>
                                 <td><?= htmlspecialchars($g['telephone']) ?></td>
                                 <td style="text-align:center;">
                                     <span style="display:inline-block;background:#C8922A;color:white;padding:2px 10px;border-radius:12px;font-size:0.7rem;font-weight:600;">
                                         <?= $g['nb_commandes'] ?>
                                     </span>
-                                    <br>
-                                    <span style="color:#8A99AA;font-size:0.6rem;">
-                                        <?php 
-                                        $nums = explode(', ', $g['commandes']);
-                                        echo implode(', ', array_slice($nums, 0, 2));
-                                        if(count($nums) > 2) echo '...';
-                                        ?>
-                                    </span>
+                                    <?php if($nb_valides > 0): ?>
+                                        <br><span style="color:#8A99AA;font-size:0.6rem;"><?= $nb_valides ?> validée(s)</span>
+                                    <?php endif; ?>
+                                    <?php if($nb_annulees > 0): ?>
+                                        <br><span style="color:#E74C3C;font-size:0.6rem;"><?= $nb_annulees ?> annulée(s)</span>
+                                    <?php endif; ?>
                                 </td>
                                 <td style="text-align:right;font-weight:600;color:#C8922A;">
                                     <?= number_format($g['total_global'], 0, ',', ' ') ?> F
                                 </td>
+                                <td style="text-align:right;font-weight:600;color:#27AE60;">
+                                    <?= number_format($total_valide, 0, ',', ' ') ?> F
+                                </td>
                                 <td style="font-size:0.7rem;color:#8A99AA;">
                                     <?= date('d/m/Y H:i', strtotime($g['derniere_commande'])) ?>
-                                    <br>
+                                </td>
+                                <td style="text-align:center;">
                                     <span class="badge-statut statut-<?= $statut_global ?>">
                                         <?= $statut_labels[$statut_global]['label'] ?? $statut_global ?>
                                     </span>
@@ -381,6 +418,23 @@ include 'includes/sidebar.php';
 
     </div><!-- /content -->
 </div><!-- /main -->
+
+<!-- ============================================
+     STYLES SUPPLÉMENTAIRES
+     ============================================ -->
+<style>
+.statut-annulee {
+    background: #F8D7DA !important;
+    color: #721C24 !important;
+}
+.badge-statut {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.6rem;
+    font-weight: 600;
+}
+</style>
 
 <!-- ============================================
      FOOTER

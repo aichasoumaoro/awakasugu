@@ -194,6 +194,48 @@ try {
 }
 
 // ============================================
+// RÉCUPÉRER LES POINTS DE FIDÉLITÉ
+// ============================================
+
+// Récupérer les points du client
+$stmt = $pdo->prepare("
+    SELECT points, points_utilises, total_points 
+    FROM points_fidelite 
+    WHERE client_id = ?
+");
+$stmt->execute([$client_id]);
+$points_data = $stmt->fetch();
+
+if (!$points_data) {
+    $points_data = ['points' => 0, 'points_utilises' => 0, 'total_points' => 0];
+}
+
+// Récupérer les paramètres de fidélité
+$stmt = $pdo->query("SELECT cle, valeur FROM parametres_fonctionnalites WHERE cle LIKE 'fidelite_%'");
+$params_fidelite = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+
+// Valeurs par défaut si les paramètres n'existent pas
+$seuil_points = $params_fidelite['fidelite_seuil_points'] ?? 50000;
+$points_par_seuil = $params_fidelite['fidelite_points_par_seuil'] ?? 1;
+$reduction_points = $params_fidelite['fidelite_reduction_points'] ?? 10;
+$reduction_montant = $params_fidelite['fidelite_reduction_montant'] ?? 1000;
+$fidelite_actif = $params_fidelite['fidelite_actif'] ?? 1;
+
+// Calculer la réduction disponible
+$nb_lots = floor($points_data['points'] / $reduction_points);
+$reduction_disponible = $nb_lots * $reduction_montant;
+
+// Récupérer l'historique des points (pour affichage)
+$stmt = $pdo->prepare("
+    SELECT * FROM historique_points 
+    WHERE client_id = ? 
+    ORDER BY created_at DESC 
+    LIMIT 10
+");
+$stmt->execute([$client_id]);
+$historique_points = $stmt->fetchAll();
+
+// ============================================
 // INCLUSION DU HEADER (APRÈS LES REDIRECTIONS)
 // ============================================
 $titre_page = 'Mon compte';
@@ -561,6 +603,105 @@ body {
 }
 
 /* ============================================
+   SECTION FIDÉLITÉ - STYLES
+   ============================================ */
+.fidelite-section {
+    background: #FEFBF5;
+    border-radius: 12px;
+    padding: 18px;
+    margin: 0 0 20px 0;
+    border: 1px solid rgba(200,146,42,0.12);
+}
+
+.fidelite-section .fidelite-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.fidelite-section .fidelite-header h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.1rem;
+    margin: 0;
+    color: #0D0D0D;
+}
+
+.fidelite-section .fidelite-header h3 i {
+    color: #C8922A;
+    margin-right: 6px;
+}
+
+.fidelite-section .fidelite-header .points-total {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #C8922A;
+}
+
+.fidelite-section .fidelite-header .points-label {
+    font-size: 0.7rem;
+    color: #8A99AA;
+}
+
+.fidelite-section .fidelite-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin: 12px 0;
+}
+
+.fidelite-section .fidelite-cards .card {
+    text-align: center;
+    background: #fff;
+    border-radius: 8px;
+    padding: 10px;
+    border: 1px solid #F0EDEA;
+}
+
+.fidelite-section .fidelite-cards .card .number {
+    font-weight: 700;
+    font-size: 1.1rem;
+}
+
+.fidelite-section .fidelite-cards .card .number.gold { color: #C8922A; }
+.fidelite-section .fidelite-cards .card .number.blue { color: #2980B9; }
+.fidelite-section .fidelite-cards .card .number.green { color: #27AE60; }
+
+.fidelite-section .fidelite-cards .card .label {
+    font-size: 0.6rem;
+    color: #8A99AA;
+}
+
+.fidelite-section .btn-utiliser {
+    display: inline-block;
+    background: linear-gradient(135deg, #C8922A, #E8B55A);
+    color: #fff;
+    padding: 8px 24px;
+    border-radius: 25px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.85rem;
+    transition: all 0.3s;
+}
+
+.fidelite-section .btn-utiliser:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(200,146,42,0.3);
+}
+
+.fidelite-section .message-points {
+    text-align: center;
+    font-size: 0.7rem;
+    color: #8A99AA;
+    margin: 6px 0 0;
+}
+
+.fidelite-section .message-points i {
+    margin-right: 4px;
+}
+
+/* ============================================
    RESPONSIVE MOBILE (iPhone, Android, etc.)
    ============================================ */
 @media (max-width: 768px) {
@@ -716,6 +857,16 @@ body {
         padding: 10px 20px;
         font-size: 0.8rem;
     }
+    
+    /* Fidélité mobile */
+    .fidelite-section .fidelite-cards {
+        grid-template-columns: 1fr 1fr;
+    }
+    
+    .fidelite-section .fidelite-header {
+        flex-direction: column;
+        text-align: center;
+    }
 }
 
 /* ===== TRÈS PETITS ÉCRANS (iPhone SE, etc.) ===== */
@@ -761,6 +912,10 @@ body {
     .btn-boutique {
         padding: 8px 15px;
         font-size: 0.75rem;
+    }
+    
+    .fidelite-section .fidelite-cards {
+        grid-template-columns: 1fr;
     }
 }
 </style>
@@ -856,6 +1011,58 @@ body {
                         <i class="bi bi-eye"></i> Voir le détail
                     </a>
                 </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- ============================================
+            SECTION FIDÉLITÉ - POINTS ET RÉDUCTIONS
+            ============================================ -->
+            <?php if($fidelite_actif == 1): ?>
+            <div class="fidelite-section">
+                <div class="fidelite-header">
+                    <div>
+                        <h3><i class="bi bi-star"></i> Mes points de fidélité</h3>
+                        <p style="font-size:0.7rem;color:#8A99AA;margin:2px 0 0;">
+                            <?= number_format($seuil_points, 0, ' ', ' ') ?> FCFA = 1 point
+                            • <?= $reduction_points ?> points = <?= number_format($reduction_montant, 0, ' ', ' ') ?> FCFA
+                        </p>
+                    </div>
+                    <div>
+                        <span class="points-total"><?= number_format($points_data['points']) ?></span>
+                        <span class="points-label">points</span>
+                    </div>
+                </div>
+                
+                <!-- 3 cartes de statistiques -->
+                <div class="fidelite-cards">
+                    <div class="card">
+                        <div class="number gold"><?= number_format($points_data['points']) ?></div>
+                        <div class="label">Disponibles</div>
+                    </div>
+                    <div class="card">
+                        <div class="number blue"><?= number_format($points_data['total_points']) ?></div>
+                        <div class="label">Cumulés</div>
+                    </div>
+                    <div class="card">
+                        <div class="number green"><?= number_format($reduction_disponible) ?> F</div>
+                        <div class="label">Réduction possible</div>
+                    </div>
+                </div>
+                
+                <!-- Bouton Utiliser ou message -->
+                <?php if($points_data['points'] >= $reduction_points): ?>
+                <div style="text-align:center;margin-top:8px;">
+                    <a href="utiliser_points.php" class="btn-utiliser">
+                        <i class="bi bi-gift"></i> Utiliser mes points
+                    </a>
+                </div>
+                <?php else: ?>
+                <p class="message-points">
+                    <i class="bi bi-info-circle"></i> 
+                    Continuez vos achats pour cumuler plus de points !
+                    (<?= $reduction_points - $points_data['points'] ?> points manquants)
+                </p>
+                <?php endif; ?>
             </div>
             <?php endif; ?>
             

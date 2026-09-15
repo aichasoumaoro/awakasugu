@@ -77,6 +77,13 @@ $stmt->execute([$id]);
 $produit_tailles = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
 // ============================================
+// RÉCUPÉRER LES PHOTOS DE LA GALERIE (produit_images)
+// ============================================
+$stmt = $pdo->prepare("SELECT * FROM produit_images WHERE produit_id = ? ORDER BY ordre ASC");
+$stmt->execute([$id]);
+$produit_images = $stmt->fetchAll();
+
+// ============================================
 // RÉCUPÉRER LES DONNÉES
 // ============================================
 $couleurs = $pdo->query("SELECT * FROM couleurs ORDER BY nom")->fetchAll();
@@ -101,21 +108,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     $couleurs_selectionnees = isset($_POST['couleurs']) ? $_POST['couleurs'] : [];
     $tailles_selectionnees = isset($_POST['tailles']) ? $_POST['tailles'] : [];
-    
-    $image_principale = $produit['image_principale'];
-    if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
-        $upload_dir = '../uploads/produits/';
-        $ext = strtolower(pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION));
-        $allowed = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
-        
-        if (in_array($ext, $allowed)) {
-            if (!empty($image_principale) && file_exists($upload_dir . $image_principale)) {
-                unlink($upload_dir . $image_principale);
+
+    $upload_dir = '../uploads/produits/';
+    $allowed = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+
+    // ============================================
+    // 1) SUPPRESSION DES PHOTOS DE GALERIE COCHÉES
+    // ============================================
+    $images_a_supprimer = isset($_POST['supprimer_images']) ? $_POST['supprimer_images'] : [];
+    if (!empty($images_a_supprimer)) {
+        foreach ($images_a_supprimer as $image_id) {
+            $image_id = (int)$image_id;
+            $stmt = $pdo->prepare("SELECT * FROM produit_images WHERE id = ? AND produit_id = ?");
+            $stmt->execute([$image_id, $id]);
+            $img = $stmt->fetch();
+            if ($img) {
+                if (!empty($img['nom_fichier']) && file_exists($upload_dir . $img['nom_fichier'])) {
+                    unlink($upload_dir . $img['nom_fichier']);
+                }
+                $pdo->prepare("DELETE FROM produit_images WHERE id = ?")->execute([$image_id]);
+
+                // Si la photo supprimée était la couverture, on la videra
+                // (elle sera remplacée plus bas si une autre photo reste ou si on en ajoute)
+                if ($produit['image_principale'] === $img['nom_fichier']) {
+                    $produit['image_principale'] = '';
+                }
             }
-            $image_principale = uniqid() . '.' . $ext;
-            move_uploaded_file($_FILES['image']['tmp_name'], $upload_dir . $image_principale);
+        }
+    }
+
+    // ============================================
+    // 2) AJOUT DE NOUVELLES PHOTOS
+    // ============================================
+    $image_principale = $produit['image_principale'];
+    $nouvelles_photos = [];
+
+    if (isset($_FILES['images']) && !empty($_FILES['images']['name'][0])) {
+        if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
+
+        $nb_fichiers = count($_FILES['images']['name']);
+        for ($i = 0; $i < $nb_fichiers; $i++) {
+            if ($_FILES['images']['error'][$i] !== UPLOAD_ERR_OK) continue;
+
+            $ext = strtolower(pathinfo($_FILES['images']['name'][$i], PATHINFO_EXTENSION));
+            if (!in_array($ext, $allowed)) {
+                $error = 'Format d\'image non autorisé (JPG, PNG, WEBP, GIF)';
+                continue;
+            }
+
+            $nom_fichier = uniqid() . '_' . $i . '.' . $ext;
+            move_uploaded_file($_FILES['images']['tmp_name'][$i], $upload_dir . $nom_fichier);
+            $nouvelles_photos[] = $nom_fichier;
+        }
+    }
+
+    // Si aucune couverture n'est définie (nouveau produit sans photo, ou couverture supprimée),
+    // on prend la 1ère photo restante de la galerie, sinon la 1ère nouvelle photo uploadée.
+    if (empty($image_principale)) {
+        if (!empty($nouvelles_photos)) {
+            $image_principale = $nouvelles_photos[0];
         } else {
-            $error = 'Format d\'image non autorisé (JPG, PNG, WEBP, GIF)';
+            $stmt = $pdo->prepare("SELECT nom_fichier FROM produit_images WHERE produit_id = ? ORDER BY ordre ASC LIMIT 1");
+            $stmt->execute([$id]);
+            $restante = $stmt->fetchColumn();
+            if ($restante) $image_principale = $restante;
         }
     }
     
@@ -147,6 +203,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([$id, $taille_id]);
             }
         }
+
+        // Ajouter les nouvelles photos à la galerie (à la suite des photos existantes)
+        if (!empty($nouvelles_photos)) {
+            $stmt = $pdo->prepare("SELECT COALESCE(MAX(ordre), -1) FROM produit_images WHERE produit_id = ?");
+            $stmt->execute([$id]);
+            $ordre_depart = (int)$stmt->fetchColumn() + 1;
+
+            $stmt = $pdo->prepare("INSERT INTO produit_images (produit_id, nom_fichier, ordre) VALUES (?, ?, ?)");
+            foreach ($nouvelles_photos as $index => $fichier) {
+                $stmt->execute([$id, $fichier, $ordre_depart + $index]);
+            }
+        }
         
         if (function_exists('enregistrer_log_action')) {
             enregistrer_log_action(
@@ -163,6 +231,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: produits.php');
         exit;
     }
+
+    // En cas d'erreur, on recharge les photos actuelles pour ré-afficher le formulaire correctement
+    $stmt = $pdo->prepare("SELECT * FROM produit_images WHERE produit_id = ? ORDER BY ordre ASC");
+    $stmt->execute([$id]);
+    $produit_images = $stmt->fetchAll();
 }
 
 // ============================================
@@ -399,20 +472,48 @@ include 'includes/sidebar.php';
                             </div>
                             <div>
                                 <label style="display:block;font-size:0.75rem;font-weight:600;color:#1A2C3E;margin-bottom:5px;">
-                                    Nouvelle image
+                                    Ajouter de nouvelles photos
                                 </label>
-                                <input type="file" name="image" accept="image/*" 
+                                <input type="file" name="images[]" accept="image/*" multiple
                                        style="width:100%;padding:10px 16px;border:2px solid #E8ECF0;border-radius:10px;font-size:0.9rem;font-family:'Jost',sans-serif;background:#FAF9F7;transition:border-color 0.3s;"
                                        onfocus="this.style.borderColor='#C8922A';this.style.boxShadow='0 0 0 4px rgba(200,146,42,0.08)'"
-                                       onblur="this.style.borderColor='#E8ECF0';this.style.boxShadow='none'">
-                                <div style="font-size:0.65rem;color:#8A99AA;margin-top:4px;">Formats : JPG, PNG, WEBP, GIF</div>
-                                <?php if(!empty($produit['image_principale']) && file_exists('../uploads/produits/'.$produit['image_principale'])): ?>
-                                    <div style="margin-top:8px;">
-                                        <img src="../uploads/produits/<?= $produit['image_principale'] ?>" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:2px solid #E8ECF0;">
-                                        <div style="font-size:0.65rem;color:#8A99AA;margin-top:4px;">Image actuelle</div>
-                                    </div>
-                                <?php endif; ?>
+                                       onblur="this.style.borderColor='#E8ECF0';this.style.boxShadow='none'"
+                                       onchange="previewNewImages(this)">
+                                <div style="font-size:0.65rem;color:#8A99AA;margin-top:4px;">Formats : JPG, PNG, WEBP, GIF — s'ajoutent à la galerie ci-dessous</div>
+                                <div id="previewNewImages" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;"></div>
                             </div>
+                        </div>
+
+                        <!-- ===== GALERIE DE PHOTOS EXISTANTES ===== -->
+                        <div style="margin-bottom:16px;">
+                            <label style="display:block;font-size:0.75rem;font-weight:600;color:#1A2C3E;margin-bottom:8px;">
+                                Photos actuelles du produit
+                                <span style="font-weight:400;color:#8A99AA;font-size:0.65rem;margin-left:6px;">(cochez pour supprimer au moment d'enregistrer)</span>
+                            </label>
+                            <?php if (!empty($produit_images)): ?>
+                            <div style="display:flex;flex-wrap:wrap;gap:12px;">
+                                <?php foreach ($produit_images as $img): 
+                                    $chemin_img = '../uploads/produits/' . $img['nom_fichier'];
+                                    $est_couverture = ($img['nom_fichier'] === $produit['image_principale']);
+                                ?>
+                                <label style="position:relative;width:90px;height:90px;border-radius:10px;overflow:hidden;border:2px solid <?= $est_couverture ? '#C8922A' : '#E8ECF0' ?>;cursor:pointer;display:block;">
+                                    <?php if (file_exists($chemin_img)): ?>
+                                        <img src="<?= $chemin_img ?>" style="width:100%;height:100%;object-fit:cover;">
+                                    <?php else: ?>
+                                        <div style="width:100%;height:100%;background:#F0F0F0;display:flex;align-items:center;justify-content:center;color:#CCC;"><i class="bi bi-image"></i></div>
+                                    <?php endif; ?>
+                                    <?php if ($est_couverture): ?>
+                                        <span style="position:absolute;bottom:0;left:0;right:0;background:#C8922A;color:#fff;font-size:0.55rem;text-align:center;padding:2px 0;">Couverture</span>
+                                    <?php endif; ?>
+                                    <span style="position:absolute;top:4px;right:4px;background:rgba(255,255,255,0.9);border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;">
+                                        <input type="checkbox" name="supprimer_images[]" value="<?= $img['id'] ?>" style="width:14px;height:14px;accent-color:#E74C3C;">
+                                    </span>
+                                </label>
+                                <?php endforeach; ?>
+                            </div>
+                            <?php else: ?>
+                            <div style="font-size:0.75rem;color:#8A99AA;">Aucune photo dans la galerie pour ce produit.</div>
+                            <?php endif; ?>
                         </div>
                         
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
@@ -443,6 +544,26 @@ include 'includes/sidebar.php';
 
     </div><!-- /content -->
 </div><!-- /main -->
+
+<script>
+// Aperçu des nouvelles photos sélectionnées avant l'envoi du formulaire
+function previewNewImages(input) {
+    const container = document.getElementById('previewNewImages');
+    container.innerHTML = '';
+    if (!input.files) return;
+
+    Array.from(input.files).forEach((file) => {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const wrapper = document.createElement('div');
+            wrapper.style.cssText = 'width:70px;height:70px;border-radius:8px;overflow:hidden;border:2px solid #E8ECF0;';
+            wrapper.innerHTML = '<img src="' + e.target.result + '" style="width:100%;height:100%;object-fit:cover;">';
+            container.appendChild(wrapper);
+        };
+        reader.readAsDataURL(file);
+    });
+}
+</script>
 
 <!-- ============================================
      FOOTER

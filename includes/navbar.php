@@ -248,13 +248,25 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
     border-radius: 30px;
     position: relative;
 }
+/* ===== ICÔNES DU MENU EN OR ===== */
+.nav-link i {
+    color: #C8922A;
+    transition: color 0.3s, transform 0.3s;
+}
 .nav-link:hover {
     color: #C8922A;
     background: rgba(200,146,42,0.08);
 }
+.nav-link:hover i {
+    color: #E8C870;
+    transform: scale(1.1);
+}
 .nav-link.active {
     color: #C8922A;
     background: rgba(200,146,42,0.12);
+}
+.nav-link.active i {
+    color: #E8C870;
 }
 .has-dropdown { position: relative; }
 .nav-dropdown {
@@ -298,7 +310,7 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
     flex-shrink: 0;
 }
 
-/* ===== ICÔNES RONDES (recherche / panier / messagerie) — toujours actives ===== */
+/* ===== ICÔNES RONDES (recherche / panier / messagerie) — EN OR ===== */
 .mobile-only-icon {
     display: flex;
     align-items: center;
@@ -307,19 +319,31 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
     width: 38px;
     height: 38px;
     border-radius: 50%;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.1);
-    color: rgba(255,255,255,0.75);
+    background: rgba(200,146,42,0.08);
+    border: 1px solid rgba(200,146,42,0.25);
+    color: #C8922A;
     text-decoration: none;
     font-size: 1.05rem;
     transition: all 0.3s;
     flex-shrink: 0;
     cursor: pointer;
 }
-.mobile-only-icon:hover { color: #C8922A; border-color: rgba(200,146,42,0.4); }
+.mobile-only-icon i {
+    color: #C8922A;
+    transition: color 0.3s, transform 0.3s;
+}
+.mobile-only-icon:hover {
+    color: #E8C870;
+    border-color: rgba(200,146,42,0.6);
+    background: rgba(200,146,42,0.15);
+}
+.mobile-only-icon:hover i {
+    color: #E8C870;
+    transform: scale(1.1);
+}
 .mobile-only-icon .nav-badge { top: -4px; right: -4px; }
 
-/* ===== RECHERCHE — overlay plein écran, toujours ce comportement ===== */
+/* ===== RECHERCHE — overlay plein écran ===== */
 .nav-search {
     position: fixed;
     top: 0; left: 0; right: 0;
@@ -343,7 +367,11 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
     opacity: 1;
     pointer-events: auto;
 }
-.nav-search i { color: rgba(255,255,255,0.35); font-size: 0.9rem; flex-shrink: 0; }
+.nav-search > i {
+    color: #C8922A;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+}
 .nav-search input {
     background: transparent;
     border: none;
@@ -358,10 +386,15 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
     display: block;
     background: none;
     border: none;
-    color: rgba(255,255,255,0.5);
+    color: #C8922A;
     font-size: 1.3rem;
     cursor: pointer;
     flex-shrink: 0;
+    transition: color 0.2s, transform 0.2s;
+}
+.nav-search-close:hover {
+    color: #E8C870;
+    transform: rotate(90deg);
 }
 
 .search-results {
@@ -441,7 +474,7 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
     font-size: 0.85rem;
 }
 
-/* ===== PANIER — icône ronde toujours ===== */
+/* ===== PANIER — icône ronde EN OR ===== */
 .nav-panier {
     position: relative;
     display: flex;
@@ -451,17 +484,25 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
     height: 38px;
     padding: 0;
     border-radius: 50%;
-    color: rgba(255,255,255,0.75);
+    color: #C8922A;
     text-decoration: none;
-    border: 1px solid rgba(255,255,255,0.1);
-    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(200,146,42,0.25);
+    background: rgba(200,146,42,0.08);
     transition: all 0.3s;
     flex-shrink: 0;
 }
-.nav-panier:hover {
+.nav-panier i {
     color: #C8922A;
-    border-color: rgba(200,146,42,0.4);
-    background: rgba(200,146,42,0.08);
+    transition: color 0.3s, transform 0.3s;
+}
+.nav-panier:hover {
+    color: #E8C870;
+    border-color: rgba(200,146,42,0.6);
+    background: rgba(200,146,42,0.15);
+}
+.nav-panier:hover i {
+    color: #E8C870;
+    transform: scale(1.1);
 }
 .nav-panier-text { display: none; }
 .nav-badge {
@@ -477,30 +518,43 @@ $client_en_parallele = isset($_SESSION['client_id']) ? ($_SESSION['client_nom'] 
     align-items: center;
     justify-content: center;
     border: 2px solid #0D0D0D;
+    transition: transform 0.2s ease;
 }
 
-/* Compte / connexion desktop classique : géré désormais par la barre du bas */
+/* Compte / connexion desktop classique : géré par la barre du bas */
 .nav-connexion { display: none !important; }
 
-/* Burger — toujours visible, donne accès aux liens secondaires (Restaurant, Vidéos...) */
+/* Burger — EN OR */
 .nav-burger {
     display: flex;
     align-items: center;
     justify-content: center;
     width: 38px;
     height: 38px;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.12);
-    color: rgba(255,255,255,0.75);
+    background: rgba(200,146,42,0.08);
+    border: 1px solid rgba(200,146,42,0.25);
+    color: #C8922A;
     font-size: 1.15rem;
     border-radius: 50%;
     cursor: pointer;
     transition: all 0.2s;
     flex-shrink: 0;
 }
-.nav-burger:hover { border-color: #C8922A; color: #C8922A; }
+.nav-burger i {
+    color: #C8922A;
+    transition: color 0.3s, transform 0.3s;
+}
+.nav-burger:hover {
+    border-color: #C8922A;
+    color: #E8C870;
+    background: rgba(200,146,42,0.15);
+}
+.nav-burger:hover i {
+    color: #E8C870;
+    transform: rotate(90deg);
+}
 
-/* ===== BARRE DE NAVIGATION DU BAS — toujours affichée ===== */
+/* ===== BARRE DE NAVIGATION DU BAS — icônes EN OR ===== */
 body { padding-bottom: 68px; }
 
 .bottom-nav {
@@ -521,7 +575,7 @@ body { padding-bottom: 68px; }
     align-items: center;
     gap: 3px;
     text-decoration: none;
-    color: rgba(255,255,255,0.45);
+    color: rgba(200,146,42,0.55);
     font-family: 'Jost', sans-serif;
     font-size: 0.62rem;
     font-weight: 500;
@@ -530,9 +584,26 @@ body { padding-bottom: 68px; }
     position: relative;
     transition: color 0.3s;
 }
-.bottom-nav-item i { font-size: 1.25rem; transition: transform 0.3s; }
-.bottom-nav-item.active { color: #C8922A; }
-.bottom-nav-item.active i { transform: translateY(-2px); }
+.bottom-nav-item i {
+    font-size: 1.25rem;
+    color: rgba(200,146,42,0.55);
+    transition: color 0.3s, transform 0.3s;
+}
+.bottom-nav-item:hover {
+    color: #C8922A;
+}
+.bottom-nav-item:hover i {
+    color: #C8922A;
+    transform: translateY(-2px);
+}
+.bottom-nav-item.active {
+    color: #E8C870;
+}
+.bottom-nav-item.active i {
+    color: #E8C870;
+    transform: translateY(-2px);
+    filter: drop-shadow(0 0 8px rgba(200,146,42,0.6));
+}
 .bottom-nav-item .bn-badge {
     position: absolute;
     top: -2px; right: 22%;
@@ -546,7 +617,7 @@ body { padding-bottom: 68px; }
     border: 2px solid #0D0D0D;
 }
 
-/* Header transparent au-dessus d'une bannière (catalogue, accueil...) */
+/* Header transparent au-dessus d'une bannière */
 body.has-hero .site-header {
     position: fixed;
     top: 0; left: 0; right: 0;
@@ -664,14 +735,11 @@ body.has-hero .site-header.scrolled {
 
             <a href="<?= SITE_URL ?>/boutique/panier.php" class="nav-panier">
                 <i class="bi bi-cart3"></i>
-                <?php if($nb_panier > 0): ?>
-                    <span class="nav-badge"><?= $nb_panier ?></span>
-                <?php endif; ?>
+                <span class="nav-badge" id="navCartBadge" style="<?= $nb_panier > 0 ? '' : 'display:none;' ?>"><?= $nb_panier ?></span>
             </a>
 
             <a href="<?= SITE_URL ?>/client/messagerie.php" class="mobile-only-icon" title="Messagerie">
                 <i class="bi bi-chat-dots"></i>
-                <!-- Badge messages non lus : à brancher quand la messagerie sera créée -->
             </a>
 
             <?php if($est_admin_connecte): ?>
@@ -731,7 +799,6 @@ body.has-hero .site-header.scrolled {
     <a href="<?= SITE_URL ?>/client/messagerie.php" class="bottom-nav-item <?= $page_actuelle == 'messagerie.php' ? 'active' : '' ?>">
         <i class="bi bi-chat-dots"></i>
         <span>Messages</span>
-        <!-- Badge messages non lus : à brancher quand la messagerie sera créée -->
     </a>
 </nav>
 
