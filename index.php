@@ -1,7 +1,7 @@
 ﻿<?php
 // ============================================
 // INDEX - AWA KA SUGU
-// Page d'accueil complète avec splash screen
+// Page d'accueil complète avec splash screen + animations hero
 // ============================================
 
 // ============================================
@@ -62,20 +62,6 @@ if (isset($_SESSION['client_id']) &&
         'telephone' => $_SESSION['client_telephone'] ?? ''
     ];
 }
-
-$role_labels = [
-    'super_admin' => 'Super Administrateur',
-    'directeur' => 'Directrice',
-    'admin' => 'Administratrice',
-    'admin2' => 'Agente'
-];
-
-$role_colors = [
-    'super_admin' => '#8E44AD',
-    'directeur' => '#C8922A',
-    'admin' => '#2980B9',
-    'admin2' => '#7F8C8D'
-];
 
 // ============================================
 // 2. TRAITEMENT DU LOGIN
@@ -587,7 +573,13 @@ try {
 // ============================================
 $nouveautes = [];
 try {
-    $stmt = $pdo->prepare("SELECT * FROM produits WHERE est_visible = 1 AND est_nouveau = 1 ORDER BY created_at DESC LIMIT 8");
+    $stmt = $pdo->prepare("
+        SELECT id, nom, image_principale, prix, prix_promo, est_promo
+        FROM produits 
+        WHERE est_visible = 1 AND est_nouveau = 1 
+        ORDER BY created_at DESC 
+        LIMIT 8
+    ");
     $stmt->execute();
     $nouveautes = $stmt->fetchAll();
 } catch(PDOException $e) {
@@ -597,7 +589,7 @@ try {
 $avis_clients = [];
 try {
     $stmt = $pdo->prepare("
-        SELECT a.*, 
+        SELECT a.id, a.nom_client, a.note, a.commentaire, a.created_at, 
                p.nom as produit_nom, 
                p.image_principale as produit_image
         FROM avis_clients a
@@ -628,14 +620,20 @@ try {
     $total_avis_count = 0;
 }
 
-$flash = get_message();
+$flash = function_exists('get_message') ? get_message() : null;
 
 // ============================================
 // 8. FONCTION POUR L'IMAGE DU PRODUIT
 // ============================================
 function getProductImageHome($image) {
+    static $cache = [];
+    
     if (empty($image)) {
         return 'https://placehold.co/400x500/F5F5F5/C8922A?text=Produit';
+    }
+    
+    if (isset($cache[$image])) {
+        return $cache[$image];
     }
     
     $image = trim($image);
@@ -671,12 +669,15 @@ function getProductImageHome($image) {
         foreach ($extensions as $ext) {
             $path = $dossier . $image_name . $ext;
             if (file_exists($path)) {
+                $cache[$image] = $path;
                 return $path;
             }
         }
     }
     
-    return 'https://placehold.co/400x500/F5F5F5/C8922A?text=' . urlencode($image_name);
+    $fallback = 'https://placehold.co/400x500/F5F5F5/C8922A?text=' . urlencode($image_name);
+    $cache[$image] = $fallback;
+    return $fallback;
 }
 ?>
 <!DOCTYPE html>
@@ -687,6 +688,7 @@ function getProductImageHome($image) {
     <title>Awa Ka Sugu — Accueil</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -727,8 +729,7 @@ function getProductImageHome($image) {
         @keyframes floatSlow { 0%,100% { transform:translate(0,0); } 50% { transform:translate(-16px,-24px); } }
         @keyframes shimmer { 0%,100% { background-position:200% center; } 50% { background-position:0% center; } }
 
-        /* ====== NOUVELLES ANIMATIONS PHOTO HERO ====== */
-        /* Ken Burns : zoom lent + léger drift */
+        /* ====== ANIMATIONS HERO ====== */
         @keyframes kenburns {
             0%   { transform: scale(1.08) translate(0%, 0%) rotate(0deg); }
             25%  { transform: scale(1.14) translate(-1.5%, -1%) rotate(0.4deg); }
@@ -736,31 +737,26 @@ function getProductImageHome($image) {
             75%  { transform: scale(1.13) translate(-0.5%, 1.2%) rotate(0.2deg); }
             100% { transform: scale(1.08) translate(0%, 0%) rotate(0deg); }
         }
-        /* Split reveal : la moitié gauche part vers la gauche */
         @keyframes splitLeft {
             0%   { transform: translateX(0) scale(1.08); opacity: 1; }
             60%  { opacity: 1; }
             100% { transform: translateX(-12%) scale(1.02); opacity: 0.92; }
         }
-        /* Split reveal : la moitié droite part vers la droite */
         @keyframes splitRight {
             0%   { transform: translateX(0) scale(1.08); opacity: 1; }
             60%  { opacity: 1; }
             100% { transform: translateX(12%) scale(1.02); opacity: 0.92; }
         }
-        /* Reflet lumineux qui traverse la photo */
         @keyframes sheenSlide {
             0%   { transform: translateX(-150%) skewX(-18deg); opacity: 0; }
             15%  { opacity: 1; }
             60%  { opacity: 0.8; }
             100% { transform: translateX(250%) skewX(-18deg); opacity: 0; }
         }
-        /* Léger balancement horizontal (respiration) */
         @keyframes breathe {
             0%, 100% { transform: translateY(0) scale(1); }
             50%      { transform: translateY(-6px) scale(1.005); }
         }
-        /* Grain animé */
         @keyframes grainShift {
             0%,100% { transform: translate(0,0); }
             20%     { transform: translate(-1%, 1%); }
@@ -781,7 +777,7 @@ function getProductImageHome($image) {
         .fade-item { opacity: 0; animation: fadeUp 0.9s var(--ease) both; animation-delay: var(--d, 0s); }
 
         /* ============================================
-           HERO — PHOTO ANIMÉE (split + kenburns + sheen)
+           HERO — PHOTO ANIMÉE COMPLÈTE
            ============================================ */
         .hero-lux {
             position: relative;
@@ -800,7 +796,7 @@ function getProductImageHome($image) {
             overflow: hidden;
         }
 
-        /* Conteneur des deux moitiés (split reveal) */
+        /* Split reveal : 2 moitiés qui s'écartent */
         .hero-split {
             position: absolute;
             inset: 0;
@@ -868,7 +864,7 @@ function getProductImageHome($image) {
             will-change: transform;
         }
 
-        /* Grain subtil animé */
+        /* Grain animé */
         .hero-grain {
             position: absolute;
             inset: -10%;
@@ -893,7 +889,7 @@ function getProductImageHome($image) {
             background: linear-gradient(to top, #050403, transparent);
         }
 
-        /* Lignes dorées décoratives animées */
+        /* Lignes dorées décoratives */
         .hero-line {
             position: absolute;
             height: 1px;
@@ -912,7 +908,7 @@ function getProductImageHome($image) {
         .hero-line.l2 { bottom: 32%; left: 6%; width: 120px; animation-delay: 0.9s; }
         .hero-line.l3 { top: 40%; right: 8%; width: 100px; animation-delay: 1.3s; }
 
-        /* Trait vertical doré à gauche du texte */
+        /* Trait vertical doré */
         .hero-vline {
             position: absolute;
             left: 0;
@@ -1158,7 +1154,7 @@ function getProductImageHome($image) {
         .service-card p { font-size: 0.8rem; color: var(--muted); line-height: 1.6; }
 
         /* ============================================
-           PRODUITS / NOUVEAUTÉS — GRILLE 2 COLONNES MÊME SUR MOBILE
+           PRODUITS / NOUVEAUTÉS — CARTES CLIQUABLES
            ============================================ */
         .products-section { background: #F8F8FA; }
         .products-grid {
@@ -1175,6 +1171,9 @@ function getProductImageHome($image) {
             position: relative;
             display: flex;
             flex-direction: column;
+            text-decoration: none;
+            color: inherit;
+            cursor: pointer;
         }
         .product-card:hover {
             transform: translateY(-12px);
@@ -1217,6 +1216,11 @@ function getProductImageHome($image) {
             letter-spacing: 0.5px;
             text-transform: uppercase;
             box-shadow: 0 4px 12px rgba(200,146,42,0.3);
+            z-index: 2;
+        }
+        .product-card .image .badge-promo {
+            background: #E74C3C;
+            box-shadow: 0 4px 12px rgba(231,76,60,0.3);
         }
         .product-card .info {
             padding: 18px 20px 22px;
@@ -1241,6 +1245,13 @@ function getProductImageHome($image) {
             color: var(--gold);
             margin-bottom: 12px;
         }
+        .product-card .info .price-old {
+            font-size: 0.75rem;
+            color: var(--muted);
+            text-decoration: line-through;
+            margin-left: 6px;
+            font-weight: 400;
+        }
         .product-card .info .btn-cart {
             display: flex;
             align-items: center;
@@ -1257,6 +1268,7 @@ function getProductImageHome($image) {
             border: 1px solid var(--black);
             width: 100%;
             margin-top: auto;
+            cursor: pointer;
         }
         .product-card .info .btn-cart:hover {
             background: var(--gold);
@@ -1326,7 +1338,7 @@ function getProductImageHome($image) {
         .why-card p { font-size: 0.8rem; color: var(--muted); line-height: 1.6; }
 
         /* ============================================
-           AVIS CLIENTS — PREMIUM (2 colonnes même sur mobile)
+           AVIS CLIENTS
            ============================================ */
         .avis-section {
             position: relative;
@@ -1426,7 +1438,7 @@ function getProductImageHome($image) {
         .avis-text { font-size: 0.9rem; color: #4A5568; line-height: 1.75; font-style: italic; position: relative; z-index: 1; }
 
         /* ============================================
-           LOGIN — GLASS PREMIUM
+           LOGIN
            ============================================ */
         .login-section {
             background: radial-gradient(ellipse at 15% 15%, #1c1710 0%, #0a0806 55%, #050403 100%);
@@ -1704,7 +1716,7 @@ function getProductImageHome($image) {
         .social-icon-link:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.04); }
 
         /* ============================================
-           RESPONSIVE UNIFIÉ
+           RESPONSIVE
            ============================================ */
         @media (max-width: 1100px) {
             .cards-grid, .why-grid { grid-template-columns: repeat(2, 1fr); }
@@ -1779,20 +1791,21 @@ function getProductImageHome($image) {
 <!-- FLASH MESSAGE -->
 <?php if ($flash): ?>
     <div style="background: #D4EDDA; color: #0A3622; padding: 12px 20px; text-align: center; font-size: 0.9rem;">
-        <?= $flash['texte'] ?>
+        <?= htmlspecialchars($flash['texte'] ?? '') ?>
     </div>
 <?php endif; ?>
 
 <!-- ============================================
-     HERO — PHOTO ANIMÉE (split reveal + kenburns + sheen + grain)
+     HERO — PHOTO ANIMÉE (split + kenburns + sheen + grain)
      ============================================ -->
 <section class="hero-lux">
     <div class="hero-bg-photo">
 
-        <!-- Split reveal : la photo se divise en 2 moitiés qui s'écartent -->
+        <!-- Split reveal : 2 moitiés qui s'écartent -->
         <div class="hero-split">
             <div class="hero-split-half left">
                 <img src="assets/images/iba%20design.jpeg" alt="Boutique IBA Design"
+                     fetchpriority="high"
                      onerror="this.src='https://placehold.co/1600x1000/050403/C8922A?text=IBA+Design'">
             </div>
             <div class="hero-split-half right">
@@ -1801,23 +1814,22 @@ function getProductImageHome($image) {
             </div>
         </div>
 
-        <!-- Reflet lumineux qui traverse la photo -->
+        <!-- Reflet lumineux -->
         <div class="hero-sheen"></div>
 
-        <!-- Grain subtil animé -->
+        <!-- Grain animé -->
         <div class="hero-grain"></div>
 
     </div>
 
     <div class="hero-bg-overlay"></div>
 
-    <!-- Lignes dorées décoratives animées -->
+    <!-- Lignes dorées -->
     <span class="hero-line l1"></span>
     <span class="hero-line l2"></span>
     <span class="hero-line l3"></span>
 
     <div class="hero-lux-inner">
-
         <div class="hero-lux-text">
             <span class="hero-vline"></span>
             <span class="glass-badge"><i class="bi bi-stars"></i> Awa Ka Sugu · IBA Design</span>
@@ -1841,7 +1853,6 @@ function getProductImageHome($image) {
                 </a>
             </div>
         </div>
-
     </div>
 
     <div class="hero-dock">
@@ -1891,7 +1902,7 @@ function getProductImageHome($image) {
 </section>
 
 <!-- ============================================
-     NOUVEAUTÉS — GRILLE 2 COLONNES MÊME SUR MOBILE
+     NOUVEAUTÉS — CARTES CLIQUABLES
      ============================================ -->
 <section class="section products-section reveal">
     <div class="container-custom">
@@ -1905,32 +1916,44 @@ function getProductImageHome($image) {
             <div class="products-grid">
                 <?php foreach ($nouveautes as $index => $p): 
                     $image_produit = getProductImageHome($p['image_principale'] ?? '');
-                    $prix_affiché = $p['prix'];
-                    if (!empty($p['prix_promo']) && $p['prix_promo'] > 0 && $p['prix_promo'] < $p['prix']) {
-                        $prix_affiché = $p['prix_promo'];
-                    }
+                    $est_promo = (!empty($p['est_promo']) && $p['est_promo'] == 1 && !empty($p['prix_promo']) && $p['prix_promo'] > 0 && $p['prix_promo'] < $p['prix']);
+                    $prix_affiché = $est_promo ? $p['prix_promo'] : $p['prix'];
+                    $prix_ancien = $est_promo ? $p['prix'] : null;
                     $delay = 0.05 * ($index + 1);
                 ?>
-                <div class="product-card reveal" style="transition-delay:<?= $delay ?>s;">
+                <a href="boutique/produit.php?id=<?= (int)$p['id'] ?>" 
+                   class="product-card reveal" 
+                   style="transition-delay:<?= $delay ?>s;"
+                   title="Voir les détails de <?= htmlspecialchars($p['nom']) ?>">
                     <div class="image">
                         <img src="<?= htmlspecialchars($image_produit) ?>" 
                              alt="<?= htmlspecialchars($p['nom']) ?>"
                              loading="lazy"
+                             decoding="async"
                              onerror="this.src='https://placehold.co/400x500/F5F5F5/C8922A?text=<?= urlencode($p['nom']) ?>'">
-                        <div class="badge">Nouveau</div>
+                        <?php if ($est_promo): ?>
+                            <div class="badge badge-promo">PROMO</div>
+                        <?php else: ?>
+                            <div class="badge">Nouveau</div>
+                        <?php endif; ?>
                     </div>
                     <div class="info">
                         <div class="name"><?= htmlspecialchars($p['nom']) ?></div>
-                        <div class="price"><?= number_format($prix_affiché, 0, ',', ' ') ?> FCFA</div>
-                        <a href="boutique/produit.php?id=<?= $p['id'] ?>" class="btn-cart">
-                            <i class="bi bi-bag-plus"></i> Acheter
-                        </a>
+                        <div class="price">
+                            <?= number_format($prix_affiché, 0, ',', ' ') ?> FCFA
+                            <?php if ($prix_ancien): ?>
+                                <span class="price-old"><?= number_format($prix_ancien, 0, ',', ' ') ?> F</span>
+                            <?php endif; ?>
+                        </div>
+                        <span class="btn-cart">
+                            <i class="bi bi-eye"></i> Voir détails
+                        </span>
                     </div>
-                </div>
+                </a>
                 <?php endforeach; ?>
             </div>
             
-            <div class="text-center" style="margin-top: 44px;">
+            <div style="margin-top: 44px; text-align: center;">
                 <a href="boutique/nouveautes.php" class="btn-view-all">
                     <i class="bi bi-eye"></i> Voir toutes les nouveautés
                     <i class="bi bi-arrow-right"></i>
@@ -1980,7 +2003,7 @@ function getProductImageHome($image) {
 </section>
 
 <!-- ============================================
-     AVIS CLIENTS — GRILLE 2 COLONNES MÊME SUR MOBILE
+     AVIS CLIENTS
      ============================================ -->
 <section class="avis-section reveal">
     <span class="avis-orb o1"></span>
@@ -2011,7 +2034,7 @@ function getProductImageHome($image) {
                 $initiale = strtoupper(mb_substr($avis['nom_client'] ?? 'C', 0, 1));
                 $date_avis = date('d/m/Y', strtotime($avis['created_at']));
                 $couleurs_avatar = ['#C8922A', '#8E44AD', '#2980B9', '#27AE60', '#E67E22'];
-                $couleur_avatar = $couleurs_avatar[array_rand($couleurs_avatar)];
+                $couleur_avatar = $couleurs_avatar[($avis['id'] ?? 0) % count($couleurs_avatar)];
             ?>
             <div class="avis-card reveal" style="transition-delay:<?= 0.05 * (($avis['id'] ?? 0) % 3 + 1) ?>s;">
                 <div class="quote-icon">&rdquo;</div>
@@ -2043,8 +2066,8 @@ function getProductImageHome($image) {
         </div>
         <?php endif; ?>
         
-        <div class="text-center" style="margin-top:28px;">
-            <a href="boutique/avis.php" style="display:inline-flex;align-items:center;gap:8px;color:#C8922A;font-weight:600;text-decoration:none;font-size:0.85rem;transition:all 0.3s;" onmouseover="this.style.color='#9A6E1A'" onmouseout="this.style.color='#C8922A'">
+        <div style="text-align:center;margin-top:28px;">
+            <a href="boutique/avis.php" style="display:inline-flex;align-items:center;gap:8px;color:#C8922A;font-weight:600;text-decoration:none;font-size:0.85rem;transition:all 0.3s;">
                 Voir tous les avis <i class="bi bi-arrow-right"></i>
             </a>
         </div>
@@ -2140,6 +2163,8 @@ function getProductImageHome($image) {
             <div class="legacy-photo-card reveal-left">
                 <div class="legacy-photo-frame">
                     <img src="assets/images/awa2.jpeg" alt="Awa Doumbia"
+                        loading="lazy"
+                        decoding="async"
                         onerror="this.src='https://via.placeholder.com/500x500/C8922A/FFF?text=Awa'">
                 </div>
                 <div class="legacy-photo-badge">
@@ -2211,7 +2236,7 @@ function getProductImageHome($image) {
 
 <script>
 // ============================================
-// ANIMATIONS AU SCROLL — léger, sans librairie
+// ANIMATIONS AU SCROLL
 // ============================================
 (function () {
     var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -2251,7 +2276,6 @@ function getProductImageHome($image) {
         lastY = window.pageYOffset || document.documentElement.scrollTop;
         if (!ticking) {
             window.requestAnimationFrame(function () {
-                // Parallaxe : la photo descend légèrement moins vite que le scroll
                 split.style.transform = 'translateY(' + (lastY * 0.25) + 'px)';
                 ticking = false;
             });

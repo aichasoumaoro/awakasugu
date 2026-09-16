@@ -60,23 +60,6 @@ if (isset($_GET['toggle_global'])) {
 }
 
 // ============================================
-// TOGGLE D'UNE PAGE
-// ============================================
-if (isset($_GET['toggle']) && isset($_GET['page'])) {
-    $page = $_GET['page'];
-    $stmt = $pdo->prepare("SELECT est_active FROM maintenance WHERE page = ?");
-    $stmt->execute([$page]);
-    $current = $stmt->fetch();
-    if ($current) {
-        $new_status = $current['est_active'] == 1 ? 0 : 1;
-        $pdo->prepare("UPDATE maintenance SET est_active = ? WHERE page = ?")->execute([$new_status, $page]);
-        $_SESSION['message_maintenance'] = 'Statut de la page modifié.';
-    }
-    header('Location: maintenance.php');
-    exit;
-}
-
-// ============================================
 // AJOUTER UNE NOUVELLE PAGE
 // ============================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_page'])) {
@@ -101,7 +84,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_page'])) {
 // ============================================
 if (isset($_GET['delete']) && isset($_GET['page'])) {
     $page = $_GET['page'];
-    // Ne pas supprimer les pages essentielles
     if ($page != 'accueil' && $page != 'boutique') {
         $pdo->prepare("DELETE FROM maintenance WHERE page = ?")->execute([$page]);
         $_SESSION['message_maintenance'] = 'Page supprimée avec succès.';
@@ -130,10 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_message'])) {
 $pages = $pdo->query("SELECT * FROM maintenance ORDER BY ordre")->fetchAll();
 $config = $pdo->query("SELECT * FROM maintenance_globale ORDER BY id DESC LIMIT 1")->fetch();
 
-// Statistiques
 $total_pages = $pdo->query("SELECT COUNT(*) FROM maintenance")->fetchColumn();
-$pages_active = $pdo->query("SELECT COUNT(*) FROM maintenance WHERE est_active = 1")->fetchColumn();
-$pages_inactive = $total_pages - $pages_active;
 
 $message = $_SESSION['message_maintenance'] ?? '';
 $error = $_SESSION['error_maintenance'] ?? '';
@@ -146,6 +125,7 @@ unset($_SESSION['error_maintenance']);
 include 'includes/header.php';
 include 'includes/sidebar.php';
 ?>
+
 <!-- ============================================
      MAIN CONTENT
      ============================================ -->
@@ -174,190 +154,186 @@ include 'includes/sidebar.php';
             <div class="alert-danger"><i class="bi bi-exclamation-triangle-fill"></i> <?= htmlspecialchars($error) ?></div>
         <?php endif; ?>
 
-        <!-- ===== STATISTIQUES ===== -->
-        <div class="stats-row">
-            <div class="stat-box">
-                <div class="stat-icon ic-gold"><i class="bi bi-files"></i></div>
-                <div>
-                    <div class="stat-val"><?= $total_pages ?></div>
-                    <div class="stat-lbl">Total des pages</div>
+        <!-- ============================================
+             STATUT GLOBAL (CARTE PRINCIPALE)
+             ============================================ -->
+        <div class="maintenance-global-card <?= $config['site_actif'] == 1 ? 'is-active' : 'is-maintenance' ?>">
+            <div class="mgc-glow"></div>
+            
+            <div class="mgc-left">
+                <div class="mgc-icon">
+                    <i class="bi <?= $config['site_actif'] == 1 ? 'bi-globe2' : 'bi-tools' ?>"></i>
                 </div>
-            </div>
-            <div class="stat-box">
-                <div class="stat-icon ic-green"><i class="bi bi-check-circle"></i></div>
-                <div>
-                    <div class="stat-val"><?= $pages_active ?></div>
-                    <div class="stat-lbl">Pages actives</div>
-                </div>
-            </div>
-            <div class="stat-box">
-                <div class="stat-icon ic-red"><i class="bi bi-x-circle"></i></div>
-                <div>
-                    <div class="stat-val"><?= $pages_inactive ?></div>
-                    <div class="stat-lbl">Pages désactivées</div>
-                </div>
-            </div>
-            <div class="stat-box">
-                <div class="stat-icon ic-blue"><i class="bi bi-globe2"></i></div>
-                <div>
-                    <div class="stat-val" style="font-size:1.1rem;color:<?= $config['site_actif'] == 1 ? '#28A745' : '#E74C3C' ?>;">
-                        <?= $config['site_actif'] == 1 ? '✓ ON' : '✗ OFF' ?>
-                    </div>
-                    <div class="stat-lbl">Mode global</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- ===== MAINTENANCE GLOBALE ===== -->
-        <div style="background:#fff;border-radius:12px;padding:18px 22px;border:1px solid #E8ECF0;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:15px;">
-            <div style="display:flex;align-items:center;gap:15px;flex-wrap:wrap;">
-                <i class="bi bi-globe2" style="font-size:1.5rem;color:#C8922A;"></i>
-                <div>
-                    <div style="font-weight:600;font-size:1rem;">Maintenance globale</div>
-                    <div style="font-size:0.8rem;color:#8A99AA;">
+                <div class="mgc-info">
+                    <div class="mgc-title">Maintenance globale</div>
+                    <div class="mgc-status">
                         <?php if($config['site_actif'] == 1): ?>
-                            <span style="color:#1A7A4A;"><i class="bi bi-check-circle-fill"></i> Site accessible</span>
+                            <span class="mgc-status-dot active"></span>
+                            <span class="mgc-status-text active">Site accessible à tous</span>
                         <?php else: ?>
-                            <span style="color:#C0392B;"><i class="bi bi-exclamation-triangle-fill"></i> Site en maintenance</span>
+                            <span class="mgc-status-dot inactive"></span>
+                            <span class="mgc-status-text inactive">Site en maintenance</span>
                         <?php endif; ?>
                     </div>
+                    <div class="mgc-badge">
+                        <i class="bi bi-shield-lock-fill"></i>
+                        Admin = accès illimité
+                    </div>
                 </div>
-                <span style="padding:4px 14px;border-radius:20px;font-size:0.7rem;font-weight:700;background:<?= $config['site_actif'] == 1 ? '#D4EDDA' : '#F8D7DA' ?>;color:<?= $config['site_actif'] == 1 ? '#1A7A4A' : '#C0392B' ?>;">
-                    <?= $config['site_actif'] == 1 ? '✅ ACTIF' : '⛔ MAINTENANCE' ?>
-                </span>
-                <span style="font-size:0.6rem;color:#8A99AA;background:#F0F2F5;padding:3px 14px;border-radius:20px;font-weight:600;">
-                    <i class="bi bi-shield-lock-fill" style="color:#C8922A;"></i> Admin = accès illimité
-                </span>
             </div>
-            <div>
-                <a href="?toggle_global=1" class="btn-admin <?= $config['site_actif'] == 1 ? 'btn-danger' : 'btn-success' ?>" onclick="return confirm('<?= $config['site_actif'] == 1 ? 'Désactiver tout le site ?' : 'Réactiver tout le site ?' ?>')" style="padding:10px 24px;">
-                    <i class="bi <?= $config['site_actif'] == 1 ? 'bi-power' : 'bi-play-circle' ?>"></i>
+            
+            <div class="mgc-right">
+                <div class="mgc-state-badge <?= $config['site_actif'] == 1 ? 'active' : 'maintenance' ?>">
+                    <?php if($config['site_actif'] == 1): ?>
+                        <i class="bi bi-check-circle-fill"></i> ACTIF
+                    <?php else: ?>
+                        <i class="bi bi-exclamation-triangle-fill"></i> MAINTENANCE
+                    <?php endif; ?>
+                </div>
+                <a href="?toggle_global=1" 
+                   class="mgc-btn <?= $config['site_actif'] == 1 ? 'danger' : 'success' ?>" 
+                   onclick="return confirm('<?= $config['site_actif'] == 1 ? 'Désactiver tout le site ? Les visiteurs verront la page de maintenance.' : 'Réactiver tout le site ?' ?>')">
+                    <i class="bi <?= $config['site_actif'] == 1 ? 'bi-power' : 'bi-play-circle-fill' ?>"></i>
                     <?= $config['site_actif'] == 1 ? 'Désactiver le site' : 'Réactiver le site' ?>
                 </a>
             </div>
         </div>
 
-        <!-- ===== MESSAGE DE MAINTENANCE ===== -->
-        <div style="background:#FEFBF5;border-radius:12px;padding:18px 22px;border:1px solid rgba(200,146,42,0.15);margin-bottom:24px;">
-            <form method="POST">
-                <div style="display:grid;grid-template-columns:2fr 1fr auto;gap:15px;align-items:end;">
-                    <div>
-                        <label style="font-size:0.7rem;font-weight:600;color:#8A99AA;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">
-                            <i class="bi bi-chat-text"></i> Message de maintenance
-                        </label>
-                        <input type="text" name="message_maintenance" value="<?= htmlspecialchars($config['message_maintenance'] ?? 'Site en maintenance. Nous revenons bientôt !') ?>" placeholder="Message affiché aux visiteurs..." style="width:100%;padding:10px 14px;border:1.5px solid #E0E0E0;border-radius:8px;font-family:'Jost',sans-serif;font-size:0.85rem;transition:border-color 0.3s;" onfocus="this.style.borderColor='#C8922A'" onblur="this.style.borderColor='#E0E0E0'">
-                    </div>
-                    <div>
-                        <label style="font-size:0.7rem;font-weight:600;color:#8A99AA;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">
-                            <i class="bi bi-calendar3"></i> Date de fin
-                        </label>
-                        <input type="datetime-local" name="date_fin" value="<?= $config['date_fin'] ? date('Y-m-d\TH:i', strtotime($config['date_fin'])) : '' ?>" style="width:100%;padding:10px 14px;border:1.5px solid #E0E0E0;border-radius:8px;font-family:'Jost',sans-serif;font-size:0.85rem;transition:border-color 0.3s;" onfocus="this.style.borderColor='#C8922A'" onblur="this.style.borderColor='#E0E0E0'">
-                    </div>
-                    <div>
-                        <button type="submit" name="update_message" class="btn-admin btn-primary" style="padding:10px 24px;">
-                            <i class="bi bi-save"></i> Mettre à jour
-                        </button>
-                    </div>
-                </div>
-            </form>
-        </div>
-
-        <!-- ===== AJOUTER UNE PAGE ===== -->
-        <div style="background:#fff;border-radius:12px;padding:16px 20px;border:1.5px dashed rgba(200,146,42,0.4);margin-bottom:24px;">
-            <form method="POST" style="display:flex;align-items:end;gap:12px;flex-wrap:wrap;width:100%;">
-                <div style="flex:1;min-width:140px;">
-                    <label style="font-size:0.65rem;font-weight:600;color:#8A99AA;display:block;margin-bottom:3px;text-transform:uppercase;letter-spacing:0.5px;">
-                        <i class="bi bi-link"></i> Slug (nom)
-                    </label>
-                    <input type="text" name="page" placeholder="ex: a-propos" required style="width:100%;padding:8px 12px;border:1.5px solid #E0E0E0;border-radius:8px;font-family:'Jost',sans-serif;font-size:0.82rem;transition:border-color 0.3s;" onfocus="this.style.borderColor='#C8922A'" onblur="this.style.borderColor='#E0E0E0'">
-                </div>
-                <div style="flex:1;min-width:140px;">
-                    <label style="font-size:0.65rem;font-weight:600;color:#8A99AA;display:block;margin-bottom:3px;text-transform:uppercase;letter-spacing:0.5px;">
-                        <i class="bi bi-type"></i> Titre affiché
-                    </label>
-                    <input type="text" name="titre_page" placeholder="ex: À propos" required style="width:100%;padding:8px 12px;border:1.5px solid #E0E0E0;border-radius:8px;font-family:'Jost',sans-serif;font-size:0.82rem;transition:border-color 0.3s;" onfocus="this.style.borderColor='#C8922A'" onblur="this.style.borderColor='#E0E0E0'">
-                </div>
-                <div style="flex:0.5;min-width:70px;">
-                    <label style="font-size:0.65rem;font-weight:600;color:#8A99AA;display:block;margin-bottom:3px;text-transform:uppercase;letter-spacing:0.5px;">
-                        <i class="bi bi-sort-numeric-down"></i> Ordre
-                    </label>
-                    <input type="number" name="ordre" value="<?= $total_pages + 1 ?>" min="1" style="width:100%;padding:8px 12px;border:1.5px solid #E0E0E0;border-radius:8px;font-family:'Jost',sans-serif;font-size:0.82rem;transition:border-color 0.3s;" onfocus="this.style.borderColor='#C8922A'" onblur="this.style.borderColor='#E0E0E0'">
-                </div>
-                <button type="submit" name="add_page" class="btn-admin btn-primary" style="padding:9px 20px;white-space:nowrap;">
-                    <i class="bi bi-plus-circle"></i> Ajouter
-                </button>
-            </form>
-        </div>
-
-        <!-- ===== LISTE DES PAGES ===== -->
+        <!-- ============================================
+             MESSAGE DE MAINTENANCE
+             ============================================ -->
         <div class="card-white">
             <div class="card-header">
-                <div class="card-title"><i class="bi bi-list"></i> Pages du site</div>
-                <div style="font-size:0.7rem;color:#8A99AA;background:#F8F9FA;padding:4px 16px;border-radius:20px;border:1px solid #E8ECF0;">
-                    <strong style="color:#C8922A;"><?= $total_pages ?></strong> pages
+                <div class="card-title">
+                    <i class="bi bi-chat-text"></i> Message de maintenance
+                </div>
+            </div>
+            <div class="card-body">
+                <form method="POST" class="msg-form">
+                    <div class="msg-form-grid">
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="bi bi-chat-text"></i> Message affiché aux visiteurs
+                            </label>
+                            <input type="text" 
+                                   name="message_maintenance" 
+                                   value="<?= htmlspecialchars($config['message_maintenance'] ?? 'Site en maintenance. Nous revenons bientôt !') ?>" 
+                                   placeholder="Message affiché aux visiteurs..." 
+                                   class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="bi bi-calendar3"></i> Date de fin (optionnel)
+                            </label>
+                            <input type="datetime-local" 
+                                   name="date_fin" 
+                                   value="<?= $config['date_fin'] ? date('Y-m-d\TH:i', strtotime($config['date_fin'])) : '' ?>" 
+                                   class="form-input">
+                        </div>
+                        <div class="form-group form-group-btn">
+                            <button type="submit" name="update_message" class="btn-admin btn-primary">
+                                <i class="bi bi-save"></i> Mettre à jour
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- ============================================
+             AJOUTER UNE PAGE
+             ============================================ -->
+        <div class="card-white card-dashed">
+            <div class="card-body">
+                <form method="POST" class="add-form">
+                    <div class="add-form-grid">
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="bi bi-link-45deg"></i> Slug (nom URL)
+                            </label>
+                            <input type="text" name="page" placeholder="ex: a-propos" required class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="bi bi-type"></i> Titre affiché
+                            </label>
+                            <input type="text" name="titre_page" placeholder="ex: À propos" required class="form-input">
+                        </div>
+                        <div class="form-group form-group-ord">
+                            <label class="form-label">
+                                <i class="bi bi-sort-numeric-down"></i> Ordre
+                            </label>
+                            <input type="number" name="ordre" value="<?= $total_pages + 1 ?>" min="1" class="form-input">
+                        </div>
+                        <div class="form-group form-group-btn">
+                            <button type="submit" name="add_page" class="btn-admin btn-primary">
+                                <i class="bi bi-plus-circle"></i> Ajouter
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- ============================================
+             LISTE DES PAGES
+             ============================================ -->
+        <div class="card-white">
+            <div class="card-header">
+                <div class="card-title">
+                    <i class="bi bi-list"></i> Pages du site
+                </div>
+                <div class="card-count">
+                    <strong><?= $total_pages ?></strong> page<?= $total_pages > 1 ? 's' : '' ?>
                 </div>
             </div>
             <div class="card-body" style="padding:0;">
                 <div class="table-container">
-                    <table class="table-maintenance" style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+                    <table class="table-maintenance">
                         <thead>
                             <tr>
-                                <th style="padding:10px 14px;background:#F8F9FA;color:#5A6B7A;font-weight:600;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #E8ECF0;text-align:center;width:50px;">#</th>
-                                <th style="padding:10px 14px;background:#F8F9FA;color:#5A6B7A;font-weight:600;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #E8ECF0;text-align:left;">Page</th>
-                                <th style="padding:10px 14px;background:#F8F9FA;color:#5A6B7A;font-weight:600;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #E8ECF0;text-align:left;">Titre</th>
-                                <th style="padding:10px 14px;background:#F8F9FA;color:#5A6B7A;font-weight:600;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #E8ECF0;text-align:center;">Statut</th>
-                                <th style="padding:10px 14px;background:#F8F9FA;color:#5A6B7A;font-weight:600;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #E8ECF0;text-align:center;width:180px;">Actions</th>
+                                <th class="col-ord">#</th>
+                                <th class="col-page">Page</th>
+                                <th class="col-titre">Titre</th>
+                                <th class="col-actions">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if(empty($pages)): ?>
                                 <tr>
-                                    <td colspan="5">
-                                        <div class="empty-state" style="text-align:center;padding:40px;color:#8A99AA;">
-                                            <i class="bi bi-files" style="font-size:2.5rem;display:block;margin-bottom:10px;color:#D5D5D5;"></i>
-                                            <p style="margin:0;font-size:0.85rem;">Aucune page configurée</p>
-                                            <span style="font-size:0.75rem;color:#bbb;display:block;margin-top:4px;">Ajoutez votre première page ci-dessus</span>
+                                    <td colspan="4">
+                                        <div class="empty-state">
+                                            <i class="bi bi-files"></i>
+                                            <p>Aucune page configurée</p>
+                                            <span>Ajoutez votre première page ci-dessus</span>
                                         </div>
                                     </td>
                                 </tr>
                             <?php else: ?>
                                 <?php foreach($pages as $p): ?>
-                                <tr style="transition:background 0.2s;">
-                                    <td style="padding:10px 14px;border-bottom:1px solid #F0F2F5;vertical-align:middle;text-align:center;color:#8A99AA;font-size:0.75rem;">
-                                        <?= $p['ordre'] ?>
+                                <tr>
+                                    <td class="col-ord">
+                                        <span class="ord-badge"><?= $p['ordre'] ?></span>
                                     </td>
-                                    <td style="padding:10px 14px;border-bottom:1px solid #F0F2F5;vertical-align:middle;">
-                                        <span style="font-weight:600;color:#1A2C3E;font-size:0.85rem;background:rgba(200,146,42,0.06);padding:2px 12px;border-radius:4px;">
+                                    <td class="col-page">
+                                        <span class="page-slug">
                                             <?= htmlspecialchars($p['page']) ?>
                                         </span>
                                     </td>
-                                    <td style="padding:10px 14px;border-bottom:1px solid #F0F2F5;vertical-align:middle;font-size:0.82rem;color:#5A6B7A;">
+                                    <td class="col-titre">
                                         <?= htmlspecialchars($p['titre_page'] ?? '-') ?>
                                     </td>
-                                    <td style="padding:10px 14px;border-bottom:1px solid #F0F2F5;vertical-align:middle;text-align:center;">
-                                        <?php if($p['est_active'] == 1): ?>
-                                            <span class="badge-status active" style="padding:3px 12px;border-radius:20px;font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;display:inline-block;background:#E8F5E9;color:#2E7D32;">
-                                                <i class="bi bi-check-circle"></i> Active
-                                            </span>
-                                        <?php else: ?>
-                                            <span class="badge-status inactive" style="padding:3px 12px;border-radius:20px;font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;display:inline-block;background:#FBE9E7;color:#C62828;">
-                                                <i class="bi bi-x-circle"></i> Désactivée
-                                            </span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td style="padding:10px 14px;border-bottom:1px solid #F0F2F5;vertical-align:middle;text-align:center;">
-                                        <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">
-                                            <a href="?toggle=1&page=<?= $p['page'] ?>" class="btn-small <?= $p['est_active'] == 1 ? 'gray' : 'green' ?>" onclick="return confirm('<?= $p['est_active'] == 1 ? 'Désactiver cette page ?' : 'Activer cette page ?' ?>')" style="padding:4px 14px;border-radius:6px;font-size:0.65rem;text-decoration:none;display:inline-flex;align-items:center;gap:4px;background:<?= $p['est_active'] == 1 ? '#F0F2F5' : 'rgba(40,167,69,0.1)' ?>;color:<?= $p['est_active'] == 1 ? '#5A6B7A' : '#28A745' ?>;transition:all 0.2s;border:none;cursor:pointer;" onmouseover="this.style.background='<?= $p['est_active'] == 1 ? '#E0E6ED' : '#28A745' ?>';this.style.color='<?= $p['est_active'] == 1 ? '#333' : '#fff' ?>'" onmouseout="this.style.background='<?= $p['est_active'] == 1 ? '#F0F2F5' : 'rgba(40,167,69,0.1)' ?>';this.style.color='<?= $p['est_active'] == 1 ? '#5A6B7A' : '#28A745' ?>'">
-                                                <i class="bi <?= $p['est_active'] == 1 ? 'bi-eye-slash' : 'bi-eye' ?>"></i>
-                                                <?= $p['est_active'] == 1 ? 'Désactiver' : 'Activer' ?>
-                                            </a>
+                                    <td class="col-actions">
+                                        <div class="actions-wrap">
                                             <?php if($p['page'] != 'accueil' && $p['page'] != 'boutique'): ?>
-                                                <a href="?delete=1&page=<?= $p['page'] ?>" class="btn-small red" onclick="return confirm('Supprimer cette page ?')" style="padding:4px 10px;border-radius:6px;font-size:0.65rem;text-decoration:none;display:inline-flex;align-items:center;gap:3px;background:rgba(231,76,60,0.1);color:#E74C3C;transition:all 0.2s;border:none;cursor:pointer;" onmouseover="this.style.background='#E74C3C';this.style.color='#fff'" onmouseout="this.style.background='rgba(231,76,60,0.1)';this.style.color='#E74C3C'">
-                                                    <i class="bi bi-trash3"></i>
+                                                <a href="?delete=1&page=<?= $p['page'] ?>" 
+                                                   class="btn-small red" 
+                                                   onclick="return confirm('Supprimer cette page ?')">
+                                                    <i class="bi bi-trash3"></i> Supprimer
                                                 </a>
                                             <?php else: ?>
-                                                <span style="font-size:0.6rem;color:#8A99AA;background:#F0F2F5;padding:3px 10px;border-radius:4px;">
-                                                    <i class="bi bi-lock"></i> Essentiel
+                                                <span class="badge-essential">
+                                                    <i class="bi bi-lock-fill"></i> Essentiel
                                                 </span>
                                             <?php endif; ?>
                                         </div>
@@ -375,6 +351,557 @@ include 'includes/sidebar.php';
 </div><!-- /main -->
 
 <!-- ============================================
-     FOOTER
+     STYLES SPÉCIFIQUES À LA PAGE MAINTENANCE
      ============================================ -->
+<style>
+/* ============================================
+   CARTE STATUT GLOBAL
+   ============================================ */
+.maintenance-global-card {
+    position: relative;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+    padding: 22px 26px;
+    margin-bottom: 24px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #0D0D0D 0%, #1A1510 100%);
+    border: 1.5px solid rgba(200,146,42,0.35);
+    box-shadow: 
+        0 0 25px rgba(200,146,42,0.15),
+        inset 0 0 25px rgba(200,146,42,0.03);
+    overflow: hidden;
+    flex-wrap: wrap;
+}
+
+.maintenance-global-card.is-maintenance {
+    border-color: rgba(231,76,60,0.5);
+    box-shadow: 
+        0 0 25px rgba(231,76,60,0.2),
+        inset 0 0 25px rgba(231,76,60,0.05);
+}
+
+.maintenance-global-card .mgc-glow {
+    position: absolute;
+    top: -50%;
+    right: -10%;
+    width: 60%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(200,146,42,0.15) 0%, transparent 60%);
+    pointer-events: none;
+    animation: mgcShine 8s ease-in-out infinite;
+}
+
+.maintenance-global-card.is-maintenance .mgc-glow {
+    background: radial-gradient(circle, rgba(231,76,60,0.2) 0%, transparent 60%);
+}
+
+@keyframes mgcShine {
+    0%, 100% { transform: translate(0, 0); }
+    50% { transform: translate(-20px, 20px); }
+}
+
+.mgc-left {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    position: relative;
+    z-index: 2;
+    flex: 1;
+    min-width: 0;
+}
+
+.mgc-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(200,146,42,0.2), rgba(232,181,90,0.1));
+    border: 1.5px solid rgba(200,146,42,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6rem;
+    color: var(--gold-light);
+    box-shadow: 0 0 20px rgba(200,146,42,0.3);
+    flex-shrink: 0;
+}
+
+.maintenance-global-card.is-maintenance .mgc-icon {
+    background: linear-gradient(135deg, rgba(231,76,60,0.2), rgba(192,57,43,0.1));
+    border-color: rgba(231,76,60,0.5);
+    color: #E74C3C;
+    box-shadow: 0 0 20px rgba(231,76,60,0.3);
+}
+
+.mgc-info {
+    min-width: 0;
+}
+
+.mgc-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 6px;
+}
+
+.mgc-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.mgc-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.mgc-status-dot.active {
+    background: #27AE60;
+    box-shadow: 0 0 12px #27AE60;
+    animation: pulseGreen 2s ease-in-out infinite;
+}
+
+.mgc-status-dot.inactive {
+    background: #E74C3C;
+    box-shadow: 0 0 12px #E74C3C;
+    animation: pulseRed 2s ease-in-out infinite;
+}
+
+@keyframes pulseGreen {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.3); }
+}
+
+@keyframes pulseRed {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.3); }
+}
+
+.mgc-status-text {
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.mgc-status-text.active { color: #6FCF97; }
+.mgc-status-text.inactive { color: #FF9B8A; }
+
+.mgc-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.7rem;
+    color: rgba(255,255,255,0.5);
+    background: rgba(255,255,255,0.05);
+    padding: 4px 12px;
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.08);
+}
+
+.mgc-badge i {
+    color: var(--gold);
+}
+
+.mgc-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    position: relative;
+    z-index: 2;
+    flex-wrap: wrap;
+}
+
+.mgc-state-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.mgc-state-badge.active {
+    background: rgba(39,174,96,0.15);
+    border: 1.5px solid rgba(39,174,96,0.4);
+    color: #6FCF97;
+    box-shadow: 0 0 15px rgba(39,174,96,0.2);
+}
+
+.mgc-state-badge.maintenance {
+    background: rgba(231,76,60,0.15);
+    border: 1.5px solid rgba(231,76,60,0.4);
+    color: #FF9B8A;
+    box-shadow: 0 0 15px rgba(231,76,60,0.2);
+    animation: maintenancePulse 2s ease-in-out infinite;
+}
+
+@keyframes maintenancePulse {
+    0%, 100% { box-shadow: 0 0 15px rgba(231,76,60,0.2); }
+    50% { box-shadow: 0 0 25px rgba(231,76,60,0.5); }
+}
+
+.mgc-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border-radius: 10px;
+    font-family: 'Jost', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    border: none;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.mgc-btn.success {
+    background: linear-gradient(135deg, #27AE60, #1A7A4A);
+    color: #fff;
+    box-shadow: 0 4px 15px rgba(39,174,96,0.3);
+}
+
+.mgc-btn.success:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(39,174,96,0.5);
+}
+
+.mgc-btn.danger {
+    background: linear-gradient(135deg, #E74C3C, #C0392B);
+    color: #fff;
+    box-shadow: 0 4px 15px rgba(231,76,60,0.3);
+}
+
+.mgc-btn.danger:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(231,76,60,0.5);
+}
+
+/* ============================================
+   FORMULAIRES
+   ============================================ */
+.msg-form-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr auto;
+    gap: 16px;
+    align-items: end;
+}
+
+.add-form-grid {
+    display: grid;
+    grid-template-columns: 1.2fr 1.2fr 0.6fr auto;
+    gap: 14px;
+    align-items: end;
+}
+
+.form-group {
+    min-width: 0;
+}
+
+.form-label {
+    display: block;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 6px;
+}
+
+.form-label i {
+    color: var(--gold);
+    margin-right: 4px;
+    font-size: 0.75rem;
+}
+
+.form-input {
+    width: 100%;
+    padding: 11px 14px;
+    border: 1.5px solid var(--border-color);
+    border-radius: 10px;
+    font-family: 'Jost', sans-serif;
+    font-size: 0.85rem;
+    background: var(--input-bg);
+    color: var(--text-primary);
+    transition: all 0.3s ease;
+    box-sizing: border-box;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px rgba(200,146,42,0.1);
+}
+
+.form-group-btn {
+    flex-shrink: 0;
+}
+
+.form-group-btn .btn-admin {
+    width: 100%;
+    justify-content: center;
+    padding: 11px 22px;
+    white-space: nowrap;
+}
+
+/* ============================================
+   CARTE DASHED (Ajouter une page)
+   ============================================ */
+.card-dashed {
+    border: 1.5px dashed rgba(200,146,42,0.4) !important;
+    background: rgba(200,146,42,0.02) !important;
+}
+
+.card-dashed .card-body {
+    padding: 18px 22px;
+}
+
+/* ============================================
+   TABLEAU MAINTENANCE
+   ============================================ */
+.table-maintenance {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.table-maintenance thead th {
+    padding: 14px 18px;
+    background: linear-gradient(135deg, #0D0D0D, #1A1510);
+    color: rgba(255,255,255,0.8);
+    font-weight: 600;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.table-maintenance thead th.col-ord,
+.table-maintenance thead th.col-actions {
+    text-align: center;
+}
+
+.table-maintenance tbody td {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border-soft);
+    vertical-align: middle;
+    color: var(--text-primary);
+}
+
+.table-maintenance tbody tr {
+    transition: background 0.2s ease;
+}
+
+.table-maintenance tbody tr:hover {
+    background: rgba(200,146,42,0.03);
+}
+
+.table-maintenance tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.col-ord {
+    width: 60px;
+    text-align: center;
+}
+
+.col-actions {
+    width: 180px;
+    text-align: center;
+}
+
+.ord-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: rgba(200,146,42,0.1);
+    color: var(--gold);
+    border-radius: 50%;
+    font-size: 0.72rem;
+    font-weight: 700;
+    border: 1.5px solid rgba(200,146,42,0.25);
+}
+
+.page-slug {
+    display: inline-block;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    background: rgba(200,146,42,0.08);
+    padding: 4px 14px;
+    border-radius: 6px;
+    border: 1px solid rgba(200,146,42,0.15);
+}
+
+.col-titre {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.actions-wrap {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.badge-essential {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    background: var(--border-soft);
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-weight: 600;
+    border: 1px solid var(--border-color);
+}
+
+.badge-essential i {
+    font-size: 0.7rem;
+}
+
+/* ============================================
+   RESPONSIVE — TABLETTE
+   ============================================ */
+@media (max-width: 900px) {
+    .msg-form-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+    .msg-form-grid .form-group-btn {
+        grid-column: span 2;
+    }
+    .msg-form-grid .form-group-btn .btn-admin {
+        width: 100%;
+    }
+    
+    .add-form-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+    .add-form-grid .form-group-ord {
+        grid-column: span 1;
+    }
+    .add-form-grid .form-group-btn {
+        grid-column: span 2;
+    }
+    .add-form-grid .form-group-btn .btn-admin {
+        width: 100%;
+    }
+}
+
+/* ============================================
+   RESPONSIVE — MOBILE
+   ============================================ */
+@media (max-width: 768px) {
+    .maintenance-global-card {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 20px;
+    }
+    
+    .mgc-left {
+        width: 100%;
+    }
+    
+    .mgc-right {
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .mgc-state-badge {
+        justify-content: center;
+    }
+    
+    .mgc-btn {
+        justify-content: center;
+        width: 100%;
+    }
+    
+    .msg-form-grid,
+    .add-form-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .msg-form-grid .form-group-btn,
+    .add-form-grid .form-group-btn {
+        grid-column: span 1;
+    }
+    
+    /* Tableaux : scroll horizontal */
+    .table-maintenance {
+        min-width: 500px;
+    }
+    
+    .table-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        margin: 0 -20px;
+        padding: 0 20px;
+        width: calc(100% + 40px);
+    }
+    
+    .col-actions {
+        width: auto;
+    }
+    
+    .actions-wrap {
+        flex-direction: column;
+        gap: 4px;
+    }
+    
+    .actions-wrap .btn-small,
+    .actions-wrap .badge-essential {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+/* ============================================
+   PETIT MOBILE
+   ============================================ */
+@media (max-width: 480px) {
+    .mgc-icon {
+        width: 50px;
+        height: 50px;
+        font-size: 1.3rem;
+    }
+    
+    .mgc-title {
+        font-size: 1rem;
+    }
+    
+    .mgc-status-text {
+        font-size: 0.78rem;
+    }
+    
+    .mgc-badge {
+        font-size: 0.65rem;
+        padding: 3px 10px;
+    }
+    
+    .card-dashed .card-body {
+        padding: 14px 16px;
+    }
+    
+    .form-input {
+        padding: 10px 12px;
+        font-size: 0.82rem;
+    }
+}
+</style>
+
 <?php include 'includes/footer.php'; ?>

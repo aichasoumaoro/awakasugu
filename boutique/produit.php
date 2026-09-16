@@ -63,7 +63,7 @@ $stmt->execute([$id]);
 $tailles_produit = $stmt->fetchAll();
 
 // ============================================
-// AJOUT : GALLERIE D'IMAGES SUPPLÉMENTAIRES
+// GALERIE D'IMAGES SUPPLÉMENTAIRES
 // ============================================
 $images_supplementaires = [];
 try {
@@ -79,7 +79,7 @@ try {
 }
 
 // ============================================
-// AJOUT : PRODUIT PRÉCÉDENT / SUIVANT (mêmes catégorie)
+// PRODUIT PRÉCÉDENT / SUIVANT
 // ============================================
 $produit_precedent = null;
 $produit_suivant = null;
@@ -105,10 +105,8 @@ try {
 }
 
 // ============================================
-// RÉCUPÉRER LES AVIS DU PRODUIT
+// AVIS DU PRODUIT
 // ============================================
-
-// Vérifier si la colonne est_visible existe
 try {
     $stmt = $pdo->query("SHOW COLUMNS FROM avis_clients LIKE 'est_visible'");
     $colonne_est_visible = $stmt->fetch();
@@ -155,25 +153,25 @@ if ($colonne_est_visible) {
 }
 
 // ============================================
-// PRODUITS SIMILAIRES - MÊME CATÉGORIE + MÉLANGE
+// PRODUITS SIMILAIRES
 // ============================================
 $similaires = [];
 try {
     $stmt = $pdo->prepare("
         SELECT * FROM produits 
         WHERE categorie_id = ? AND id != ? AND est_visible = 1 
-        ORDER BY RAND() LIMIT 4
+        ORDER BY RAND() LIMIT 8
     ");
     $stmt->execute([$produit['categorie_id'], $id]);
     $similaires_categorie = $stmt->fetchAll();
     
-    if (count($similaires_categorie) < 4) {
+    if (count($similaires_categorie) < 8) {
         $exclude_ids = array_merge([$id], array_column($similaires_categorie, 'id'));
         $placeholders = implode(',', array_fill(0, count($exclude_ids), '?'));
         $stmt = $pdo->prepare("
             SELECT * FROM produits 
             WHERE est_visible = 1 AND id NOT IN ($placeholders)
-            ORDER BY RAND() LIMIT " . (4 - count($similaires_categorie))
+            ORDER BY RAND() LIMIT " . (8 - count($similaires_categorie))
         );
         $stmt->execute($exclude_ids);
         $similaires_autres = $stmt->fetchAll();
@@ -185,7 +183,7 @@ try {
     $similaires = [];
 }
 
-// Fonction pour l'image du produit
+// Fonction image produit
 function getProductImageDetail($image) {
     if (empty($image)) {
         return 'https://placehold.co/600x600/F5F5F5/C8922A?text=Produit';
@@ -249,53 +247,68 @@ if ($produit['prix_promo'] && $produit['prix_promo'] > 0 && $produit['prix_promo
     $prix_ancien = $produit['prix'];
 }
 
-$titre_page = 'Détail produit - IBA Design';
+$titre_page = 'Détail produit - Awa Ka Sugu';
 require_once '../includes/header.php';
 require_once '../includes/navbar.php';
 ?>
 
 <style>
-.produit-page { padding: 40px 0 60px; }
-.container-custom { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+/* ============================================
+   PAGE PRODUIT - DESIGN NÉON OR
+   ============================================ */
+.produit-page { 
+    padding: 40px 0 60px;
+    background: #F5F7FA;
+}
+.container-custom { 
+    max-width: 1300px; 
+    margin: 0 auto; 
+    padding: 0 24px; 
+}
 
-/* ===== BANDEAU DE RÉASSURANCE ===== */
+/* ===== BANDEAU RÉASSURANCE ===== */
 .trust-bar {
     display: flex;
     gap: 24px;
     justify-content: center;
     flex-wrap: wrap;
     background: #fff;
-    border: 1px solid #F0EBE3;
+    border: 1.5px solid rgba(200,146,42,0.15);
     border-radius: 16px;
-    padding: 16px 20px;
-    margin-bottom: 24px;
+    padding: 16px 24px;
+    margin-bottom: 26px;
+    box-shadow: 0 2px 12px rgba(200,146,42,0.04);
 }
 .trust-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: #444;
+    gap: 10px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: #1A2C3E;
     white-space: nowrap;
 }
-.trust-item i { color: #C8922A; font-size: 1rem; }
-@media (max-width: 700px) {
-    .trust-bar { justify-content: flex-start; overflow-x: auto; gap: 18px; padding: 14px 16px; }
+.trust-item i { 
+    color: #C8922A; 
+    font-size: 1.1rem;
+    text-shadow: 0 0 10px rgba(200,146,42,0.3);
 }
 
+/* ===== GRILLE PRINCIPALE ===== */
 .produit-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1.1fr 1fr;
     gap: 50px;
-    background: white;
+    background: #fff;
     border-radius: 20px;
-    padding: 35px;
-    box-shadow: 0 5px 25px rgba(0,0,0,0.06);
-    border: 1px solid rgba(200,146,42,0.08);
+    padding: 38px;
+    box-shadow: 
+        0 4px 20px rgba(0,0,0,0.04),
+        0 0 40px rgba(200,146,42,0.04);
+    border: 1.5px solid rgba(200,146,42,0.12);
 }
 
-/* ===== BLOC IMAGE : image principale + galerie de vignettes ===== */
+/* ===== BLOC IMAGE ===== */
 .produit-image-wrap {
     position: relative;
     display: flex;
@@ -307,23 +320,26 @@ require_once '../includes/navbar.php';
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #F8F9FA;
+    background: linear-gradient(135deg, #FAFBFC, #F5F7FA);
     border-radius: 16px;
     padding: 30px;
-    min-height: 380px;
+    min-height: 420px;
     position: relative;
     overflow: hidden;
+    border: 1px solid rgba(200,146,42,0.08);
 }
 .produit-image img {
     max-width: 100%;
-    max-height: 420px;
+    max-height: 460px;
     object-fit: contain;
-    transition: transform 0.3s;
+    transition: transform 0.4s cubic-bezier(.2,.7,.2,1);
     cursor: zoom-in;
 }
-.produit-image img:hover { transform: scale(1.02); }
+.produit-image img:hover { 
+    transform: scale(1.03); 
+}
 
-/* --- GALERIE DE VIGNETTES --- */
+/* Galerie vignettes */
 .galerie-vignettes {
     display: flex;
     gap: 12px;
@@ -332,8 +348,8 @@ require_once '../includes/navbar.php';
     padding: 4px 0;
 }
 .galerie-vignettes .vignette-item {
-    width: 72px;
-    height: 72px;
+    width: 76px;
+    height: 76px;
     border-radius: 12px;
     overflow: hidden;
     border: 2px solid transparent;
@@ -344,15 +360,16 @@ require_once '../includes/navbar.php';
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative;
 }
 .galerie-vignettes .vignette-item:hover {
     border-color: #C8922A;
     transform: translateY(-3px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    box-shadow: 0 6px 16px rgba(200,146,42,0.2);
 }
 .galerie-vignettes .vignette-item.active {
     border-color: #C8922A;
-    box-shadow: 0 0 0 3px rgba(200,146,42,0.25);
+    box-shadow: 0 0 0 3px rgba(200,146,42,0.2);
 }
 .galerie-vignettes .vignette-item img {
     width: 100%;
@@ -360,7 +377,7 @@ require_once '../includes/navbar.php';
     object-fit: cover;
 }
 
-/* Bouton "Grand cadre" */
+/* Bouton Grand cadre */
 .btn-grand-cadre {
     position: absolute;
     bottom: 16px;
@@ -368,198 +385,311 @@ require_once '../includes/navbar.php';
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    background: rgba(13,13,13,0.75);
+    background: linear-gradient(135deg, #0D0D0D, #1A1510);
     color: #fff;
-    border: none;
-    padding: 8px 16px;
+    border: 1.5px solid rgba(200,146,42,0.4);
+    padding: 9px 18px;
     border-radius: 30px;
-    font-size: 0.75rem;
+    font-family: 'Jost', sans-serif;
+    font-size: 0.78rem;
     font-weight: 600;
     cursor: pointer;
-    backdrop-filter: blur(4px);
+    backdrop-filter: blur(6px);
     z-index: 5;
-    transition: background 0.3s ease;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
 }
-.btn-grand-cadre:hover { background: rgba(0,0,0,0.9); }
+.btn-grand-cadre:hover { 
+    background: linear-gradient(135deg, #C8922A, #E8B55A);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(200,146,42,0.4);
+}
 
-/* Flèches pour naviguer entre les produits de la catégorie */
+/* Navigation produits */
 .produit-nav-arrow {
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
-    width: 42px;
-    height: 42px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
-    background: rgba(255,255,255,0.92);
-    border: 1px solid #EFEFEF;
-    color: #1A1A1A;
+    background: rgba(255,255,255,0.95);
+    border: 1.5px solid rgba(200,146,42,0.25);
+    color: #1A2C3E;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.1rem;
+    font-size: 1.15rem;
     cursor: pointer;
     box-shadow: 0 4px 15px rgba(0,0,0,0.1);
     text-decoration: none;
     z-index: 6;
     transition: all 0.25s ease;
 }
-.produit-nav-arrow:hover { background: #C8922A; color: #fff; }
-.produit-nav-arrow.prev { left: 10px; }
-.produit-nav-arrow.next { right: 10px; }
+.produit-nav-arrow:hover { 
+    background: linear-gradient(135deg, #C8922A, #E8B55A); 
+    color: #fff;
+    box-shadow: 0 6px 20px rgba(200,146,42,0.4);
+    transform: translateY(-50%) scale(1.08);
+}
+.produit-nav-arrow.prev { left: 12px; }
+.produit-nav-arrow.next { right: 12px; }
 .produit-nav-hint {
     text-align: center;
     font-size: 0.72rem;
-    color: #999;
+    color: #8A99AA;
     margin-top: 10px;
 }
+.produit-nav-hint i { color: #C8922A; }
 
+/* ===== INFO PRODUIT ===== */
 .produit-categorie {
     color: #C8922A;
     text-transform: uppercase;
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 1px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 1.4px;
     display: inline-block;
     background: rgba(200,146,42,0.08);
-    padding: 4px 14px;
+    padding: 5px 16px;
     border-radius: 20px;
+    border: 1px solid rgba(200,146,42,0.2);
 }
 .produit-nom {
     font-family: 'Playfair Display', serif;
-    font-size: 2rem;
+    font-size: 2.1rem;
     font-weight: 700;
     color: #0D0D0D;
-    margin: 10px 0 15px;
+    margin: 14px 0 18px;
+    line-height: 1.2;
 }
 .produit-prix {
     font-family: 'Playfair Display', serif;
-    font-size: 2.2rem;
+    font-size: 2.3rem;
     font-weight: 700;
     color: #C8922A;
+    text-shadow: 0 0 20px rgba(200,146,42,0.15);
 }
 .produit-prix-ancien {
     font-size: 1.1rem;
     color: #8A99AA;
     text-decoration: line-through;
     margin-left: 12px;
+    font-weight: 400;
 }
 .produit-stock {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 6px 16px;
+    gap: 8px;
+    padding: 7px 18px;
     border-radius: 20px;
-    font-size: 0.8rem;
+    font-size: 0.82rem;
     font-weight: 600;
-    margin-top: 10px;
+    margin-top: 12px;
 }
-.stock-disponible { background: #D4EDDA; color: #155724; }
-.stock-rupture { background: #F8D7DA; color: #721C24; }
-.stock-faible { background: #FFF3CD; color: #856404; }
+.stock-disponible { 
+    background: rgba(39,174,96,0.1); 
+    color: #1A7A4A;
+    border: 1px solid rgba(39,174,96,0.2);
+}
+.stock-rupture { 
+    background: rgba(231,76,60,0.1); 
+    color: #C0392B;
+    border: 1px solid rgba(231,76,60,0.2);
+}
+.stock-faible { 
+    background: rgba(243,156,18,0.1); 
+    color: #B9770E;
+    border: 1px solid rgba(243,156,18,0.2);
+}
 
+/* ===== OPTIONS ===== */
 .produit-options {
-    margin: 15px 0;
-    padding: 15px 0;
+    margin: 20px 0;
+    padding: 20px 0;
     border-top: 1px solid #F0F2F5;
 }
 .produit-options .option-title {
     font-size: 0.85rem;
-    font-weight: 600;
-    color: #0D0D0D;
-    margin-bottom: 8px;
+    font-weight: 700;
+    color: #1A2C3E;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
-.produit-options .option-title i { color: #C8922A; margin-right: 6px; }
+.produit-options .option-title i { 
+    color: #C8922A; 
+    font-size: 0.95rem;
+}
 .couleurs-list {
     display: flex;
-    gap: 10px;
+    gap: 12px;
     flex-wrap: wrap;
 }
 .couleur-item {
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     border: 3px solid #E0E0E0;
     cursor: pointer;
     transition: all 0.3s;
+    position: relative;
 }
-.couleur-item:hover { transform: scale(1.1); border-color: #C8922A; }
-.couleur-item.active { border-color: #C8922A; box-shadow: 0 0 0 3px rgba(200,146,42,0.2); }
+.couleur-item:hover { 
+    transform: scale(1.1); 
+    border-color: #C8922A; 
+}
+.couleur-item.active { 
+    border-color: #C8922A; 
+    box-shadow: 0 0 0 4px rgba(200,146,42,0.2);
+    transform: scale(1.08);
+}
+.couleur-item.active::after {
+    content: '✓';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 700;
+    text-shadow: 0 0 4px rgba(0,0,0,0.5);
+}
 .tailles-list {
     display: flex;
-    gap: 8px;
+    gap: 10px;
     flex-wrap: wrap;
 }
 .taille-item {
-    padding: 8px 16px;
+    padding: 10px 20px;
     border: 2px solid #E0E0E0;
     border-radius: 10px;
-    font-size: 0.82rem;
+    font-size: 0.85rem;
     font-weight: 700;
     cursor: pointer;
     transition: all 0.3s;
     background: white;
-    min-width: 46px;
+    min-width: 50px;
     text-align: center;
+    color: #1A2C3E;
 }
-.taille-item:hover { border-color: #C8922A; background: rgba(200,146,42,0.05); }
-.taille-item.active { border-color: #1A1A1A; background: #1A1A1A; color: white; }
+.taille-item:hover { 
+    border-color: #C8922A; 
+    background: rgba(200,146,42,0.05); 
+}
+.taille-item.active { 
+    border-color: #0D0D0D; 
+    background: #0D0D0D; 
+    color: white;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
 
+/* ===== DESCRIPTION ===== */
 .produit-description {
-    margin: 20px 0;
-    padding: 20px 0;
+    margin: 22px 0;
+    padding: 22px 0;
     border-top: 1px solid #F0F2F5;
     border-bottom: 1px solid #F0F2F5;
 }
 .produit-description h3 {
     font-family: 'Playfair Display', serif;
-    font-size: 1.1rem;
+    font-size: 1.15rem;
     color: #0D0D0D;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.produit-description h3 i {
+    color: #C8922A;
 }
 .produit-description p {
     color: #4A5568;
     font-size: 0.95rem;
-    line-height: 1.7;
+    line-height: 1.75;
 }
+
+/* ===== MÉTA ===== */
+.produit-meta {
+    display: flex;
+    gap: 20px;
+    margin: 18px 0;
+    flex-wrap: wrap;
+    font-size: 0.82rem;
+    color: #8A99AA;
+}
+.produit-meta span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.produit-meta i { 
+    color: #C8922A; 
+}
+
+/* ===== QUANTITÉ ===== */
+.qte-group {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px;
+    padding: 14px 18px;
+    background: #FAFBFC;
+    border-radius: 12px;
+    border: 1px solid #F0F2F5;
+}
+.qte-group label {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #1A2C3E;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.qte-group label i { color: #C8922A; }
 .qte-input {
-    width: 80px;
-    padding: 10px;
+    width: 90px;
+    padding: 11px 14px;
     text-align: center;
     border: 1.5px solid #E0E6ED;
     border-radius: 10px;
     font-size: 0.95rem;
     font-family: 'Jost', sans-serif;
+    font-weight: 600;
+    background: #fff;
 }
-.qte-input:focus { outline: none; border-color: #C8922A; }
+.qte-input:focus { 
+    outline: none; 
+    border-color: #C8922A; 
+    box-shadow: 0 0 0 3px rgba(200,146,42,0.1);
+}
 
+/* ===== ACTIONS ===== */
 .produit-actions {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    margin-top: 20px;
+    margin-top: 8px;
 }
-
-.produit-actions .btn-group-actions {
+.btn-group-actions {
     display: flex;
     gap: 12px;
     flex-wrap: wrap;
 }
-
-.produit-actions .btn-ajouter {
-    flex: 1;
-    min-width: 160px;
-}
-
 .btn-ajouter {
-    background: #1A1A1A;
+    background: #0D0D0D;
     color: white;
     border: none;
-    padding: 15px 20px;
+    padding: 16px 22px;
     border-radius: 12px;
     font-weight: 700;
     font-size: 0.9rem;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.8px;
     transition: all 0.3s;
     display: inline-flex;
     align-items: center;
@@ -567,11 +697,14 @@ require_once '../includes/navbar.php';
     gap: 10px;
     cursor: pointer;
     text-decoration: none;
+    font-family: 'Jost', sans-serif;
+    flex: 1;
+    min-width: 180px;
 }
 .btn-ajouter:hover {
-    background: #333;
+    background: #1A1A1A;
     transform: translateY(-2px);
-    box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.25);
 }
 .btn-ajouter:disabled { 
     background: #ccc; 
@@ -579,17 +712,16 @@ require_once '../includes/navbar.php';
     transform: none; 
     box-shadow: none; 
 }
-
 .btn-commander {
     background: linear-gradient(135deg, #C8922A, #E8B55A);
     color: white;
     border: none;
-    padding: 15px 20px;
+    padding: 16px 22px;
     border-radius: 12px;
     font-weight: 700;
     font-size: 0.9rem;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.8px;
     transition: all 0.3s;
     display: inline-flex;
     align-items: center;
@@ -597,13 +729,15 @@ require_once '../includes/navbar.php';
     gap: 10px;
     cursor: pointer;
     text-decoration: none;
+    font-family: 'Jost', sans-serif;
     flex: 1;
-    min-width: 160px;
+    min-width: 180px;
+    box-shadow: 0 4px 15px rgba(200,146,42,0.3);
 }
 .btn-commander:hover {
     background: linear-gradient(135deg, #9A6E1A, #C8922A);
     transform: translateY(-2px);
-    box-shadow: 0 5px 20px rgba(200,146,42,0.3);
+    box-shadow: 0 8px 25px rgba(200,146,42,0.45);
 }
 .btn-commander:disabled {
     background: #999;
@@ -613,80 +747,54 @@ require_once '../includes/navbar.php';
 }
 
 /* ============================================
-   PRODUITS SIMILAIRES
+   SECTION AVIS
    ============================================ */
-.similaires { margin-top: 60px; }
-.similaires h3 {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.5rem;
-    color: #0D0D0D;
-    margin-bottom: 25px;
-}
-.similaires-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 20px;
-}
-.similaire-card {
-    background: white;
-    border-radius: 16px;
-    padding: 15px;
-    text-align: center;
-    text-decoration: none;
-    color: inherit;
-    border: 1px solid #F0F2F5;
-    transition: all 0.3s;
-}
-.similaire-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 10px 25px rgba(0,0,0,0.08);
-    border-color: #C8922A;
-}
-.similaire-card img { width: 100%; height: 180px; object-fit: cover; border-radius: 10px; }
-.similaire-card h5 { font-size: 0.9rem; font-weight: 600; margin: 10px 0 5px; color: #0D0D0D; }
-.similaire-card .similaire-prix { color: #C8922A; font-weight: 700; font-size: 0.9rem; }
-.produit-meta {
-    display: flex;
-    gap: 20px;
-    margin-top: 15px;
-    flex-wrap: wrap;
-    font-size: 0.8rem;
-    color: #8A99AA;
-}
-.produit-meta i { color: #C8922A; }
-
-/* ========================================== */
-/* STYLES POUR LA SECTION AVIS CLIENTS        */
-/* ========================================== */
 .avis-section {
-    margin-top: 40px;
-    padding-top: 30px;
-    border-top: 2px solid #E8ECF0;
+    margin-top: 50px;
+    padding: 32px 0 0;
+    border-top: 2px solid #F0F2F5;
+}
+.avis-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin-bottom: 8px;
 }
 .avis-section h3 {
     font-family: 'Playfair Display', serif;
-    font-size: 1.3rem;
+    font-size: 1.4rem;
     color: #0D0D0D;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.avis-section h3 i {
+    color: #C8922A;
 }
 .avis-resume {
     display: flex;
     align-items: center;
-    gap: 20px;
-    margin: 15px 0 20px 0;
-    background: #F8F9FA;
-    padding: 15px 20px;
-    border-radius: 10px;
+    gap: 22px;
+    margin: 18px 0 22px;
+    background: linear-gradient(135deg, #FAFBFC, #F7F4EF);
+    padding: 18px 24px;
+    border-radius: 12px;
+    border: 1px solid rgba(200,146,42,0.12);
     flex-wrap: wrap;
 }
 .avis-resume .note-chiffre {
     font-family: 'Playfair Display', serif;
-    font-size: 2rem;
+    font-size: 2.2rem;
     font-weight: 700;
     color: #C8922A;
+    line-height: 1;
 }
 .avis-resume .etoiles-avis {
     color: #F1C40F;
-    font-size: 1.2rem;
+    font-size: 1.25rem;
+    text-shadow: 0 0 8px rgba(241,196,15,0.3);
 }
 .avis-resume .nb-avis {
     color: #8A99AA;
@@ -700,7 +808,8 @@ require_once '../includes/navbar.php';
     padding: 10px 24px;
     border-radius: 30px;
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
+    font-family: 'Jost', sans-serif;
     cursor: pointer;
     transition: all 0.3s;
     display: inline-flex;
@@ -726,136 +835,451 @@ require_once '../includes/navbar.php';
     margin-top: 0;
 }
 .avis-list-container.open {
-    max-height: 2000px;
+    max-height: 3000px;
     opacity: 1;
     margin-top: 20px;
 }
 
 .avis-card {
     background: #fff;
-    border: 1px solid #E8ECF0;
+    border: 1px solid #F0F2F5;
+    border-left: 3px solid #C8922A;
     border-radius: 10px;
-    padding: 15px 20px;
+    padding: 16px 20px;
     margin-bottom: 12px;
-    transition: transform 0.2s;
+    transition: all 0.2s;
 }
 .avis-card:hover {
-    transform: translateX(5px);
+    transform: translateX(4px);
     border-color: rgba(200,146,42,0.3);
+    border-left-color: #9A6E1A;
 }
 .avis-card .avis-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
+    gap: 8px;
 }
 .avis-card .avis-nom {
     font-weight: 600;
     color: #0D0D0D;
+    font-size: 0.9rem;
 }
 .avis-card .avis-date {
     color: #999;
-    font-size: 0.75rem;
+    font-size: 0.72rem;
 }
 .avis-card .avis-etoiles {
     color: #F1C40F;
     font-size: 0.85rem;
-    margin: 5px 0;
+    margin: 6px 0;
 }
 .avis-card .avis-commentaire {
-    margin-top: 5px;
+    margin-top: 6px;
     color: #5A6B7A;
     font-size: 0.9rem;
-    line-height: 1.5;
+    line-height: 1.6;
 }
 .avis-card .avis-recommandation {
-    display: inline-block;
-    font-size: 0.75rem;
-    color: #27AE60;
-    background: #D4EDDA;
-    padding: 2px 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+    color: #1A7A4A;
+    background: rgba(39,174,96,0.1);
+    padding: 3px 12px;
     border-radius: 12px;
-    margin-top: 6px;
+    margin-top: 8px;
+    font-weight: 600;
 }
 .avis-vide {
-    color: #999;
+    color: #8A99AA;
     font-style: italic;
-    padding: 20px 0;
+    padding: 24px 0;
+    text-align: center;
+    font-size: 0.88rem;
 }
 .btn-avis {
-    display: inline-block;
-    background: #C8922A;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: linear-gradient(135deg, #C8922A, #E8B55A);
     color: #fff;
-    padding: 10px 24px;
-    border-radius: 8px;
+    padding: 12px 26px;
+    border-radius: 10px;
     text-decoration: none;
-    font-weight: 500;
-    margin-top: 10px;
-    transition: background 0.3s;
+    font-weight: 600;
+    font-size: 0.85rem;
+    margin-top: 14px;
+    transition: all 0.3s;
     border: none;
     cursor: pointer;
+    box-shadow: 0 4px 15px rgba(200,146,42,0.25);
 }
 .btn-avis:hover {
-    background: #9A6E1A;
+    background: linear-gradient(135deg, #9A6E1A, #C8922A);
     color: #fff;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(200,146,42,0.4);
 }
 .avis-connectez-vous {
     font-size: 0.85rem;
     color: #8A99AA;
-    margin-top: 15px;
+    margin-top: 16px;
+    text-align: center;
 }
 .avis-connectez-vous a {
     color: #C8922A;
-    text-decoration: underline;
+    text-decoration: none;
+    font-weight: 600;
+    border-bottom: 1px dashed #C8922A;
+}
+.avis-connectez-vous a:hover {
+    color: #9A6E1A;
 }
 
-/* ===== LIGHTBOX "GRAND CADRE" ===== */
-.image-lightbox-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.92);
-    z-index: 10100; opacity: 0; visibility: hidden; transition: opacity 0.3s ease;
-    display: flex; align-items: center; justify-content: center; padding: 20px;
+/* ============================================
+   PRODUITS SIMILAIRES - GRILLE MASONRY COMPACTE
+   ============================================ */
+.similaires-section { 
+    margin-top: 60px; 
 }
-.image-lightbox-overlay.show { opacity: 1; visibility: visible; }
+.similaires-section .section-head {
+    margin-bottom: 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid #F0F2F5;
+}
+.similaires-section .section-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.55rem;
+    font-weight: 500;
+    color: #0D0D0D;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+}
+.similaires-section .section-title em {
+    color: #C8922A;
+    font-style: italic;
+    font-weight: 600;
+}
+.similaires-section .section-link {
+    font-size: 0.74rem;
+    font-weight: 500;
+    color: #9A6E1A;
+    text-decoration: none;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    transition: all 0.3s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    border-bottom: 1px solid transparent;
+    padding-bottom: 2px;
+}
+.similaires-section .section-link:hover {
+    color: #C8922A;
+    border-bottom-color: #C8922A;
+}
+
+/* Grille masonry COMPACTE */
+.similaires-grid {
+    display: block;
+    column-count: 2;
+    column-gap: 14px;
+}
+@media (min-width: 700px) {
+    .similaires-grid { column-count: 3; column-gap: 16px; }
+}
+@media (min-width: 1000px) {
+    .similaires-grid { column-count: 4; column-gap: 18px; }
+}
+@media (min-width: 1300px) {
+    .similaires-grid { column-count: 5; column-gap: 18px; }
+}
+
+/* Card produit COMPACTE */
+.similaire-card {
+    display: inline-block;
+    width: 100%;
+    text-decoration: none;
+    position: relative;
+    background: #fff;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 16px;
+    break-inside: avoid;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: transform .4s cubic-bezier(.2,.7,.2,1), box-shadow .4s ease, border-color .3s;
+}
+.similaire-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 15px 30px rgba(20,15,5,.10);
+    border-color: #F4EFE6;
+}
+
+/* IMAGE COMPACTE : aspect-ratio 1/1 au lieu de 3/4 */
+.similaire-image {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
+    background: #F6F4EF;
+}
+.similaire-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.7s cubic-bezier(.2,.7,.2,1);
+}
+.similaire-card:hover .similaire-image img { 
+    transform: scale(1.05); 
+}
+
+.similaire-badge-promo {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    background: #C0392B;
+    color: white;
+    font-size: 0.5rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 2px;
+    z-index: 10;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+.similaire-badge-new {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    background: #0D0D0D;
+    color: #fff;
+    font-size: 0.5rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 2px;
+    z-index: 10;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+/* INFO COMPACTE */
+.similaire-info {
+    padding: 10px 12px 12px;
+    text-align: left;
+}
+.similaire-name {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.72rem;
+    font-weight: 400;
+    color: #14110B;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: .1px;
+    transition: color .3s;
+    margin-bottom: 6px;
+}
+.similaire-card:hover .similaire-name { 
+    color: #9A6E1A; 
+}
+
+.similaire-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+.similaire-prices {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.similaire-price-current {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #14110B;
+    letter-spacing: -.01em;
+}
+.similaire-price-current.promo { 
+    color: #C0392B; 
+}
+.similaire-price-old {
+    font-size: 0.65rem;
+    color: #8A857A;
+    text-decoration: line-through;
+    font-weight: 400;
+}
+
+/* ============================================
+   LIGHTBOX
+   ============================================ */
+.image-lightbox-overlay {
+    position: fixed; 
+    inset: 0; 
+    background: rgba(0,0,0,0.94);
+    z-index: 10100; 
+    opacity: 0; 
+    visibility: hidden; 
+    transition: opacity 0.3s ease;
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    padding: 20px;
+}
+.image-lightbox-overlay.show { 
+    opacity: 1; 
+    visibility: visible; 
+}
 .image-lightbox-overlay img {
-    max-width: 100%; max-height: 90vh; object-fit: contain; border-radius: 8px;
+    max-width: 100%; 
+    max-height: 90vh; 
+    object-fit: contain; 
+    border-radius: 8px;
 }
 .image-lightbox-close {
-    position: absolute; top: 18px; right: 18px;
-    width: 40px; height: 40px; border-radius: 50%;
-    background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25);
-    color: #fff; font-size: 1.2rem; display: flex; align-items: center; justify-content: center;
+    position: absolute; 
+    top: 20px; 
+    right: 20px;
+    width: 44px; 
+    height: 44px; 
+    border-radius: 50%;
+    background: rgba(255,255,255,0.12); 
+    border: 1px solid rgba(255,255,255,0.25);
+    color: #fff; 
+    font-size: 1.2rem; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center;
     cursor: pointer;
+    transition: all 0.3s;
+}
+.image-lightbox-close:hover {
+    background: rgba(200,146,42,0.3);
+    border-color: #C8922A;
+    transform: rotate(90deg);
 }
 
 #couleur_input, #taille_input { display: none; }
 
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+@media (max-width: 1024px) {
+    .produit-grid { 
+        gap: 35px; 
+        padding: 30px; 
+    }
+}
 @media (max-width: 900px) {
-    .produit-grid { grid-template-columns: 1fr; gap: 30px; padding: 25px; }
-    .produit-image { min-height: 250px; }
+    .produit-grid { 
+        grid-template-columns: 1fr; 
+        gap: 30px; 
+        padding: 25px; 
+    }
+    .produit-image { 
+        min-height: 320px; 
+    }
+    .produit-nom { 
+        font-size: 1.7rem; 
+    }
+    .produit-prix { 
+        font-size: 1.9rem; 
+    }
 }
-@media (max-width: 768px) {
-    .similaires-grid { grid-template-columns: repeat(2, 1fr); }
-    .produit-nom { font-size: 1.5rem; }
-    .produit-prix { font-size: 1.8rem; }
-    .produit-actions .btn-group-actions {
+@media (max-width: 700px) {
+    .similaires-grid { 
+        column-count: 3; 
+        column-gap: 12px; 
+    }
+    .similaire-card { 
+        margin-bottom: 12px; 
+    }
+    .similaire-info { 
+        padding: 8px 10px 10px; 
+    }
+    .similaire-name { 
+        font-size: 0.68rem; 
+    }
+    .similaire-price-current { 
+        font-size: 0.75rem; 
+    }
+}
+@media (max-width: 600px) {
+    .container-custom { 
+        padding: 0 16px; 
+    }
+    .trust-bar { 
+        justify-content: flex-start; 
+        overflow-x: auto; 
+        gap: 18px; 
+        padding: 14px 18px;
+        flex-wrap: nowrap;
+    }
+    .produit-grid { 
+        padding: 20px 18px; 
+        gap: 24px; 
+    }
+    .produit-image { 
+        min-height: 260px; 
+        padding: 20px; 
+    }
+    .produit-nom { 
+        font-size: 1.45rem; 
+    }
+    .produit-prix { 
+        font-size: 1.7rem; 
+    }
+    .btn-group-actions { 
+        flex-direction: column; 
+    }
+    .btn-ajouter, 
+    .btn-commander { 
+        min-width: 100%; 
+        flex: none; 
+    }
+    .produit-nav-arrow { 
+        width: 36px; 
+        height: 36px; 
+        font-size: 1rem; 
+    }
+    .galerie-vignettes .vignette-item { 
+        width: 60px; 
+        height: 60px; 
+    }
+    .qte-group {
         flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
     }
-    .produit-actions .btn-ajouter,
-    .btn-commander {
-        min-width: 100%;
-        flex: none;
-    }
-    .produit-nav-arrow { width: 36px; height: 36px; font-size: 0.95rem; }
-    .galerie-vignettes .vignette-item {
-        width: 56px;
-        height: 56px;
+    .similaires-grid { 
+        column-count: 2; 
+        column-gap: 12px; 
     }
 }
-@media (max-width: 500px) {
-    .similaires-grid { grid-template-columns: 1fr; }
-    .galerie-vignettes .vignette-item {
-        width: 48px;
-        height: 48px;
+@media (max-width: 480px) {
+    .galerie-vignettes .vignette-item { 
+        width: 52px; 
+        height: 52px; 
+    }
+    .produit-nom { 
+        font-size: 1.3rem; 
+    }
+    .produit-prix { 
+        font-size: 1.5rem; 
+    }
+    .similaires-grid { 
+        column-count: 2; 
+        column-gap: 10px; 
     }
 }
 </style>
@@ -863,50 +1287,55 @@ require_once '../includes/navbar.php';
 <div class="produit-page">
     <div class="container-custom">
 
-        <!-- ===== BANDEAU DE RÉASSURANCE ===== -->
-        <div class="trust-bar">
-            <div class="trust-item"><i class="bi bi-truck"></i> Livraison à Bamako</div>
-            <div class="trust-item"><i class="bi bi-shield-check"></i> Paiement sécurisé</div>
-            <div class="trust-item"><i class="bi bi-arrow-repeat"></i> Retour facile</div>
-        </div>
-
+        
         <div class="produit-grid">
+            <!-- IMAGE -->
             <div class="produit-image-wrap">
-                <!-- Image principale -->
                 <div class="produit-image" id="produitImageContainer">
                     <?php 
                     $image_principale = getProductImageDetail($produit['image_principale'] ?? '');
                     ?>
-                    <img id="produitImagePrincipale" src="<?= $image_principale ?>" alt="<?= htmlspecialchars($produit['nom']) ?>" onclick="openImageLightbox(this.src)">
+                    <img id="produitImagePrincipale" 
+                         src="<?= $image_principale ?>" 
+                         alt="<?= htmlspecialchars($produit['nom']) ?>" 
+                         onclick="openImageLightbox(this.src)">
 
                     <?php if ($produit_precedent): ?>
-                        <a href="produit.php?id=<?= $produit_precedent['id'] ?>" class="produit-nav-arrow prev" title="Produit précédent : <?= htmlspecialchars($produit_precedent['nom']) ?>">
+                        <a href="produit.php?id=<?= $produit_precedent['id'] ?>" 
+                           class="produit-nav-arrow prev" 
+                           title="Produit précédent : <?= htmlspecialchars($produit_precedent['nom']) ?>">
                             <i class="bi bi-chevron-left"></i>
                         </a>
                     <?php endif; ?>
                     <?php if ($produit_suivant): ?>
-                        <a href="produit.php?id=<?= $produit_suivant['id'] ?>" class="produit-nav-arrow next" title="Produit suivant : <?= htmlspecialchars($produit_suivant['nom']) ?>">
+                        <a href="produit.php?id=<?= $produit_suivant['id'] ?>" 
+                           class="produit-nav-arrow next" 
+                           title="Produit suivant : <?= htmlspecialchars($produit_suivant['nom']) ?>">
                             <i class="bi bi-chevron-right"></i>
                         </a>
                     <?php endif; ?>
 
-                    <button type="button" class="btn-grand-cadre" onclick="openImageLightbox(document.getElementById('produitImagePrincipale').src)">
+                    <button type="button" 
+                            class="btn-grand-cadre" 
+                            onclick="openImageLightbox(document.getElementById('produitImagePrincipale').src)">
                         <i class="bi bi-arrows-fullscreen"></i> Grand cadre
                     </button>
                 </div>
 
-                <!-- === GALERIE DE VIGNETTES === -->
+                <!-- GALERIE VIGNETTES -->
                 <div class="galerie-vignettes" id="galerieVignettes">
-                    <!-- Vignette de l'image principale -->
-                    <div class="vignette-item active" data-src="<?= $image_principale ?>" onclick="changerImagePrincipale(this, '<?= $image_principale ?>')">
+                    <div class="vignette-item active" 
+                         data-src="<?= $image_principale ?>" 
+                         onclick="changerImagePrincipale(this, '<?= $image_principale ?>')">
                         <img src="<?= $image_principale ?>" alt="Image principale">
                     </div>
                     
-                    <!-- Vignettes des images supplémentaires -->
                     <?php foreach($images_supplementaires as $img_path): 
                         $img_url = getProductImageDetail($img_path);
                     ?>
-                        <div class="vignette-item" data-src="<?= $img_url ?>" onclick="changerImagePrincipale(this, '<?= $img_url ?>')">
+                        <div class="vignette-item" 
+                             data-src="<?= $img_url ?>" 
+                             onclick="changerImagePrincipale(this, '<?= $img_url ?>')">
                             <img src="<?= $img_url ?>" alt="Image supplémentaire">
                         </div>
                     <?php endforeach; ?>
@@ -919,6 +1348,7 @@ require_once '../includes/navbar.php';
                 <?php endif; ?>
             </div>
 
+            <!-- INFO PRODUIT -->
             <div class="produit-info">
                 <?php if($categorie): ?>
                     <span class="produit-categorie"><?= htmlspecialchars($categorie['nom']) ?></span>
@@ -948,62 +1378,83 @@ require_once '../includes/navbar.php';
                     <i class="bi bi-box-seam"></i> <?= $stock_text ?>
                 </div>
 
-                <!-- COULEURS DISPONIBLES -->
+                <!-- COULEURS -->
                 <div class="produit-options">
-                    <div class="option-title"><i class="bi bi-palette"></i> Couleurs disponibles <?php if(!empty($couleurs_produit)): ?>(<?= count($couleurs_produit) ?>)<?php endif; ?></div>
+                    <div class="option-title">
+                        <i class="bi bi-palette"></i> 
+                        Couleurs disponibles <?php if(!empty($couleurs_produit)): ?>(<?= count($couleurs_produit) ?>)<?php endif; ?>
+                    </div>
                     <?php if(!empty($couleurs_produit)): ?>
                     <div class="couleurs-list">
                         <?php foreach($couleurs_produit as $c): ?>
                         <div class="couleur-item" 
-                             style="background-color: <?= $c['code_hex'] ?>; border-color: <?= $c['code_hex'] == '#FFFFFF' ? '#ccc' : '#E0E0E0' ?>;"
+                             style="background-color: <?= $c['code_hex'] ?>;" 
                              data-couleur-id="<?= $c['id'] ?>"
                              data-couleur-nom="<?= htmlspecialchars($c['nom']) ?>"
                              onclick="selectionnerCouleur(this)"
                              title="<?= htmlspecialchars($c['nom']) ?>"></div>
                         <?php endforeach; ?>
                     </div>
-                    <small id="couleur_selectionnee" style="color:#8A99AA;font-size:0.75rem;">Cliquez sur une couleur</small>
+                    <small id="couleur_selectionnee" style="color:#8A99AA;font-size:0.75rem;margin-top:6px;display:block;">
+                        Cliquez sur une couleur
+                    </small>
                     <?php else: ?>
-                    <p style="color:#999;font-size:0.8rem;">Aucune couleur disponible pour ce produit</p>
+                    <p style="color:#999;font-size:0.8rem;">Aucune couleur disponible</p>
                     <?php endif; ?>
                 </div>
 
-                <!-- TAILLES DISPONIBLES -->
+                <!-- TAILLES -->
                 <div class="produit-options">
-                    <div class="option-title"><i class="bi bi-rulers"></i> Tailles disponibles <?php if(!empty($tailles_produit)): ?>(<?= count($tailles_produit) ?>)<?php endif; ?></div>
+                    <div class="option-title">
+                        <i class="bi bi-rulers"></i> 
+                        Tailles disponibles <?php if(!empty($tailles_produit)): ?>(<?= count($tailles_produit) ?>)<?php endif; ?>
+                    </div>
                     <?php if(!empty($tailles_produit)): ?>
                     <div class="tailles-list">
                         <?php foreach($tailles_produit as $t): ?>
-                        <div class="taille-item" data-taille-id="<?= $t['id'] ?>" data-taille-nom="<?= htmlspecialchars($t['nom']) ?>" onclick="selectionnerTaille(this)">
+                        <div class="taille-item" 
+                             data-taille-id="<?= $t['id'] ?>" 
+                             data-taille-nom="<?= htmlspecialchars($t['nom']) ?>" 
+                             onclick="selectionnerTaille(this)">
                             <?= htmlspecialchars($t['nom']) ?>
                         </div>
                         <?php endforeach; ?>
                     </div>
-                    <small id="taille_selectionnee" style="color:#8A99AA;font-size:0.75rem;">Cliquez sur une taille</small>
+                    <small id="taille_selectionnee" style="color:#8A99AA;font-size:0.75rem;margin-top:6px;display:block;">
+                        Cliquez sur une taille
+                    </small>
                     <?php else: ?>
-                    <p style="color:#999;font-size:0.8rem;">Aucune taille disponible pour ce produit</p>
+                    <p style="color:#999;font-size:0.8rem;">Aucune taille disponible</p>
                     <?php endif; ?>
                 </div>
 
+                <!-- DESCRIPTION -->
                 <div class="produit-description">
-                    <h3>📝 Description</h3>
+                    <h3><i class="bi bi-file-text"></i> Description</h3>
                     <p><?= nl2br(htmlspecialchars($produit['description'])) ?></p>
                 </div>
 
+                <!-- MÉTA -->
                 <div class="produit-meta">
                     <span><i class="bi bi-tag"></i> Référence: #<?= $produit['id'] ?></span>
                     <span><i class="bi bi-calendar3"></i> Ajouté le <?= date('d/m/Y', strtotime($produit['created_at'])) ?></span>
                 </div>
 
+                <!-- ACTIONS -->
                 <?php if($produit['stock'] > 0): ?>
                 <div class="produit-actions">
-                    <div class="d-flex align-items-center gap-3 mb-3">
-                        <label class="fw-bold" style="font-size:0.9rem;">Quantité :</label>
-                        <input type="number" id="quantite_produit" class="qte-input" value="1" min="1" max="<?= $produit['stock'] ?>">
+                    <div class="qte-group">
+                        <label><i class="bi bi-123"></i> Quantité :</label>
+                        <input type="number" 
+                               id="quantite_produit" 
+                               class="qte-input" 
+                               value="1" 
+                               min="1" 
+                               max="<?= $produit['stock'] ?>">
                     </div>
                     
                     <div class="btn-group-actions">
-                        <form action="panier.php" method="POST" style="flex:1;min-width:160px;margin:0;">
+                        <form action="panier.php" method="POST" style="flex:1;min-width:180px;margin:0;">
                             <input type="hidden" name="produit_id" value="<?= $produit['id'] ?>">
                             <input type="hidden" name="quantite" id="quantite_ajouter" value="1">
                             <input type="hidden" name="couleur_id" id="couleur_input" value="">
@@ -1014,7 +1465,7 @@ require_once '../includes/navbar.php';
                             </button>
                         </form>
                         
-                        <form action="commande.php" method="GET" style="flex:1;min-width:160px;margin:0;">
+                        <form action="commande.php" method="GET" style="flex:1;min-width:180px;margin:0;">
                             <input type="hidden" name="produit_id" value="<?= $produit['id'] ?>">
                             <input type="hidden" name="quantite" id="quantite_commander" value="1">
                             <input type="hidden" name="couleur_id" id="couleur_input_commander" value="">
@@ -1026,7 +1477,7 @@ require_once '../includes/navbar.php';
                     </div>
                 </div>
                 <?php else: ?>
-                    <button class="btn-ajouter" style="margin-top:20px; width:100%;" disabled>
+                    <button class="btn-ajouter" style="margin-top:20px;width:100%;" disabled>
                         <i class="bi bi-x-circle"></i> Indisponible
                     </button>
                 <?php endif; ?>
@@ -1034,11 +1485,11 @@ require_once '../includes/navbar.php';
         </div>
 
         <!-- ========================================== -->
-        <!-- SECTION AVIS CLIENTS -->
+        <!-- AVIS CLIENTS -->
         <!-- ========================================== -->
         <div class="avis-section">
-            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:15px;">
-                <h3>⭐ Avis clients</h3>
+            <div class="avis-header-row">
+                <h3><i class="bi bi-star-fill"></i> Avis clients</h3>
                 <button class="btn-voir-avis" id="btnVoirAvis" onclick="toggleAvis()">
                     <i class="bi bi-chevron-down" id="avisIcon"></i> 
                     <span id="avisBtnText">Voir les avis</span>
@@ -1072,7 +1523,9 @@ require_once '../includes/navbar.php';
                         </div>
                         <p class="avis-commentaire"><?= htmlspecialchars($avis['commentaire'] ?? '') ?></p>
                         <?php if(!empty($avis['recommandation']) && $avis['recommandation'] == 1): ?>
-                            <span class="avis-recommandation">👍 Je recommande</span>
+                            <span class="avis-recommandation">
+                                <i class="bi bi-hand-thumbs-up-fill"></i> Je recommande
+                            </span>
                         <?php endif; ?>
                     </div>
                     <?php endforeach; ?>
@@ -1082,7 +1535,7 @@ require_once '../includes/navbar.php';
 
                 <?php if(isset($_SESSION['client_id'])): ?>
                     <a href="../client/ajouter_avis.php?produit_id=<?= $id ?>" class="btn-avis">
-                        ✏️ Laisser un avis
+                        <i class="bi bi-pencil-square"></i> Laisser un avis
                     </a>
                 <?php else: ?>
                     <p class="avis-connectez-vous">
@@ -1092,24 +1545,60 @@ require_once '../includes/navbar.php';
             </div>
         </div>
 
-        <!-- ============================================
-             PRODUITS SIMILAIRES
-             ============================================ -->
+        <!-- ============================================ -->
+        <!-- PRODUITS SIMILAIRES - GRILLE MASONRY COMPACTE -->
+        <!-- ============================================ -->
         <?php if(!empty($similaires)): ?>
-        <div class="similaires">
-            <h3>✨ Produits similaires</h3>
+        <div class="similaires-section">
+            <div class="section-head">
+                <h3 class="section-title">Vous aimerez <em>aussi</em></h3>
+                <a href="catalogue.php" class="section-link">
+                    Voir tout <i class="bi bi-arrow-right"></i>
+                </a>
+            </div>
+            
             <div class="similaires-grid">
                 <?php foreach($similaires as $s): 
                     $img = getProductImageDetail($s['image_principale'] ?? '');
-                    $sprix = $s['prix'];
-                    if (isset($s['est_promo']) && $s['est_promo'] == 1 && isset($s['prix_promo']) && $s['prix_promo'] > 0 && $s['prix_promo'] < $s['prix']) {
-                        $sprix = $s['prix_promo'];
+                    $est_promo = (isset($s['est_promo']) && $s['est_promo'] == 1 && 
+                                  isset($s['prix_promo']) && $s['prix_promo'] > 0 && 
+                                  $s['prix_promo'] < $s['prix']);
+                    $sprix = $est_promo ? $s['prix_promo'] : $s['prix'];
+                    $sprix_old = $est_promo ? $s['prix'] : null;
+                    $pct_promo = 0;
+                    if ($est_promo && $sprix_old > 0) {
+                        $pct_promo = round((1 - $sprix / $sprix_old) * 100);
                     }
+                    $est_nouveau = (!$est_promo && !empty($s['created_at']) && 
+                                    strtotime($s['created_at']) >= strtotime('-14 days'));
                 ?>
                 <a href="produit.php?id=<?= $s['id'] ?>" class="similaire-card">
-                    <img src="<?= $img ?>" alt="<?= htmlspecialchars($s['nom']) ?>">
-                    <h5><?= htmlspecialchars($s['nom']) ?></h5>
-                    <div class="similaire-prix"><?= number_format($sprix, 0, ',', ' ') ?> FCFA</div>
+                    <div class="similaire-image">
+                        <img src="<?= $img ?>" 
+                             alt="<?= htmlspecialchars($s['nom']) ?>" 
+                             loading="lazy" 
+                             onerror="this.src='https://placehold.co/400x500/F5F5F5/C8922A?text=<?= urlencode($s['nom']) ?>'">
+                        
+                        <?php if ($est_promo): ?>
+                            <div class="similaire-badge-promo">-<?= $pct_promo ?>%</div>
+                        <?php elseif ($est_nouveau): ?>
+                            <div class="similaire-badge-new">Nouveau</div>
+                        <?php endif; ?>
+                    </div>
+                    
+                    <div class="similaire-info">
+                        <div class="similaire-name"><?= htmlspecialchars($s['nom']) ?></div>
+                        <div class="similaire-footer">
+                            <div class="similaire-prices">
+                                <?php if ($est_promo): ?>
+                                    <span class="similaire-price-old"><?= number_format($sprix_old, 0, ',', ' ') ?> F</span>
+                                    <span class="similaire-price-current promo"><?= number_format($sprix, 0, ',', ' ') ?> F</span>
+                                <?php else: ?>
+                                    <span class="similaire-price-current"><?= number_format($sprix, 0, ',', ' ') ?> F</span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
                 </a>
                 <?php endforeach; ?>
             </div>
@@ -1118,35 +1607,32 @@ require_once '../includes/navbar.php';
     </div>
 </div>
 
-<!-- ============================================
-     LIGHTBOX "GRAND CADRE"
-     ============================================ -->
+<!-- LIGHTBOX -->
 <div class="image-lightbox-overlay" id="imageLightbox" onclick="closeImageLightbox(event)">
-    <button class="image-lightbox-close" onclick="closeImageLightbox(event)"><i class="bi bi-x-lg"></i></button>
+    <button class="image-lightbox-close" onclick="closeImageLightbox(event)">
+        <i class="bi bi-x-lg"></i>
+    </button>
     <img id="imageLightboxImg" src="" alt="Vue agrandie">
 </div>
 
 <script>
 // ============================================
-// GALERIE D'IMAGES : changer l'image principale
+// GALERIE : changer l'image principale
 // ============================================
 function changerImagePrincipale(element, src) {
-    // Mettre à jour l'image principale
     document.getElementById('produitImagePrincipale').src = src;
     
-    // Mettre à jour le bouton "Grand cadre" avec la nouvelle source
     const btnGrandCadre = document.querySelector('.btn-grand-cadre');
     if (btnGrandCadre) {
         btnGrandCadre.setAttribute('onclick', "openImageLightbox('" + src + "')");
     }
     
-    // Activer la vignette cliquée
     document.querySelectorAll('.vignette-item').forEach(el => el.classList.remove('active'));
     element.classList.add('active');
 }
 
 // ============================================
-// SÉLECTION DE LA COULEUR
+// SÉLECTION COULEUR
 // ============================================
 function selectionnerCouleur(element) {
     document.querySelectorAll('.couleur-item').forEach(el => el.classList.remove('active'));
@@ -1163,7 +1649,7 @@ function selectionnerCouleur(element) {
 }
 
 // ============================================
-// SÉLECTION DE LA TAILLE
+// SÉLECTION TAILLE
 // ============================================
 function selectionnerTaille(element) {
     document.querySelectorAll('.taille-item').forEach(el => el.classList.remove('active'));
@@ -1180,7 +1666,7 @@ function selectionnerTaille(element) {
 }
 
 // ============================================
-// MISE À JOUR DE LA QUANTITÉ
+// QUANTITÉ
 // ============================================
 document.addEventListener('DOMContentLoaded', function() {
     const qteInput = document.getElementById('quantite_produit');
@@ -1203,7 +1689,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ============================================
-// VÉRIFICATION DE LA SÉLECTION (couleur + taille)
+// VÉRIFICATION SÉLECTION
 // ============================================
 function verifierSelection() {
     const couleur = document.getElementById('couleur_input').value;
@@ -1242,7 +1728,7 @@ function verifierSelection() {
 }
 
 // ============================================
-// AFFICHER / MASQUER LES AVIS
+// TOGGLE AVIS
 // ============================================
 function toggleAvis() {
     const container = document.getElementById('avisListContainer');
@@ -1263,7 +1749,7 @@ function toggleAvis() {
 }
 
 // ============================================
-// LIGHTBOX "GRAND CADRE"
+// LIGHTBOX
 // ============================================
 function openImageLightbox(src) {
     if (!src) return;
@@ -1278,7 +1764,6 @@ function closeImageLightbox(event) {
 
 document.addEventListener('keydown', function(event) {
     if (event.key === 'Escape') closeImageLightbox();
-    // Navigation clavier entre produits (gauche/droite)
     <?php if ($produit_precedent): ?>
     if (event.key === 'ArrowLeft') window.location.href = 'produit.php?id=<?= $produit_precedent['id'] ?>';
     <?php endif; ?>
@@ -1288,7 +1773,7 @@ document.addEventListener('keydown', function(event) {
 });
 
 // ============================================
-// INITIALISATION AU CHARGEMENT
+// INIT
 // ============================================
 document.addEventListener('DOMContentLoaded', function() {
     verifierSelection();
