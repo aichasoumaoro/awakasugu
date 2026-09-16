@@ -467,6 +467,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // ============================================
         // AJOUTER LES POINTS DE FIDÉLITÉ
         // ============================================
+        $points_gagnes = 0;
         if ($client_id && $fidelite_actif == 1) {
             $points_gagnes = floor($total_apres_reductions / $seuil_points) * $points_par_seuil;
             
@@ -504,6 +505,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // ============================================
         // VIDER LE PANIER (APRÈS COMMANDE)
         // ============================================
+        // Sauvegarder le panier pour la construction des emails (il sera vidé juste après)
+        $panier_pour_email = $_SESSION['panier'];
+
         // Vider le panier de la session
         unset($_SESSION['panier']);
         unset($_SESSION['code_promo']);
@@ -521,8 +525,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // ============================================
         // ENVOI DE L'EMAIL DE CONFIRMATION AU CLIENT AVEC FACTURE
         // ============================================
-        $sujet = "✅ Confirmation de votre commande Awa Ka Sugu - N° $numero_commande";
-        
+        $sujet = "Confirmation de votre commande Awa Ka Sugu — N° $numero_commande";
+
+        // ── Bannière de points de fidélité (affichée seulement si des points ont été gagnés) ──
+        $bloc_points_html = '';
+        if ($client_id && $fidelite_actif == 1 && $points_gagnes > 0) {
+            $bloc_points_html = '
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FFF8EC;border:1px solid #E9D4A6;border-radius:12px;margin-bottom:18px;">
+              <tr><td style="padding:13px 16px;">
+                <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+                  <td valign="top" style="font-size:20px;padding-right:12px;">&#11088;</td>
+                  <td style="font-family:Arial,sans-serif;">
+                    <div style="font-size:13px;font-weight:bold;color:#C8922A;">' . $points_gagnes . ' points de fid&eacute;lit&eacute; gagn&eacute;s !</div>
+                    <div style="font-size:11px;color:#9A8060;margin-top:2px;">Continuez &agrave; cumuler des points pour des r&eacute;ductions exclusives.</div>
+                  </td>
+                </tr></table>
+              </td></tr>
+            </table>';
+        }
+
+        // ── Lignes d'articles (couleur/taille affichées si présentes) ──
+        $lignes_articles_client = '';
+        foreach ($panier_pour_email as $item) {
+            $options = [];
+            if (!empty($item['couleur_nom'])) $options[] = 'Couleur: ' . htmlspecialchars($item['couleur_nom']);
+            if (!empty($item['taille_nom'])) $options[] = 'Taille: ' . htmlspecialchars($item['taille_nom']);
+            $ligne_options = !empty($options) ? implode(' &middot; ', $options) . ' &nbsp;&middot;&nbsp; ' : '';
+
+            $lignes_articles_client .= '
+              <tr>
+                <td style="padding:12px 0;border-bottom:1px solid #F5F6F8;font-family:Arial,sans-serif;font-size:12.5px;color:#1A1A2E;">
+                    ' . htmlspecialchars($item['nom']) . '<br>
+                    <span style="font-size:10.5px;color:#9099A8;">' . $ligne_options . (int)$item['quantite'] . ' &times; ' . number_format($item['prix'], 0, ',', ' ') . ' FCFA</span>
+                </td>
+                <td align="right" valign="top" style="padding:12px 0;border-bottom:1px solid #F5F6F8;font-family:Arial,sans-serif;font-size:12.5px;font-weight:bold;color:#C8922A;white-space:nowrap;">' . number_format($item['prix'] * $item['quantite'], 0, ',', ' ') . ' FCFA</td>
+              </tr>';
+        }
+
         // Construire le message HTML pour le client
         $message_html = '
         <!DOCTYPE html>
@@ -531,162 +570,114 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Confirmation de commande</title>
-            <style>
-                @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@300;400;500;600&display=swap");
-                * { box-sizing: border-box; margin: 0; padding: 0; }
-                body { font-family: "Inter", Arial, sans-serif; background: #0E0E0E; padding: 30px 15px; }
-                .wrapper { max-width: 620px; margin: 0 auto; }
-                /* ── Header ── */
-                .header { background: linear-gradient(160deg, #0A0A0A 0%, #1C1308 60%, #0A0A0A 100%); padding: 40px 30px 30px; text-align: center; border-radius: 20px 20px 0 0; position: relative; overflow: hidden; }
-                .header::before { content: ""; position: absolute; top: -60px; left: 50%; transform: translateX(-50%); width: 300px; height: 300px; background: radial-gradient(circle, rgba(200,146,42,0.12) 0%, transparent 70%); }
-                .header .brand { font-family: "Playfair Display", Georgia, serif; font-size: 2rem; font-weight: 700; color: #C8922A; letter-spacing: 4px; text-transform: uppercase; line-height: 1; }
-                .header .divider { width: 60px; height: 2px; background: linear-gradient(90deg, transparent, #C8922A, transparent); margin: 12px auto; }
-                .header .tagline { color: rgba(255,255,255,0.35); font-size: 0.7rem; letter-spacing: 3px; text-transform: uppercase; font-weight: 300; }
-                .header .badge-confirmed { display: inline-block; background: rgba(39,174,96,0.15); border: 1px solid rgba(39,174,96,0.4); color: #2ECC71; font-size: 0.72rem; font-weight: 600; padding: 5px 16px; border-radius: 20px; margin-top: 16px; letter-spacing: 1px; }
-                /* ── Body ── */
-                .body { background: #ffffff; padding: 36px 32px; }
-                .greeting { font-size: 1.25rem; font-weight: 600; color: #0D0D0D; margin-bottom: 6px; }
-                .greeting span { color: #C8922A; }
-                .subtitle { color: #7A8694; font-size: 0.88rem; font-weight: 400; margin-bottom: 28px; }
-                /* ── Points Banner ── */
-                .points-banner { background: linear-gradient(135deg, #FFF8EC, #FFF3DB); border: 1px solid rgba(200,146,42,0.25); border-radius: 12px; padding: 14px 18px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px; }
-                .points-banner .pts-icon { font-size: 1.5rem; }
-                .points-banner .pts-text strong { color: #C8922A; font-size: 0.95rem; }
-                .points-banner .pts-text small { color: #9A8060; font-size: 0.78rem; display: block; margin-top: 2px; }
-                /* ── Order Summary Card ── */
-                .order-card { background: #F9F9FB; border-radius: 14px; overflow: hidden; margin-bottom: 22px; border: 1px solid #EEEFF2; }
-                .order-card-head { background: linear-gradient(135deg, #0D0D0D, #1A1510); padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; }
-                .order-card-head .order-num { color: #C8922A; font-family: "Playfair Display", serif; font-size: 1rem; font-weight: 700; }
-                .order-card-head .order-date { color: rgba(255,255,255,0.4); font-size: 0.75rem; }
-                .order-rows { padding: 8px 0; }
-                .order-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; border-bottom: 1px solid #F0F1F4; }
-                .order-row:last-child { border-bottom: none; }
-                .order-row .lbl { color: #8A92A3; font-size: 0.82rem; font-weight: 500; }
-                .order-row .val { color: #0D0D0D; font-size: 0.88rem; font-weight: 600; }
-                .order-row .val.gold { color: #C8922A; }
-                .order-total { background: linear-gradient(135deg, #C8922A, #E8B55A); padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; }
-                .order-total .tot-lbl { color: rgba(255,255,255,0.75); font-size: 0.8rem; font-weight: 500; letter-spacing: 1px; text-transform: uppercase; }
-                .order-total .tot-val { color: #fff; font-family: "Playfair Display", serif; font-size: 1.4rem; font-weight: 700; }
-                /* ── Facture notice ── */
-                .facture-notice { background: #F0FBF4; border: 1px solid rgba(39,174,96,0.3); border-radius: 12px; padding: 14px 18px; margin-bottom: 22px; display: flex; align-items: flex-start; gap: 12px; }
-                .facture-notice .fn-icon { font-size: 1.4rem; margin-top: 2px; }
-                .facture-notice .fn-text strong { color: #1A7A45; font-size: 0.9rem; }
-                .facture-notice .fn-text small { color: #5A8A6A; font-size: 0.78rem; display: block; margin-top: 3px; }
-                /* ── Products Table ── */
-                .section-title { font-size: 0.78rem; font-weight: 600; color: #8A92A3; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; }
-                .products-table { width: 100%; border-collapse: collapse; margin-bottom: 22px; }
-                .products-table thead tr { background: #F4F5F8; }
-                .products-table th { padding: 10px 12px; font-size: 0.72rem; font-weight: 600; color: #8A92A3; text-transform: uppercase; letter-spacing: 1px; text-align: left; }
-                .products-table td { padding: 11px 12px; border-bottom: 1px solid #F0F1F4; font-size: 0.85rem; color: #2D3748; vertical-align: top; }
-                .products-table tr:last-child td { border-bottom: none; }
-                .products-table .prod-opt { color: #9AA0AC; font-size: 0.75rem; margin-top: 3px; }
-                .products-table .td-center { text-align: center; }
-                .products-table .td-right { text-align: right; font-weight: 600; color: #C8922A; }
-                /* ── Status + CTA ── */
-                .status-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 22px; }
-                .status-badge { display: inline-flex; align-items: center; gap: 6px; background: #FFFBF0; border: 1px solid rgba(200,146,42,0.35); color: #A07020; font-size: 0.78rem; font-weight: 600; padding: 7px 14px; border-radius: 20px; }
-                .status-badge::before { content: ""; display: inline-block; width: 7px; height: 7px; background: #C8922A; border-radius: 50%; }
-                .delivery-note { color: #7A8694; font-size: 0.8rem; }
-                .cta-btn { display: block; text-align: center; background: linear-gradient(135deg, #C8922A, #E8B55A); color: #fff; font-weight: 600; font-size: 0.88rem; padding: 14px 30px; border-radius: 30px; text-decoration: none; letter-spacing: 0.5px; margin-bottom: 10px; }
-                /* ── Footer ── */
-                .footer { background: #0D0D0D; padding: 24px 30px; text-align: center; border-radius: 0 0 20px 20px; }
-                .footer .ft-brand { color: #C8922A; font-family: "Playfair Display", serif; font-size: 0.9rem; font-weight: 600; margin-bottom: 6px; }
-                .footer .ft-links { margin: 8px 0; }
-                .footer .ft-links a { color: rgba(255,255,255,0.3); font-size: 0.72rem; text-decoration: none; margin: 0 8px; }
-                .footer .ft-copy { color: rgba(255,255,255,0.2); font-size: 0.68rem; margin-top: 10px; }
-            </style>
         </head>
-        <body>
-            <div class="wrapper">
-                <div class="header">
-                    <div class="brand">✦ Awa Ka Sugu ✦</div>
-                    <div class="divider"></div>
-                    <div class="tagline">Boutique IBA Design &amp; Restaurant Sofia</div>
-                    <div class="badge-confirmed">✓ Commande confirmée</div>
-                </div>
-                <div class="body">
-                    <p class="greeting">Merci, <span>' . htmlspecialchars($nom) . '</span> !</p>
-                    <p class="subtitle">Votre commande a bien été enregistrée et est en cours de traitement.</p>';
-        
-        // Points gagnés
-        if ($client_id && $fidelite_actif == 1 && $points_gagnes > 0) {
-            $message_html .= '
-                    <div class="points-banner">
-                        <span class="pts-icon">⭐</span>
-                        <div class="pts-text">
-                            <strong>' . $points_gagnes . ' points de fidélité gagnés !</strong>
-                            <small>Continuez à cumuler des points pour des réductions exclusives.</small>
-                        </div>
-                    </div>';
-        }
-        
-        $message_html .= '
-                    <div class="order-card">
-                        <div class="order-card-head">
-                            <span class="order-num">Commande #' . $numero_commande . '</span>
-                            <span class="order-date">' . date('d/m/Y à H:i') . '</span>
-                        </div>
-                        <div class="order-rows">
-                            <div class="order-row">
-                                <span class="lbl">Mode de paiement</span>
-                                <span class="val">' . ucfirst(str_replace('_', ' ', $mode_paiement)) . '</span>
-                            </div>
-                            <div class="order-row">
-                                <span class="lbl">Adresse de livraison</span>
-                                <span class="val">' . nl2br(htmlspecialchars($adresse)) . '</span>
-                            </div>
-                        </div>
-                        <div class="order-total">
-                            <span class="tot-lbl">Total à payer</span>
-                            <span class="tot-val">' . number_format($total_apres_reductions, 0, ',', ' ') . ' FCFA</span>
-                        </div>
-                    </div>
-                    
-                    <div class="facture-notice">
-                        <span class="fn-icon">📎</span>
-                        <div class="fn-text">
-                            <strong>Votre facture est jointe à cet email</strong>
-                            <small>Facture N° ' . $facture_info['numero_facture'] . ' — Conservez-la précieusement.</small>
-                        </div>
-                    </div>
-                    
-                    <p class="section-title">Articles commandés</p>
-                    <table class="products-table">
-                        <thead><tr><th>Produit</th><th class="td-center">Qté</th><th class="td-right">Prix</th><th class="td-right">Total</th></tr></thead>
-                        <tbody>';
-        
-        foreach ($_SESSION['panier'] as $item) {
-            $message_html .= '<tr><td>' . htmlspecialchars($item['nom']);
-            if (!empty($item['couleur_nom']) || !empty($item['taille_nom'])) {
-                $options = [];
-                if (!empty($item['couleur_nom'])) $options[] = 'Couleur: ' . htmlspecialchars($item['couleur_nom']);
-                if (!empty($item['taille_nom'])) $options[] = 'Taille: ' . htmlspecialchars($item['taille_nom']);
-                $message_html .= '<div class="prod-opt">' . implode(' · ', $options) . '</div>';
-            }
-            $message_html .= '</td><td class="td-center">' . $item['quantite'] . '</td><td style="text-align:right;color:#555;">' . number_format($item['prix'], 0, ',', ' ') . ' F</td><td class="td-right">' . number_format($item['prix'] * $item['quantite'], 0, ',', ' ') . ' F</td></tr>';
-        }
-        
-        $message_html .= '
-                        </tbody>
-                    </table>
-                    
-                    <div class="status-row">
-                        <span class="status-badge">En attente de validation</span>
-                        <span class="delivery-note">🚚 Livraison sous 24h–48h à Bamako</span>
-                    </div>
-                    
-                    <a href="' . SITE_URL . '/boutique/suivi.php" class="cta-btn">Suivre ma commande →</a>
-                </div>
-                <div class="footer">
-                    <div class="ft-brand">✦ Awa Ka Sugu ✦</div>
-                    <div class="ft-links">
-                        <a href="#">Boutique</a>
-                        <a href="#">Contact</a>
-                        <a href="#">CGV</a>
-                    </div>
-                    <div class="ft-copy">&copy; ' . date('Y') . ' Awa Ka Sugu — Cet email est généré automatiquement, merci de ne pas y répondre.</div>
-                </div>
+        <body style="margin:0;padding:0;background-color:#EFEFF2;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#EFEFF2;">
+        <tr><td align="center" style="padding:32px 12px;">
+
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:16px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+
+          <tr><td style="background-color:#C8922A;font-size:0;line-height:4px;height:4px;">&nbsp;</td></tr>
+
+          <tr><td style="background-color:#0D0D0D;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+              <td align="center" style="padding:34px 30px 26px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" align="center"><tr>
+                  <td style="width:52px;height:52px;border-radius:50%;border:1.5px solid #C8922A;background-color:#161310;text-align:center;vertical-align:middle;font-family:Georgia,\'Times New Roman\',serif;font-weight:bold;font-size:19px;color:#C8922A;">ID</td>
+                </tr></table>
+                <div style="height:14px;line-height:14px;font-size:1px;">&nbsp;</div>
+                <div style="font-family:Georgia,\'Times New Roman\',serif;font-size:23px;font-weight:bold;letter-spacing:4px;color:#C8922A;text-transform:uppercase;">Awa Ka Sugu</div>
+                <div style="height:8px;line-height:8px;font-size:1px;">&nbsp;</div>
+                <div style="font-family:Arial,sans-serif;font-size:9.5px;letter-spacing:2px;color:#8a8378;text-transform:uppercase;">Boutique IBA Design &nbsp;&middot;&nbsp; Restaurant Sofia</div>
+                <div style="height:16px;line-height:16px;font-size:1px;">&nbsp;</div>
+                <table role="presentation" cellpadding="0" cellspacing="0" align="center"><tr>
+                  <td style="background-color:#123420;border:1px solid #2ECC71;border-radius:20px;padding:8px 20px;font-family:Arial,sans-serif;font-size:11px;color:#4FE08A;letter-spacing:1px;text-transform:uppercase;font-weight:bold;">&#10003; Commande confirm&eacute;e</td>
+                </tr></table>
+              </td>
+            </tr></table>
+          </td></tr>
+
+          <tr><td style="padding:34px 32px 8px;">
+            <p style="margin:0 0 6px;font-family:Arial,sans-serif;font-size:18px;font-weight:bold;color:#0D0D0D;">Merci, <span style="color:#C8922A;">' . htmlspecialchars($nom) . '</span> !</p>
+            <p style="margin:0 0 22px;font-family:Arial,sans-serif;font-size:13px;color:#6A7585;line-height:1.6;">Votre commande a bien &eacute;t&eacute; enregistr&eacute;e et est en cours de traitement.</p>
+
+            ' . $bloc_points_html . '
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F9F9FB;border:1px solid #ECEDF1;border-radius:12px;margin-bottom:18px;">
+              <tr><td style="background-color:#0D0D0D;padding:13px 20px;border-radius:11px 11px 0 0;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+                  <td style="font-family:Georgia,serif;font-size:13px;font-weight:bold;color:#C8922A;">Commande #' . $numero_commande . '</td>
+                  <td align="right" style="font-family:Arial,sans-serif;font-size:10.5px;color:#8a8378;">' . date('d/m/Y à H:i') . '</td>
+                </tr></table>
+              </td></tr>
+              <tr><td style="padding:12px 20px;border-bottom:1px solid #F0F1F4;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+                  <td style="font-family:Arial,sans-serif;font-size:12px;color:#8A92A3;">Mode de paiement</td>
+                  <td align="right" style="font-family:Arial,sans-serif;font-size:12px;font-weight:bold;color:#1A1A2E;">' . htmlspecialchars(ucfirst(str_replace('_', ' ', $mode_paiement))) . '</td>
+                </tr></table>
+              </td></tr>
+              <tr><td style="padding:12px 20px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+                  <td valign="top" style="font-family:Arial,sans-serif;font-size:12px;color:#8A92A3;width:38%;">Adresse de livraison</td>
+                  <td align="right" style="font-family:Arial,sans-serif;font-size:12px;font-weight:bold;color:#1A1A2E;">' . nl2br(htmlspecialchars($adresse)) . '</td>
+                </tr></table>
+              </td></tr>
+              <tr><td style="background-color:#C8922A;padding:14px 20px;border-radius:0 0 11px 11px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+                  <td style="font-family:Arial,sans-serif;font-size:11px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;color:#2A1F0C;">Total &agrave; payer</td>
+                  <td align="right" style="font-family:Georgia,serif;font-size:19px;font-weight:bold;color:#1A1200;">' . number_format($total_apres_reductions, 0, ',', ' ') . ' FCFA</td>
+                </tr></table>
+              </td></tr>
+            </table>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F0FBF4;border:1px solid #BFE8CC;border-radius:12px;margin-bottom:22px;">
+              <tr><td style="padding:13px 16px;">
+                <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+                  <td valign="top" style="font-size:18px;padding-right:12px;">&#128206;</td>
+                  <td style="font-family:Arial,sans-serif;">
+                    <div style="font-size:13px;font-weight:bold;color:#1A7A45;">Votre facture est jointe &agrave; cet email</div>
+                    <div style="font-size:11px;color:#5A8A6A;margin-top:2px;">Facture N&deg; ' . $facture_info['numero_facture'] . ' &mdash; Conservez-la pr&eacute;cieusement.</div>
+                  </td>
+                </tr></table>
+              </td></tr>
+            </table>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
+              <tr><td colspan="2" style="font-family:Arial,sans-serif;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#8A92A3;padding-bottom:8px;border-bottom:1px solid #E8E9ED;">Articles commandés</td></tr>
+              ' . $lignes_articles_client . '
+            </table>
+
+            <div style="height:18px;line-height:18px;font-size:1px;">&nbsp;</div>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;"><tr>
+              <td>
+                <table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="background-color:#FFFBF0;border:1px solid #E9D4A6;border-radius:20px;padding:7px 14px;font-family:Arial,sans-serif;font-size:11.5px;font-weight:bold;color:#A07020;">&#9679;&nbsp; En attente de validation</td></tr></table>
+              </td>
+              <td align="right" style="font-family:Arial,sans-serif;font-size:11.5px;color:#7A8694;">Livraison sous 24h&ndash;48h &agrave; Bamako</td>
+            </tr></table>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;"><tr><td align="center">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="background-color:#C8922A;border-radius:26px;">
+                <a href="' . SITE_URL . '/boutique/suivi.php" style="display:block;padding:14px 10px;font-family:Arial,sans-serif;font-size:13.5px;font-weight:bold;color:#1A1200;text-decoration:none;letter-spacing:0.5px;">Suivre ma commande &rarr;</a>
+              </td></tr></table>
+            </td></tr></table>
+
+          </td></tr>
+
+          <tr><td style="background-color:#0A0A0A;padding:22px 30px;text-align:center;">
+            <div style="font-family:Georgia,serif;font-size:13px;font-weight:bold;color:#C8922A;margin-bottom:8px;">Awa Ka Sugu</div>
+            <div style="font-family:Arial,sans-serif;font-size:10.5px;">
+              <a href="' . SITE_URL . '" style="color:#8a8378;text-decoration:none;">Boutique</a>
+              <span style="color:#3a3a3a;">&nbsp;&middot;&nbsp;</span>
+              <a href="' . SITE_URL . '/contact.php" style="color:#8a8378;text-decoration:none;">Contact</a>
             </div>
+            <div style="font-family:Arial,sans-serif;font-size:9px;color:#3a3a3a;margin-top:10px;">&copy; ' . date('Y') . ' Awa Ka Sugu &mdash; Cet email est généré automatiquement, merci de ne pas y répondre.</div>
+          </td></tr>
+
+        </table>
+
+        </td></tr>
+        </table>
         </body>
         </html>';
         
@@ -721,7 +712,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if (!empty($destinataires)) {
             // Construire le sujet
-            $sujet_notification = "🛒 Nouvelle commande #" . $numero_commande . " sur Awa Ka Sugu";
+            $sujet_notification = "Nouvelle commande #" . $numero_commande . " sur Awa Ka Sugu";
+
+            // ── Lignes d'articles pour l'email admin ──
+            $lignes_articles_admin = '';
+            foreach ($panier_pour_email as $item) {
+                $lignes_articles_admin .= '
+                  <tr>
+                    <td style="padding:11px 0;border-bottom:1px solid #F5F6F8;font-family:Arial,sans-serif;font-size:12.5px;color:#1A1A2E;">' . htmlspecialchars($item['nom']) . ' <span style="color:#9099A8;">&times;' . (int)$item['quantite'] . '</span></td>
+                    <td align="right" style="padding:11px 0;border-bottom:1px solid #F5F6F8;font-family:Arial,sans-serif;font-size:12.5px;font-weight:bold;color:#C8922A;white-space:nowrap;">' . number_format($item['prix'] * $item['quantite'], 0, ',', ' ') . ' FCFA</td>
+                  </tr>';
+            }
             
             // Construire le message HTML pour les admins
             $message_admin = '
@@ -730,116 +731,108 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <style>
-                    @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@300;400;500;600&display=swap");
-                    * { box-sizing: border-box; margin: 0; padding: 0; }
-                    body { font-family: "Inter", Arial, sans-serif; background: #0E0E0E; padding: 30px 15px; }
-                    .wrapper { max-width: 620px; margin: 0 auto; }
-                    /* ── Header ── */
-                    .header { background: linear-gradient(160deg, #0A0A0A 0%, #1C1308 60%, #0A0A0A 100%); padding: 32px 30px; text-align: center; border-radius: 20px 20px 0 0; position: relative; }
-                    .header::after { content: ""; display: block; width: 80px; height: 2px; background: linear-gradient(90deg, transparent, #C8922A, transparent); margin: 10px auto 0; }
-                    .header .brand { font-family: "Playfair Display", Georgia, serif; font-size: 1.7rem; font-weight: 700; color: #C8922A; letter-spacing: 4px; }
-                    .header .tagline { color: rgba(255,255,255,0.3); font-size: 0.68rem; letter-spacing: 3px; text-transform: uppercase; margin-top: 6px; }
-                    .header .notif-badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(200,146,42,0.12); border: 1px solid rgba(200,146,42,0.35); color: #E8B55A; font-size: 0.72rem; font-weight: 600; padding: 5px 16px; border-radius: 20px; margin-top: 14px; letter-spacing: 1px; }
-                    /* ── Body ── */
-                    .body { background: #ffffff; padding: 32px 30px; }
-                    /* ── Alert banner ── */
-                    .alert-banner { background: linear-gradient(135deg, #FFF8EC, #FFFAF2); border: 1px solid rgba(200,146,42,0.3); border-radius: 14px; padding: 16px 20px; margin-bottom: 24px; display: flex; align-items: flex-start; gap: 14px; }
-                    .alert-banner .ab-icon { font-size: 2rem; line-height: 1; }
-                    .alert-banner .ab-text .ab-title { font-size: 1rem; font-weight: 700; color: #0D0D0D; }
-                    .alert-banner .ab-text .ab-title span { color: #C8922A; }
-                    .alert-banner .ab-text .ab-sub { font-size: 0.8rem; color: #8A7A60; margin-top: 3px; }
-                    /* ── Client card ── */
-                    .client-card { background: #F9F9FB; border-radius: 14px; overflow: hidden; margin-bottom: 22px; border: 1px solid #EEEFF2; }
-                    .client-card-head { background: #0D0D0D; padding: 10px 18px; }
-                    .client-card-head span { color: rgba(255,255,255,0.4); font-size: 0.68rem; letter-spacing: 2px; text-transform: uppercase; font-weight: 500; }
-                    .client-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 18px; border-bottom: 1px solid #F0F1F4; }
-                    .client-row:last-child { border-bottom: none; }
-                    .client-row .cr-lbl { color: #8A92A3; font-size: 0.8rem; font-weight: 500; }
-                    .client-row .cr-val { color: #1A1A2E; font-size: 0.88rem; font-weight: 600; max-width: 60%; text-align: right; }
-                    /* ── Total band ── */
-                    .total-band { background: linear-gradient(135deg, #C8922A, #E8B55A); border-radius: 12px; padding: 16px 22px; margin-bottom: 22px; display: flex; justify-content: space-between; align-items: center; }
-                    .total-band .tb-lbl { color: rgba(255,255,255,0.75); font-size: 0.78rem; font-weight: 500; text-transform: uppercase; letter-spacing: 1px; }
-                    .total-band .tb-val { color: #fff; font-family: "Playfair Display", serif; font-size: 1.5rem; font-weight: 700; }
-                    /* ── Products table ── */
-                    .sec-label { font-size: 0.72rem; font-weight: 600; color: #8A92A3; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; }
-                    .ptable { width: 100%; border-collapse: collapse; margin-bottom: 22px; }
-                    .ptable thead tr { background: #F4F5F8; }
-                    .ptable th { padding: 10px 12px; font-size: 0.7rem; font-weight: 600; color: #8A92A3; text-transform: uppercase; letter-spacing: 1px; text-align: left; }
-                    .ptable td { padding: 11px 12px; border-bottom: 1px solid #F0F1F4; font-size: 0.85rem; color: #2D3748; }
-                    .ptable tr:last-child td { border-bottom: none; }
-                    .ptable .td-c { text-align: center; }
-                    .ptable .td-r { text-align: right; font-weight: 700; color: #C8922A; }
-                    /* ── CTA ── */
-                    .cta-btn { display: block; text-align: center; background: linear-gradient(135deg, #0D0D0D, #2A1F0A); color: #C8922A; font-weight: 700; font-size: 0.9rem; padding: 15px 30px; border-radius: 30px; text-decoration: none; letter-spacing: 0.5px; border: 2px solid #C8922A; margin-bottom: 12px; }
-                    .auto-note { text-align: center; color: #A0A8B4; font-size: 0.75rem; margin-top: 8px; }
-                    /* ── Footer ── */
-                    .footer { background: #0D0D0D; padding: 20px 30px; text-align: center; border-radius: 0 0 20px 20px; }
-                    .footer .ft-brand { color: #C8922A; font-family: "Playfair Display", serif; font-size: 0.85rem; margin-bottom: 6px; }
-                    .footer .ft-copy { color: rgba(255,255,255,0.18); font-size: 0.65rem; margin-top: 6px; }
-                </style>
+                <title>Nouvelle commande</title>
             </head>
-            <body>
-                <div class="wrapper">
-                    <div class="header">
-                        <div class="brand">✦ Awa Ka Sugu ✦</div>
-                        <div class="tagline">Espace Administration</div>
-                        <div class="notif-badge">🛒 Nouvelle commande reçue</div>
-                    </div>
-                    <div class="body">
-                        <div class="alert-banner">
-                            <span class="ab-icon">📦</span>
-                            <div class="ab-text">
-                                <div class="ab-title">Commande <span>#' . $numero_commande . '</span> — Action requise</div>
-                                <div class="ab-sub">Une nouvelle commande vient d\'être enregistrée · ' . date('d/m/Y à H:i') . '</div>
-                            </div>
-                        </div>
-                        
-                        <div class="client-card">
-                            <div class="client-card-head"><span>Informations client</span></div>
-                            <div class="client-row"><span class="cr-lbl">Client</span><span class="cr-val">' . htmlspecialchars($nom) . '</span></div>
-                            <div class="client-row"><span class="cr-lbl">Téléphone</span><span class="cr-val">' . htmlspecialchars($telephone) . '</span></div>
-                            <div class="client-row"><span class="cr-lbl">Adresse livraison</span><span class="cr-val">' . nl2br(htmlspecialchars($adresse)) . '</span></div>
-                            <div class="client-row"><span class="cr-lbl">Mode de paiement</span><span class="cr-val">' . ucfirst(str_replace('_', ' ', $mode_paiement)) . '</span></div>
-                        </div>
-                        
-                        <div class="total-band">
-                            <span class="tb-lbl">Montant total</span>
-                            <span class="tb-val">' . number_format($total_apres_reductions, 0, ',', ' ') . ' FCFA</span>
-                        </div>
-                        
-                        <p class="sec-label">Articles commandés</p>
-                        <table class="ptable">
-                            <thead>
-                                <tr>
-                                    <th>Produit</th>
-                                    <th class="td-c">Qté</th>
-                                    <th class="td-r">Total</th>
-                                </tr>
-                            </thead>
-                            <tbody>';
-            
-            foreach ($_SESSION['panier'] as $item) {
-                $message_admin .= '
-                                <tr>
-                                    <td>' . htmlspecialchars($item['nom']) . '</td>
-                                    <td class="td-c">' . $item['quantite'] . '</td>
-                                    <td class="td-r">' . number_format($item['prix'] * $item['quantite'], 0, ',', ' ') . ' F</td>
-                                </tr>';
-            }
-            
-            $message_admin .= '
-                            </tbody>
-                        </table>
-                        
-                        <a href="http://localhost/awakasugu/admin/commande_detail.php?id=' . $commande_id . '" class="cta-btn">Traiter cette commande →</a>
-                        <p class="auto-note">Notification automatique — Connectez-vous à l\'administration pour gérer les commandes.</p>
-                    </div>
-                    <div class="footer">
-                        <div class="ft-brand">✦ Awa Ka Sugu — Administration ✦</div>
-                        <div class="ft-copy">&copy; ' . date('Y') . ' Awa Ka Sugu — Email automatique, merci de ne pas y répondre.</div>
-                    </div>
-                </div>
+            <body style="margin:0;padding:0;background-color:#EFEFF2;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#EFEFF2;">
+            <tr><td align="center" style="padding:32px 12px;">
+
+            <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:16px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+
+              <tr><td style="background-color:#C8922A;font-size:0;line-height:4px;height:4px;">&nbsp;</td></tr>
+
+              <tr><td style="background-color:#0D0D0D;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+                  <td align="center" style="padding:28px 30px 24px;">
+                    <div style="font-family:Georgia,\'Times New Roman\',serif;font-size:20px;font-weight:bold;letter-spacing:4px;color:#C8922A;text-transform:uppercase;">Awa Ka Sugu</div>
+                    <div style="height:6px;line-height:6px;font-size:1px;">&nbsp;</div>
+                    <div style="font-family:Arial,sans-serif;font-size:9.5px;letter-spacing:2px;color:#8a8378;text-transform:uppercase;">Espace Administration</div>
+                    <div style="height:14px;line-height:14px;font-size:1px;">&nbsp;</div>
+                    <table role="presentation" cellpadding="0" cellspacing="0" align="center"><tr>
+                      <td style="background-color:#231A0E;border:1px solid #4a3a20;border-radius:20px;padding:7px 18px;font-family:Arial,sans-serif;font-size:10.5px;color:#E8C070;letter-spacing:1px;text-transform:uppercase;font-weight:bold;">Nouvelle commande re&ccedil;ue</td>
+                    </tr></table>
+                  </td>
+                </tr></table>
+              </td></tr>
+
+              <tr><td style="padding:30px 30px 8px;">
+
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FFF8EC;border:1px solid #E9D4A6;border-radius:14px;margin-bottom:22px;">
+                  <tr><td style="padding:16px 18px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+                      <td valign="top" style="font-size:26px;padding-right:14px;">&#128230;</td>
+                      <td style="font-family:Arial,sans-serif;">
+                        <div style="font-size:15px;font-weight:bold;color:#0D0D0D;">Commande <span style="color:#C8922A;">#' . $numero_commande . '</span> &mdash; Action requise</div>
+                        <div style="font-size:11.5px;color:#8A7A60;margin-top:4px;">Une nouvelle commande vient d&rsquo;&ecirc;tre enregistr&eacute;e &middot; ' . date('d/m/Y à H:i') . '</div>
+                      </td>
+                    </tr></table>
+                  </td></tr>
+                </table>
+
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F9F9FB;border:1px solid #ECEDF1;border-radius:12px;margin-bottom:20px;">
+                  <tr><td style="background-color:#0D0D0D;padding:11px 18px;border-radius:11px 11px 0 0;">
+                    <span style="font-family:Arial,sans-serif;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#8a8378;">Informations client</span>
+                  </td></tr>
+                  <tr><td style="padding:11px 18px;border-bottom:1px solid #F0F1F4;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+                      <td style="font-family:Arial,sans-serif;font-size:12px;color:#8A92A3;">Client</td>
+                      <td align="right" style="font-family:Arial,sans-serif;font-size:12px;font-weight:bold;color:#1A1A2E;">' . htmlspecialchars($nom) . '</td>
+                    </tr></table>
+                  </td></tr>
+                  <tr><td style="padding:11px 18px;border-bottom:1px solid #F0F1F4;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+                      <td style="font-family:Arial,sans-serif;font-size:12px;color:#8A92A3;">T&eacute;l&eacute;phone</td>
+                      <td align="right" style="font-family:Arial,sans-serif;font-size:12px;font-weight:bold;color:#1A1A2E;">' . htmlspecialchars($telephone) . '</td>
+                    </tr></table>
+                  </td></tr>
+                  <tr><td style="padding:11px 18px;border-bottom:1px solid #F0F1F4;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+                      <td valign="top" style="font-family:Arial,sans-serif;font-size:12px;color:#8A92A3;width:40%;">Adresse livraison</td>
+                      <td align="right" style="font-family:Arial,sans-serif;font-size:12px;font-weight:bold;color:#1A1A2E;">' . nl2br(htmlspecialchars($adresse)) . '</td>
+                    </tr></table>
+                  </td></tr>
+                  <tr><td style="padding:11px 18px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+                      <td style="font-family:Arial,sans-serif;font-size:12px;color:#8A92A3;">Mode de paiement</td>
+                      <td align="right" style="font-family:Arial,sans-serif;font-size:12px;font-weight:bold;color:#1A1A2E;">' . htmlspecialchars(ucfirst(str_replace('_', ' ', $mode_paiement))) . '</td>
+                    </tr></table>
+                  </td></tr>
+                </table>
+
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#C8922A;border-radius:10px;margin-bottom:22px;">
+                  <tr><td style="padding:16px 20px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+                      <td style="font-family:Arial,sans-serif;font-size:11.5px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;color:#2A1F0C;">Montant total</td>
+                      <td align="right" style="font-family:Georgia,serif;font-size:21px;font-weight:bold;color:#1A1200;">' . number_format($total_apres_reductions, 0, ',', ' ') . ' FCFA</td>
+                    </tr></table>
+                  </td></tr>
+                </table>
+
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
+                  <tr><td colspan="2" style="font-family:Arial,sans-serif;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#8A92A3;padding-bottom:8px;border-bottom:1px solid #E8E9ED;">Articles commandés</td></tr>
+                  ' . $lignes_articles_admin . '
+                </table>
+
+                <div style="height:20px;line-height:20px;font-size:1px;">&nbsp;</div>
+
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="background-color:#0D0D0D;border:1.5px solid #C8922A;border-radius:26px;">
+                    <a href="' . SITE_URL . '/admin/commande_detail.php?id=' . $commande_id . '" style="display:block;padding:14px 10px;font-family:Arial,sans-serif;font-size:13px;font-weight:bold;color:#C8922A;text-decoration:none;letter-spacing:0.5px;">Traiter cette commande &rarr;</a>
+                  </td></tr></table>
+                  <p style="margin:10px 0 4px;font-family:Arial,sans-serif;font-size:11px;color:#A0A8B4;">Notification automatique &mdash; connectez-vous &agrave; l&rsquo;administration pour g&eacute;rer les commandes.</p>
+                </td></tr></table>
+
+              </td></tr>
+
+              <tr><td style="background-color:#0A0A0A;padding:20px 30px;text-align:center;">
+                <div style="font-family:Georgia,serif;font-size:12px;font-weight:bold;color:#C8922A;margin-bottom:6px;">Awa Ka Sugu &mdash; Administration</div>
+                <div style="font-family:Arial,sans-serif;font-size:9px;color:#3a3a3a;">&copy; ' . date('Y') . ' Awa Ka Sugu &mdash; Email automatique, merci de ne pas y répondre.</div>
+              </td></tr>
+
+            </table>
+
+            </td></tr>
+            </table>
             </body>
             </html>';
             

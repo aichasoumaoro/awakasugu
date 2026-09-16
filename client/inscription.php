@@ -3,18 +3,11 @@
 // PAGE D'INSCRIPTION CLIENT - Awa Ka Sugu
 // ============================================
 
-// ============================================
-// SESSION PUBLIQUE SÉPARÉE
-// ============================================
 session_name('PUBLIC_SESSION');
 session_start();
 
-// ============================================
-// VÉRIFICATION MAINTENANCE
-// ============================================
 require_once '../includes/maintenance_check.php';
 
-// Si déjà connecté, rediriger
 if (isset($_SESSION['client_id'])) {
     header('Location: mon_compte.php');
     exit;
@@ -36,7 +29,6 @@ $error = '';
 $success = '';
 $email_prefill = isset($_GET['email']) ? htmlspecialchars(trim($_GET['email'])) : '';
 
-// Traitement du formulaire
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nom = trim($_POST['nom'] ?? '');
     $prenom = trim($_POST['prenom'] ?? '');
@@ -77,7 +69,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ");
                 if ($stmt->execute([$nom, $prenom, $email, $telephone, $quartier, $commune, $adresse_complete, $hashed_password])) {
                     $success = 'Votre compte a été créé avec succès !';
-                    // Redirection après 2 secondes
                     header("refresh:2;url=connexion.php");
                 } else {
                     $error = 'Une erreur est survenue. Veuillez réessayer.';
@@ -94,342 +85,501 @@ require_once '../includes/navbar.php';
 ?>
 
 <style>
-/* ========== STYLES PAGE INSCRIPTION MODERNISÉE ========== */
-.inscription-page {
-    min-height: calc(100vh - 200px);
+/* ============================================
+   PAGE INSCRIPTION - VERSION ÉCLAIRCIE & AGRANDIE
+   ============================================ */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700&display=swap');
+
+@keyframes pageEnter {
+    0% { opacity: 0; transform: translateY(30px) scale(0.98); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes fadeInUp {
+    0% { opacity: 0; transform: translateY(20px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+}
+
+/* ===== PAGE FOND CLAIR ===== */
+.signup-light-page {
+    min-height: calc(100vh - 140px);
+    background: linear-gradient(135deg, #FAF7F2 0%, #F5EDE0 50%, #FBF8F3 100%);
+    background-image: 
+        radial-gradient(circle at 20% 20%, rgba(200,146,42,0.06) 0%, transparent 40%),
+        radial-gradient(circle at 80% 80%, rgba(232,181,90,0.05) 0%, transparent 40%),
+        linear-gradient(rgba(200,146,42,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(200,146,42,0.04) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 40px 40px, 40px 40px;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 60px 20px;
-    background: linear-gradient(135deg, #FBF7F2 0%, #F7EDD8 100%);
+    padding: 50px 20px;
+    font-family: 'Poppins', sans-serif;
     position: relative;
+    overflow: hidden;
 }
-.inscription-page::before {
-    content: '';
+
+/* ===== WRAPPER AGRANDI ===== */
+.signup-card {
+    position: relative;
+    width: 100%;
+    max-width: 1000px;  /* ← AGRANDI (avant 680px) */
+    background: #ffffff;
+    border-radius: 24px;
+    border: 1.5px solid rgba(200,146,42,0.25);
+    box-shadow: 
+        0 10px 40px rgba(200,146,42,0.12),
+        0 2px 8px rgba(0,0,0,0.04);
+    overflow: hidden;
+    animation: pageEnter 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 2;
+}
+
+/* ===== COINS DÉCORATIFS ===== */
+.neon-corner-light {
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="90" font-size="80" opacity="0.03">✦</text></svg>') repeat;
-    background-size: 80px 80px;
+    width: 24px;
+    height: 24px;
+    border: 2px solid #C8922A;
+    z-index: 4;
     pointer-events: none;
 }
-.inscription-card {
-    max-width: 680px;
-    width: 100%;
-    background: #fff;
-    border-radius: 24px;
-    box-shadow: 0 25px 60px -15px rgba(0,0,0,0.2);
-    overflow: hidden;
-    border: 1px solid rgba(200,146,42,0.15);
-    position: relative;
-    z-index: 1;
-}
-.inscription-header {
-    background: linear-gradient(135deg, #0D0D0D 0%, #1A1A1A 100%);
-    padding: 35px 35px 25px;
+.neon-corner-light.tl { top: 10px; left: 10px; border-right: none; border-bottom: none; border-radius: 12px 0 0 0; }
+.neon-corner-light.tr { top: 10px; right: 10px; border-left: none; border-bottom: none; border-radius: 0 12px 0 0; }
+.neon-corner-light.bl { bottom: 10px; left: 10px; border-right: none; border-top: none; border-radius: 0 0 0 12px; }
+.neon-corner-light.br { bottom: 10px; right: 10px; border-left: none; border-top: none; border-radius: 0 0 12px 0; }
+
+/* ===== HEADER ===== */
+.signup-header {
+    background: linear-gradient(135deg, #0D0D0D 0%, #1A1510 100%);
+    padding: 35px 45px 30px;
     text-align: center;
-    border-bottom: 3px solid #C8922A;
     position: relative;
     overflow: hidden;
+    border-bottom: 2px solid #C8922A;
 }
-.inscription-header::after {
-    content: '✦';
+.signup-header::before {
+    content: '';
     position: absolute;
-    right: -20px;
-    top: -20px;
-    font-size: 80px;
-    color: rgba(200,146,42,0.05);
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle at 50% 50%, rgba(200,146,42,0.15) 0%, transparent 50%);
+    animation: shine 8s ease-in-out infinite;
 }
-.inscription-header h1 {
+@keyframes shine {
+    0%, 100% { transform: translate(0, 0); }
+    50% { transform: translate(20px, -20px); }
+}
+.signup-header .brand {
+    font-family: 'Playfair Display', serif;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #C8922A;
+    letter-spacing: 5px;
+    margin-bottom: 12px;
+    position: relative;
+    z-index: 2;
+}
+.signup-header h1 {
     font-family: 'Playfair Display', serif;
     font-size: 2rem;
     font-weight: 700;
+    color: #fff;
+    margin-bottom: 8px;
+    letter-spacing: 2px;
+    position: relative;
+    z-index: 2;
+}
+.signup-header h1 span {
     color: #C8922A;
-    margin-bottom: 6px;
+    text-shadow: 0 0 20px rgba(200,146,42,0.6);
 }
-.inscription-header p {
+.signup-header p {
     font-size: 0.85rem;
-    color: rgba(255,255,255,0.4);
+    color: rgba(255,255,255,0.5);
     letter-spacing: 1px;
+    position: relative;
+    z-index: 2;
 }
-.inscription-body {
-    padding: 35px 35px 30px;
+
+/* ===== BODY AGRANDI ===== */
+.signup-body {
+    padding: 45px 55px 40px;  /* ← AGRANDI */
+    background: #ffffff;
+    animation: fadeIn 0.6s ease 0.4s both;
 }
-.alert-error {
+
+/* ===== ALERTES ===== */
+.light-alert {
+    padding: 14px 18px;
+    border-radius: 12px;
+    margin-bottom: 24px;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    line-height: 1.5;
+}
+.light-alert.error {
     background: #FEF3F2;
     border-left: 4px solid #E74C3C;
-    padding: 14px 18px;
-    border-radius: 12px;
-    margin-bottom: 22px;
-    font-size: 0.85rem;
     color: #721C24;
-    display: flex;
-    align-items: center;
-    gap: 10px;
 }
-.alert-success {
-    background: #D4EDDA;
+.light-alert.error i { color: #E74C3C; margin-top: 2px; }
+.light-alert.success {
+    background: #E8F8EE;
     border-left: 4px solid #27AE60;
-    padding: 14px 18px;
-    border-radius: 12px;
-    margin-bottom: 22px;
-    font-size: 0.85rem;
     color: #0A3622;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    text-align: center;
     flex-direction: column;
+    text-align: center;
+    align-items: center;
 }
-.alert-success .btn-connect {
+.light-alert.success i { color: #27AE60; font-size: 1.2rem; }
+.light-alert.success .btn-go-light {
     display: inline-block;
-    background: #C8922A;
-    color: #fff;
-    padding: 10px 30px;
-    border-radius: 30px;
-    text-decoration: none;
-    font-weight: 600;
     margin-top: 10px;
-    transition: all 0.3s;
+    background: linear-gradient(135deg, #C8922A, #E8B55A);
+    color: #fff;
+    padding: 10px 28px;
+    border-radius: 25px;
+    text-decoration: none;
+    font-size: 0.8rem;
+    font-weight: 600;
+    transition: 0.3s;
+    box-shadow: 0 4px 15px rgba(200,146,42,0.3);
 }
-.alert-success .btn-connect:hover {
-    background: #9A6E1A;
+.light-alert.success .btn-go-light:hover {
     transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(200,146,42,0.5);
 }
-.newsletter-badge {
+
+/* ===== NEWSLETTER ===== */
+.newsletter-light {
     background: linear-gradient(135deg, rgba(200,146,42,0.08), rgba(200,146,42,0.03));
-    border: 1px solid rgba(200,146,42,0.15);
+    border: 1px solid rgba(200,146,42,0.25);
     border-radius: 12px;
-    padding: 14px 18px;
-    margin-bottom: 25px;
+    padding: 16px 20px;
+    margin-bottom: 28px;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
     font-size: 0.85rem;
-    color: #0D0D0D;
+    color: #1A2C3E;
 }
-.newsletter-badge i {
+.newsletter-light i {
     color: #C8922A;
-    font-size: 1.4rem;
+    font-size: 1.5rem;
 }
-.newsletter-badge strong {
-    color: #C8922A;
-}
-.form-row {
+.newsletter-light strong { color: #C8922A; }
+
+/* ===== FORMULAIRE ===== */
+.form-row-light {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 16px;
+    gap: 20px;
 }
-.form-group {
-    margin-bottom: 16px;
+.field-light {
+    margin-bottom: 20px;
 }
-.form-group label {
+.field-light label {
     display: block;
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     font-weight: 700;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.8px;
     text-transform: uppercase;
-    color: #0D0D0D;
-    margin-bottom: 6px;
+    color: #1A2C3E;
+    margin-bottom: 8px;
 }
-.form-group label i {
+.field-light label i {
     color: #C8922A;
     margin-right: 6px;
+    font-size: 0.85rem;
 }
-.form-group .required {
-    color: #E74C3C;
-    font-size: 0.8rem;
+.field-light .required { color: #E74C3C; }
+.field-light .input-light {
+    position: relative;
 }
-.form-control {
+.field-light .input-light input {
     width: 100%;
-    padding: 12px 16px;
-    font-family: 'Jost', sans-serif;
-    font-size: 0.9rem;
-    border: 1.5px solid #E8E8E8;
+    padding: 15px 18px 15px 48px;  /* ← AGRANDI */
+    border: 1.5px solid #E8ECF0;
     border-radius: 12px;
+    background: #FAFBFC;
+    font-family: 'Poppins', sans-serif;
+    font-size: 0.92rem;  /* ← AGRANDI */
+    color: #1A2C3E;
     transition: all 0.3s;
-    background: #FAFAFA;
 }
-.form-control:focus {
+.field-light .input-light input:focus {
     outline: none;
     border-color: #C8922A;
-    background: #fff;
-    box-shadow: 0 0 0 3px rgba(200,146,42,0.08);
+    background: #ffffff;
+    box-shadow: 0 0 0 4px rgba(200,146,42,0.08);
 }
-.form-control::placeholder {
-    color: #B0B0B0;
+.field-light .input-light input::placeholder {
+    color: #B0B8C4;
+    font-size: 0.88rem;
 }
-.btn-inscrire {
+.field-light .input-light .icon-light {
+    position: absolute;
+    left: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #C8922A;
+    font-size: 1rem;
+    pointer-events: none;
+    transition: 0.3s;
+}
+.field-light .input-light input:focus ~ .icon-light {
+    color: #9A6E1A;
+    transform: translateY(-50%) scale(1.1);
+}
+
+/* ===== BOUTON SUBMIT ===== */
+.btn-submit-light {
     width: 100%;
-    background: linear-gradient(135deg, #C8922A, #E2B96A);
-    color: #fff;
-    font-family: 'Jost', sans-serif;
-    font-size: 0.85rem;
-    font-weight: 700;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    padding: 15px;
+    padding: 17px;  /* ← AGRANDI */
+    margin-top: 15px;
+    background: linear-gradient(135deg, #C8922A, #E8B55A);
     border: none;
     border-radius: 12px;
+    color: #fff;
+    font-family: 'Poppins', sans-serif;
+    font-weight: 700;
+    font-size: 0.95rem;  /* ← AGRANDI */
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
     cursor: pointer;
-    transition: all 0.3s;
-    margin-top: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
+    transition: all 0.4s;
+    box-shadow: 0 6px 20px rgba(200,146,42,0.3);
+    position: relative;
+    overflow: hidden;
 }
-.btn-inscrire:hover {
-    background: linear-gradient(135deg, #9A6E1A, #C8922A);
+.btn-submit-light::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    transition: left 0.6s;
+}
+.btn-submit-light:hover::before { left: 100%; }
+.btn-submit-light:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(200,146,42,0.35);
+    box-shadow: 0 12px 30px rgba(200,146,42,0.45);
 }
-.info-text {
-    font-size: 0.75rem;
-    color: #999;
+
+/* ===== INFO TEXT ===== */
+.info-light {
     text-align: center;
-    margin-top: 20px;
-    padding: 15px;
-    background: #FAFAFA;
+    margin-top: 22px;
+    padding: 16px;
+    background: #FAFBFC;
     border-radius: 12px;
+    font-size: 0.78rem;
+    color: #6B7A8D;
+    line-height: 1.6;
+    border: 1px dashed rgba(200,146,42,0.25);
 }
-.info-text i {
+.info-light i {
     color: #C8922A;
-    margin-right: 6px;
+    margin-right: 5px;
 }
-.inscription-footer {
+
+/* ===== FOOTER LIEN ===== */
+.footer-link-light {
     text-align: center;
-    margin-top: 25px;
-    padding-top: 20px;
+    margin-top: 24px;
+    padding-top: 22px;
     border-top: 1px solid #F0EDEA;
+    font-size: 0.88rem;
+    color: #6B7A8D;
 }
-.inscription-footer a {
+.footer-link-light a {
     color: #C8922A;
     text-decoration: none;
-    font-size: 0.85rem;
-    font-weight: 600;
-    transition: color 0.3s;
+    font-weight: 700;
+    transition: 0.3s;
+    position: relative;
 }
-.inscription-footer a:hover {
-    color: #9A6E1A;
-    text-decoration: underline;
+.footer-link-light a::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 0;
+    height: 1px;
+    background: #C8922A;
+    transition: width 0.3s;
 }
-@media (max-width: 550px) {
-    .form-row { grid-template-columns: 1fr; gap: 0; }
-    .inscription-body { padding: 20px; }
-    .inscription-header { padding: 25px 20px; }
-    .inscription-header h1 { font-size: 1.5rem; }
-    .newsletter-badge { flex-direction: column; text-align: center; }
+.footer-link-light a:hover::after { width: 100%; }
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 900px) {
+    .signup-card { max-width: 100%; }
+    .signup-body { padding: 35px 30px 30px; }
+    .signup-header { padding: 30px 30px 25px; }
+}
+@media (max-width: 650px) {
+    .signup-body { padding: 25px 22px; }
+    .signup-header { padding: 25px 22px 20px; }
+    .signup-header h1 { font-size: 1.5rem; }
+    .form-row-light { grid-template-columns: 1fr; gap: 0; }
 }
 </style>
 
-<div class="inscription-page">
-    <div class="inscription-card">
-        <div class="inscription-header">
-            <h1>✨ Créer un compte</h1>
-            <p>Rejoignez la communauté Awa Ka Sugu</p>
+<div class="signup-light-page">
+    
+    <div class="signup-card">
+        
+        <div class="neon-corner-light tl"></div>
+        <div class="neon-corner-light tr"></div>
+        <div class="neon-corner-light bl"></div>
+        <div class="neon-corner-light br"></div>
+        
+        <!-- ===== HEADER ===== -->
+        <div class="signup-header">
+            <div class="brand">✦ AWA KA SUGU ✦</div>
+            <h1>Créer un <span>compte</span></h1>
+            <p>Rejoignez notre communauté</p>
         </div>
-        <div class="inscription-body">
+        
+        <!-- ===== BODY ===== -->
+        <div class="signup-body">
             
             <?php if($error): ?>
-                <div class="alert-error">
+                <div class="light-alert error">
                     <i class="bi bi-exclamation-triangle-fill"></i>
                     <span><?= htmlspecialchars($error) ?></span>
                 </div>
             <?php endif; ?>
             
             <?php if($success): ?>
-                <div class="alert-success">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <i class="bi bi-check-circle-fill" style="font-size:1.2rem;"></i>
-                        <span><?= htmlspecialchars($success) ?></span>
-                    </div>
-                    <a href="connexion.php" class="btn-connect">
+                <div class="light-alert success">
+                    <i class="bi bi-check-circle-fill"></i>
+                    <span><?= htmlspecialchars($success) ?></span>
+                    <a href="connexion.php" class="btn-go-light">
                         <i class="bi bi-box-arrow-in-right"></i> Se connecter
                     </a>
                 </div>
             <?php else: ?>
             
             <?php if($email_prefill): ?>
-            <div class="newsletter-badge">
+            <div class="newsletter-light">
                 <i class="bi bi-envelope-paper-fill"></i>
                 <div>
                     Vous venez de vous inscrire à notre newsletter !<br>
-                    <small style="color:#999;">Complétez votre inscription avec l'email : <strong><?= $email_prefill ?></strong></small>
+                    <small style="color:#8A99AA;">Email pré-rempli : <strong><?= $email_prefill ?></strong></small>
                 </div>
             </div>
             <?php endif; ?>
             
             <form method="POST" action="">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label><i class="bi bi-person"></i> Nom <span class="required">*</span></label>
-                        <input type="text" name="nom" class="form-control" placeholder="Votre nom" required>
+                
+                <div class="form-row-light">
+                    <div class="field-light">
+                        <label>Nom <span class="required">*</span></label>
+                        <div class="input-light">
+                            <input type="text" name="nom" placeholder="Votre nom" required>
+                            <i class="bi bi-person icon-light"></i>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label><i class="bi bi-person-badge"></i> Prénom <span class="required">*</span></label>
-                        <input type="text" name="prenom" class="form-control" placeholder="Votre prénom" required>
+                    <div class="field-light">
+                        <label>Prénom <span class="required">*</span></label>
+                        <div class="input-light">
+                            <input type="text" name="prenom" placeholder="Votre prénom" required>
+                            <i class="bi bi-person icon-light"></i>
+                        </div>
                     </div>
                 </div>
                 
-                <div class="form-row">
-                    <div class="form-group">
-                        <label><i class="bi bi-envelope"></i> Email <span class="required">*</span></label>
-                        <input type="email" name="email" class="form-control" placeholder="exemple@email.com" value="<?= $email_prefill ?>" required>
+                <div class="form-row-light">
+                    <div class="field-light">
+                        <label>Email <span class="required">*</span></label>
+                        <div class="input-light">
+                            <input type="email" name="email" placeholder="exemple@email.com" value="<?= $email_prefill ?>" required>
+                            <i class="bi bi-envelope icon-light"></i>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label><i class="bi bi-phone"></i> Téléphone <span class="required">*</span></label>
-                        <input type="tel" name="telephone" class="form-control" placeholder="77 00 00 00" required>
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label><i class="bi bi-geo-alt"></i> Quartier</label>
-                    <input type="text" name="quartier" class="form-control" placeholder="Ex: Badalabougou, Hippodrome...">
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label><i class="bi bi-building"></i> Commune</label>
-                        <input type="text" name="commune" class="form-control" placeholder="Ex: Commune I, II, III...">
-                    </div>
-                    <div class="form-group">
-                        <label><i class="bi bi-pin-map"></i> Adresse complète</label>
-                        <input type="text" name="adresse_complete" class="form-control" placeholder="Rue, porte...">
+                    <div class="field-light">
+                        <label>Téléphone <span class="required">*</span></label>
+                        <div class="input-light">
+                            <input type="tel" name="telephone" placeholder="77 00 00 00" required>
+                            <i class="bi bi-phone icon-light"></i>
+                        </div>
                     </div>
                 </div>
                 
-                <div class="form-row">
-                    <div class="form-group">
-                        <label><i class="bi bi-lock"></i> Mot de passe <span class="required">*</span></label>
-                        <input type="password" name="mot_de_passe" class="form-control" placeholder="•••••••• (min. 6)" required>
-                    </div>
-                    <div class="form-group">
-                        <label><i class="bi bi-shield-lock"></i> Confirmer <span class="required">*</span></label>
-                        <input type="password" name="password_confirm" class="form-control" placeholder="••••••••" required>
+                <div class="field-light">
+                    <label>Quartier</label>
+                    <div class="input-light">
+                        <input type="text" name="quartier" placeholder="Ex: Badalabougou, Hippodrome...">
+                        <i class="bi bi-geo-alt icon-light"></i>
                     </div>
                 </div>
                 
-                <button type="submit" class="btn-inscrire">
+                <div class="form-row-light">
+                    <div class="field-light">
+                        <label>Commune</label>
+                        <div class="input-light">
+                            <input type="text" name="commune" placeholder="Ex: Commune I, II...">
+                            <i class="bi bi-building icon-light"></i>
+                        </div>
+                    </div>
+                    <div class="field-light">
+                        <label>Adresse complète</label>
+                        <div class="input-light">
+                            <input type="text" name="adresse_complete" placeholder="Rue, porte...">
+                            <i class="bi bi-pin-map icon-light"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-row-light">
+                    <div class="field-light">
+                        <label>Mot de passe <span class="required">*</span></label>
+                        <div class="input-light">
+                            <input type="password" name="mot_de_passe" placeholder="min. 6 caractères" required>
+                            <i class="bi bi-lock icon-light"></i>
+                        </div>
+                    </div>
+                    <div class="field-light">
+                        <label>Confirmer <span class="required">*</span></label>
+                        <div class="input-light">
+                            <input type="password" name="password_confirm" placeholder="••••••••" required>
+                            <i class="bi bi-shield-lock icon-light"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn-submit-light">
                     <i class="bi bi-person-plus"></i> Créer mon compte
                 </button>
+                
             </form>
             
-            <div class="info-text">
+            <div class="info-light">
                 <i class="bi bi-info-circle"></i>
-                En créant un compte, vous pourrez suivre vos commandes<br>
-                et bénéficier d'offres exclusives.
+                En créant un compte, vous pourrez suivre vos commandes et bénéficier d'offres exclusives.
             </div>
             
-            <!-- ✅ LIEN CORRIGÉ VERS CONNEXION.PHP -->
-            <div class="inscription-footer">
+            <div class="footer-link-light">
                 Déjà un compte ? <a href="connexion.php">Connectez-vous</a>
             </div>
+            
             <?php endif; ?>
+            
         </div>
+        
     </div>
+    
 </div>
 
 <?php require_once '../includes/footer.php'; ?>

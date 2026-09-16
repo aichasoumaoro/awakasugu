@@ -134,6 +134,161 @@ $role_icons = [
 ];
 
 // ============================================
+// FONCTION DE GÉNÉRATION DE L'EMAIL D'IDENTIFIANTS
+// Design inspiré de functions_securite.php
+// ============================================
+function generer_email_identifiants($nom, $email, $password, $role_label, $admin_nom, $permissions_liste, $permissions) {
+    $date = date('d/m/Y à H:i');
+    
+    // Construction des tags de permissions
+    $permissions_tags_html = '';
+    $permissions_noms = [];
+    if (!empty($permissions)) {
+        foreach ($permissions as $perm) {
+            foreach ($permissions_liste as $p) {
+                if ($p['cle'] == $perm) {
+                    $permissions_noms[] = $p['nom'];
+                    $permissions_tags_html .= '
+                    <table role="presentation" cellpadding="0" cellspacing="0" style="display:inline-block;margin:3px;">
+                      <tr><td style="background-color:#FFF8EC;border:1px solid #E9D4A6;border-radius:20px;padding:6px 14px;font-family:Arial,sans-serif;font-size:11.5px;font-weight:bold;color:#8A6020;">' . htmlspecialchars($p['nom']) . '</td></tr>
+                    </table>';
+                    break;
+                }
+            }
+        }
+    }
+    if (empty($permissions_tags_html)) {
+        $permissions_tags_html = '<span style="font-family:Arial,sans-serif;font-size:12px;color:#B0B8C4;font-style:italic;">Aucune tâche spécifique assignée</span>';
+    }
+    
+    return '
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Vos identifiants - Awa Ka Sugu</title>
+    </head>
+    <body style="margin:0;padding:0;background-color:#EFEFF2;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#EFEFF2;">
+    <tr><td align="center" style="padding:32px 12px;">
+
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:16px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+
+      <tr><td style="background-color:#C8922A;font-size:0;line-height:4px;height:4px;">&nbsp;</td></tr>
+
+      <tr><td style="background-color:#0D0D0D;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+          <td align="center" style="padding:32px 30px 26px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" align="center"><tr>
+              <td style="width:52px;height:52px;border-radius:50%;border:1.5px solid #C8922A;background-color:#161310;text-align:center;vertical-align:middle;font-family:Georgia,\'Times New Roman\',serif;font-weight:bold;font-size:19px;color:#C8922A;">AK</td>
+            </tr></table>
+            <div style="height:14px;line-height:14px;font-size:1px;">&nbsp;</div>
+            <div style="font-family:Georgia,\'Times New Roman\',serif;font-size:22px;font-weight:bold;letter-spacing:4px;color:#C8922A;text-transform:uppercase;">Awa Ka Sugu</div>
+            <div style="height:8px;line-height:8px;font-size:1px;">&nbsp;</div>
+            <div style="font-family:Arial,sans-serif;font-size:9.5px;letter-spacing:2px;color:#8a8378;text-transform:uppercase;">Espace Administration</div>
+            <div style="height:16px;line-height:16px;font-size:1px;">&nbsp;</div>
+            <table role="presentation" cellpadding="0" cellspacing="0" align="center"><tr>
+              <td style="background-color:#1C2B1A;border:1px solid #C8922A;border-radius:20px;padding:7px 18px;font-family:Arial,sans-serif;font-size:10.5px;color:#E8B55A;letter-spacing:1px;text-transform:uppercase;font-weight:bold;">&#128075; Bienvenue dans l\'équipe</td>
+            </tr></table>
+          </td>
+        </tr></table>
+      </td></tr>
+
+      <tr><td style="padding:32px 30px 8px;">
+
+        <p style="margin:0 0 8px;font-family:Arial,sans-serif;font-size:16.5px;font-weight:bold;color:#0D0D0D;">Bonjour <span style="color:#C8922A;">' . htmlspecialchars($nom) . '</span>,</p>
+        <p style="margin:0 0 24px;font-family:Arial,sans-serif;font-size:13px;color:#6B7A8D;line-height:1.7;">Un compte administrateur vient d\'être créé pour vous sur la plateforme <strong>Awa Ka Sugu</strong>. Voici vos informations d\'accès sécurisées.</p>
+
+        <!-- CARTE COMPTE -->
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F9F9FB;border:1px solid #ECEDF1;border-radius:12px;margin-bottom:22px;">
+          <tr><td style="background-color:#0D0D0D;padding:11px 18px;border-radius:11px 11px 0 0;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+              <td style="font-family:Arial,sans-serif;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#8a8378;">Informations du compte</td>
+              <td align="right"><span style="background-color:#C8922A;color:#ffffff;font-family:Arial,sans-serif;font-size:10.5px;font-weight:bold;padding:4px 12px;border-radius:20px;">' . htmlspecialchars($role_label) . '</span></td>
+            </tr></table>
+          </td></tr>
+          <tr><td style="padding:12px 18px;border-bottom:1px solid #F0F1F4;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+              <td style="font-family:Arial,sans-serif;font-size:12px;color:#8A92A3;">&#128231; Adresse email</td>
+              <td align="right" style="font-family:Arial,sans-serif;font-size:12px;font-weight:bold;color:#1A1A2E;">' . htmlspecialchars($email) . '</td>
+            </tr></table>
+          </td></tr>
+          <tr><td style="padding:12px 18px;border-bottom:1px solid #F0F1F4;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+              <td style="font-family:Arial,sans-serif;font-size:12px;color:#8A92A3;">&#128100; Créé par</td>
+              <td align="right" style="font-family:Arial,sans-serif;font-size:12px;font-weight:bold;color:#1A1A2E;">' . htmlspecialchars($admin_nom) . '</td>
+            </tr></table>
+          </td></tr>
+          <tr><td style="padding:12px 18px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+              <td style="font-family:Arial,sans-serif;font-size:12px;color:#8A92A3;">&#128197; Date de création</td>
+              <td align="right" style="font-family:\'Courier New\',monospace;font-size:12px;font-weight:bold;color:#1A1A2E;">' . $date . '</td>
+            </tr></table>
+          </td></tr>
+        </table>
+
+        <!-- PERMISSIONS -->
+        <div style="font-family:Arial,sans-serif;font-size:10px;font-weight:bold;color:#8A92A3;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">&#128203; Tâches assignées</div>
+        <div style="margin-bottom:24px;line-height:1.4;">
+          ' . $permissions_tags_html . '
+        </div>
+
+        <!-- MOT DE PASSE -->
+        <div style="font-family:Arial,sans-serif;font-size:10px;font-weight:bold;color:#8A92A3;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">&#128273; Votre mot de passe temporaire</div>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0D0D0D;border:1px solid #C8922A;border-radius:14px;margin-bottom:24px;">
+          <tr><td style="padding:20px 24px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+              <td style="font-family:Arial,sans-serif;font-size:11px;color:#8a8378;letter-spacing:1.5px;text-transform:uppercase;">Mot de passe</td>
+              <td align="right" style="font-family:\'Courier New\',monospace;font-size:19px;font-weight:bold;color:#E8B55A;letter-spacing:3px;background-color:#1A1510;padding:8px 16px;border-radius:8px;">' . htmlspecialchars($password) . '</td>
+            </tr></table>
+          </td></tr>
+        </table>
+
+        <!-- INFO -->
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F0F7FF;border:1px solid #C6DCF3;border-radius:12px;margin-bottom:16px;">
+          <tr><td style="padding:15px 18px;">
+            <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+              <td valign="top" style="font-size:20px;padding-right:12px;">&#128161;</td>
+              <td style="font-family:Arial,sans-serif;font-size:12.5px;color:#2C5F8A;line-height:1.6;"><strong>Astuce :</strong> Copiez ce mot de passe et conservez-le en lieu sûr. Vous pourrez le modifier à tout moment depuis votre espace personnel.</td>
+            </tr></table>
+          </td></tr>
+        </table>
+
+        <!-- WARNING -->
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FFF5F5;border:1px solid #F3C6C0;border-radius:12px;margin-bottom:24px;">
+          <tr><td style="padding:15px 18px;">
+            <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+              <td valign="top" style="font-size:20px;padding-right:12px;">&#9888;&#65039;</td>
+              <td style="font-family:Arial,sans-serif;font-size:12.5px;color:#B33A2A;line-height:1.6;"><strong style="color:#922B21;">Important :</strong> Pour votre sécurité, changez ce mot de passe dès votre première connexion. Ne partagez jamais vos identifiants avec qui que ce soit.</td>
+            </tr></table>
+          </td></tr>
+        </table>
+
+        <!-- CTA -->
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;"><tr><td align="center">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="background-color:#C8922A;border-radius:26px;">
+            <a href="http://localhost/awakasugu/admin/login.php" style="display:block;padding:15px 10px;font-family:Arial,sans-serif;font-size:13.5px;font-weight:bold;color:#ffffff;text-decoration:none;letter-spacing:0.5px;">Accéder à l\'administration &rarr;</a>
+          </td></tr></table>
+        </td></tr></table>
+
+      </td></tr>
+
+      <tr><td style="background-color:#0A0A0A;padding:20px 30px;text-align:center;">
+        <div style="font-family:Georgia,serif;font-size:12px;font-weight:bold;color:#C8922A;margin-bottom:6px;">Awa Ka Sugu &mdash; Administration</div>
+        <div style="font-family:Arial,sans-serif;font-size:9px;color:#3a3a3a;">&copy; ' . date('Y') . ' Awa Ka Sugu &mdash; Email automatique, merci de ne pas y répondre.</div>
+      </td></tr>
+
+    </table>
+
+    </td></tr>
+    </table>
+    </body>
+    </html>
+    ';
+}
+
+// ============================================
 // TRAITEMENT DES ACTIONS
 // ============================================
 $success = '';
@@ -157,11 +312,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $error = 'Cet email est déjà utilisé.';
         } else {
             $permissions_json = json_encode($permissions);
-            
-            // Si le rôle est vide, on met NULL
             $role_value = !empty($role) ? $role : null;
-            
             $hashed_password = password_hash($password, PASSWORD_BCRYPT);
+            
             $stmt = $pdo->prepare("
                 INSERT INTO admin (nom, email, mot_de_passe, role, permissions, is_active, created_by) 
                 VALUES (?, ?, ?, ?, ?, 1, ?)
@@ -186,123 +339,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             
             $role_label = !empty($role) ? ($role_labels[$role] ?? $role) : 'Aucun rôle (tâches uniquement)';
             
-            $message_html = "
-            <!DOCTYPE html>
-            <html lang='fr'>
-            <head>
-                <meta charset='UTF-8'>
-                <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-                <style>
-                    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@300;400;500;600&display=swap');
-                    * { box-sizing: border-box; margin: 0; padding: 0; }
-                    body { font-family: 'Inter', Arial, sans-serif; background: #0A0A0A; padding: 30px 15px; }
-                    .wrapper { max-width: 620px; margin: 0 auto; }
-                    /* ── Header ── */
-                    .header { background: linear-gradient(160deg, #0A0A0A 0%, #1C1308 60%, #0A0A0A 100%); padding: 40px 30px 32px; text-align: center; border-radius: 20px 20px 0 0; }
-                    .header .brand { font-family: 'Playfair Display', Georgia, serif; font-size: 1.8rem; font-weight: 700; color: #C8922A; letter-spacing: 4px; }
-                    .header .divider { width: 50px; height: 1px; background: linear-gradient(90deg, transparent, #C8922A, transparent); margin: 10px auto; }
-                    .header .tagline { color: rgba(255,255,255,0.25); font-size: 0.65rem; letter-spacing: 3px; text-transform: uppercase; }
-                    .header .welcome-badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(200,146,42,0.12); border: 1px solid rgba(200,146,42,0.3); color: #E8B55A; font-size: 0.72rem; font-weight: 600; padding: 6px 16px; border-radius: 20px; margin-top: 16px; letter-spacing: 1px; }
-                    /* ── Body ── */
-                    .body { background: #ffffff; padding: 36px 32px; }
-                    .greeting { font-size: 1.3rem; font-weight: 700; color: #0D0D0D; margin-bottom: 6px; }
-                    .greeting span { color: #C8922A; }
-                    .subtitle { color: #7A8694; font-size: 0.88rem; margin-bottom: 28px; line-height: 1.6; }
-                    /* ── Account card ── */
-                    .account-card { background: #F9F9FB; border-radius: 14px; overflow: hidden; margin-bottom: 24px; border: 1px solid #EEEFF2; }
-                    .account-card-head { background: linear-gradient(135deg, #0D0D0D, #1A1510); padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; }
-                    .account-card-head .ac-title { color: rgba(255,255,255,0.4); font-size: 0.65rem; letter-spacing: 2px; text-transform: uppercase; }
-                    .account-card-head .role-pill { background: rgba(200,146,42,0.2); border: 1px solid rgba(200,146,42,0.4); color: #E8B55A; font-size: 0.7rem; font-weight: 600; padding: 3px 12px; border-radius: 20px; }
-                    .account-row { display: flex; justify-content: space-between; align-items: center; padding: 11px 20px; border-bottom: 1px solid #F0F1F4; }
-                    .account-row:last-child { border-bottom: none; }
-                    .account-row .ar-lbl { color: #8A92A3; font-size: 0.8rem; font-weight: 500; }
-                    .account-row .ar-val { color: #1A1A2E; font-size: 0.88rem; font-weight: 600; }
-                    /* ── Permissions ── */
-                    .perms-section { margin-bottom: 24px; }
-                    .perms-title { font-size: 0.72rem; font-weight: 600; color: #8A92A3; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; }
-                    .perms-list { display: flex; flex-wrap: wrap; gap: 7px; }
-                    .perm-tag { background: linear-gradient(135deg, #FFF8EC, #FFF3DB); border: 1px solid rgba(200,146,42,0.25); color: #8A6020; font-size: 0.75rem; font-weight: 600; padding: 4px 12px; border-radius: 20px; }
-                    .perm-empty { color: #B0B8C4; font-size: 0.8rem; font-style: italic; }
-                    /* ── Password box ── */
-                    .pwd-section { margin-bottom: 24px; }
-                    .pwd-label { font-size: 0.72rem; font-weight: 600; color: #8A92A3; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; }
-                    .pwd-box { background: linear-gradient(135deg, #0D0D0D, #1A1510); border-radius: 12px; padding: 18px 22px; display: flex; align-items: center; justify-content: space-between; border: 1px solid rgba(200,146,42,0.2); }
-                    .pwd-box .pwd-hint { color: rgba(255,255,255,0.35); font-size: 0.75rem; letter-spacing: 1px; }
-                    .pwd-box .pwd-value { font-family: 'Courier New', monospace; font-size: 1.1rem; font-weight: 700; color: #C8922A; letter-spacing: 2px; }
-                    /* ── Warning ── */
-                    .warning-note { background: #FFF5F5; border: 1px solid rgba(231,76,60,0.2); border-radius: 10px; padding: 12px 16px; margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px; }
-                    .warning-note .wn-icon { font-size: 1rem; margin-top: 1px; }
-                    .warning-note .wn-text { font-size: 0.82rem; color: #C0392B; line-height: 1.5; }
-                    /* ── CTA ── */
-                    .cta-btn { display: block; text-align: center; background: linear-gradient(135deg, #C8922A, #E8B55A); color: #fff; font-weight: 700; font-size: 0.9rem; padding: 15px 30px; border-radius: 30px; text-decoration: none; letter-spacing: 0.5px; margin-bottom: 10px; }
-                    /* ── Footer ── */
-                    .footer { background: #0D0D0D; padding: 22px 30px; text-align: center; border-radius: 0 0 20px 20px; }
-                    .footer .ft-brand { color: #C8922A; font-family: 'Playfair Display', serif; font-size: 0.85rem; margin-bottom: 6px; }
-                    .footer .ft-copy { color: rgba(255,255,255,0.18); font-size: 0.65rem; margin-top: 6px; }
-                </style>
-            </head>
-            <body>
-                <div class='wrapper'>
-                    <div class='header'>
-                        <div class='brand'>✦ Awa Ka Sugu ✦</div>
-                        <div class='divider'></div>
-                        <div class='tagline'>Espace Administration</div>
-                        <div class='welcome-badge'>👋 Bienvenue dans l'équipe</div>
-                    </div>
-                    <div class='body'>
-                        <p class='greeting'>Bonjour, <span>$nom</span> !</p>
-                        <p class='subtitle'>Un compte administrateur vient d'être créé pour vous sur la plateforme <strong>Awa Ka Sugu</strong>. Voici vos informations d'accès.</p>
-                        
-                        <div class='account-card'>
-                            <div class='account-card-head'>
-                                <span class='ac-title'>Informations du compte</span>
-                                <span class='role-pill'>$role_label</span>
-                            </div>
-                            <div class='account-row'><span class='ar-lbl'>Adresse email</span><span class='ar-val'>$email</span></div>
-                            <div class='account-row'><span class='ar-lbl'>Créé par</span><span class='ar-val'>$admin_nom</span></div>
-                        </div>
-                        
-                        <div class='perms-section'>
-                            <p class='perms-title'>Tâches assignées</p>
-                            <div class='perms-list'>";
-                            foreach ($permissions as $perm) {
-                                foreach ($permissions_liste as $p) {
-                                    if ($p['cle'] == $perm) {
-                                        $message_html .= "<span class='perm-tag'>" . $p['nom'] . "</span>";
-                                        break;
-                                    }
-                                }
-                            }
-                            if (empty($permissions)) {
-                                $message_html .= "<span class='perm-empty'>Aucune tâche spécifique assignée</span>";
-                            }
-            $message_html .= "
-                            </div>
-                        </div>
-                        
-                        <div class='pwd-section'>
-                            <p class='pwd-label'>Votre mot de passe temporaire</p>
-                            <div class='pwd-box'>
-                                <span class='pwd-hint'>Mot de passe</span>
-                                <span class='pwd-value'>$password</span>
-                            </div>
-                        </div>
-                        
-                        <div class='warning-note'>
-                            <span class='wn-icon'>⚠️</span>
-                            <span class='wn-text'><strong>Important :</strong> Pour votre sécurité, changez ce mot de passe dès votre première connexion.</span>
-                        </div>
-                        
-                        <a href='http://localhost/awakasugu/admin/login.php' class='cta-btn'>Accéder à l'administration →</a>
-                    </div>
-                    <div class='footer'>
-                        <div class='ft-brand'>✦ Awa Ka Sugu — Administration ✦</div>
-                        <div class='ft-copy'>&copy; 2026 Awa Ka Sugu — Email automatique, merci de ne pas y répondre.</div>
-                    </div>
-                </div>
-            </body>
-            </html>
-            ";
+            $message_html = generer_email_identifiants(
+                $nom, $email, $password, $role_label, $admin_nom, $permissions_liste, $permissions
+            );
             
             $email_envoye = envoyerEmail($email, $sujet, $message_html);
             
