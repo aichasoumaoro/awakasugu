@@ -93,86 +93,145 @@ if (!$facture) {
 // ============================================
 class FacturePDF extends FPDF {
 
-    // ── En-tête : bandeau sombre, accent or, monogramme de la marque ──
+    // ── Palette de la charte ──
+    private $noir      = [15, 15, 15];
+    private $or        = [198, 146, 42];
+    private $orClair   = [232, 196, 112];
+    private $creme     = [252, 249, 242];
+    private $grisTexte = [110, 115, 125];
+
+    // ── En-tête : bandeau noir, motif doré, monogramme circulaire ──
     function Header() {
-        $this->SetFillColor(13, 13, 13);
-        $this->Rect(0, 0, 210, 46, 'F');
+        // Fond crème très léger sur toute la page
+        $this->SetFillColor(...$this->creme);
+        $this->Rect(0, 0, 210, 297, 'F');
 
-        // Bande dorée gauche (accent vertical)
-        $this->SetFillColor(200, 146, 42);
-        $this->Rect(0, 0, 6, 46, 'F');
+        // Bandeau supérieur noir
+        $this->SetFillColor(...$this->noir);
+        $this->Rect(0, 0, 210, 52, 'F');
 
-        // Nom boutique
-        $this->SetXY(16, 8);
-        $this->SetFont('Times', 'B', 21);
-        $this->SetTextColor(200, 146, 42);
-        $this->Cell(130, 10, 'AWA KA SUGU', 0, 1, 'L');
+        // Motif décoratif : lignes dorées fines en diagonale
+        $this->SetDrawColor(...$this->or);
+        $this->SetLineWidth(0.2);
+        for ($i = 0; $i < 8; $i++) {
+            $x = 150 + ($i * 8);
+            $this->Line($x, 0, $x + 18, 52);
+        }
 
-        // Sous-titre boutique
+        // Bande dorée verticale à gauche
+        $this->SetFillColor(...$this->or);
+        $this->Rect(0, 0, 5, 52, 'F');
+
+        // Monogramme circulaire
+        $cx = 178; $cy = 20; $r = 11;
+        $this->SetFillColor(...$this->noir);
+        $this->SetDrawColor(...$this->or);
+        $this->SetLineWidth(0.8);
+        $this->Circle($cx, $cy, $r, 'DF');
+        $this->SetXY($cx - 11, $cy - 5);
+        $this->SetFont('Times', 'B', 13);
+        $this->SetTextColor(...$this->or);
+        $this->Cell(22, 10, 'ID', 0, 0, 'C');
+
+        // Nom de la boutique
+        $this->SetXY(16, 10);
+        $this->SetFont('Times', 'B', 24);
+        $this->SetTextColor(...$this->or);
+        $this->Cell(130, 12, 'AWA KA SUGU', 0, 1, 'L');
+
+        // Sous-titre
         $this->SetX(16);
-        $this->SetFont('Arial', 'I', 9);
-        $this->SetTextColor(180, 155, 100);
-        $this->Cell(130, 6, 'Boutique IBA Design  |  Restaurant Sofia', 0, 1, 'L');
+        $this->SetFont('Arial', '', 8.5);
+        $this->SetTextColor(...$this->orClair);
+        $this->Cell(130, 5, 'BOUTIQUE IBA DESIGN  ·  RESTAURANT SOFIA', 0, 1, 'L');
 
         // Coordonnées
         $this->SetX(16);
-        $this->SetFont('Arial', '', 8);
-        $this->SetTextColor(130, 115, 80);
-        $this->Cell(130, 5, 'Sebenikoro Koro, Bamako - Mali   |   +223 77 77 43 43   |   contact@awakasugu.com', 0, 1, 'L');
+        $this->SetFont('Arial', '', 7.5);
+        $this->SetTextColor(170, 160, 140);
+        $this->Cell(130, 5, 'Sebenikoro Koro, Bamako - Mali  |  +223 77 77 43 43  |  contact@awakasugu.com', 0, 1, 'L');
 
-        // Monogramme de la marque — pastille or "ID" en haut à droite du bandeau
-        $badgeX = 174; $badgeY = 9; $badgeD = 22;
-        $this->SetDrawColor(200, 146, 42);
-        $this->SetLineWidth(0.5);
-        $this->RoundedRect($badgeX, $badgeY, $badgeD, $badgeD, 4, 'D');
-        $this->SetXY($badgeX, $badgeY + 6.3);
-        $this->SetFont('Times', 'B', 15);
-        $this->SetTextColor(200, 146, 42);
-        $this->Cell($badgeD, 8, 'ID', 0, 0, 'C');
+        // Ligne dorée de séparation
+        $this->SetDrawColor(...$this->or);
+        $this->SetLineWidth(0.6);
+        $this->Line(0, 52, 210, 52);
 
-        // Séparateur bas du header
-        $this->SetDrawColor(200, 146, 42);
-        $this->SetLineWidth(0.8);
-        $this->Line(0, 46, 210, 46);
-        $this->Ln(8);
+        $this->SetY(58);
     }
 
     function Footer() {
-        $this->SetY(-18);
-        $this->SetDrawColor(200, 146, 42);
-        $this->SetLineWidth(0.4);
+        $this->SetY(-20);
+        $this->SetDrawColor(...$this->or);
+        $this->SetLineWidth(0.3);
         $this->Line(15, $this->GetY(), 195, $this->GetY());
         $this->Ln(3);
-        $this->SetFont('Arial', 'I', 8);
-        $this->SetTextColor(140, 120, 75);
-        $this->Cell(0, 5, 'Awa Ka Sugu  -  Boutique IBA Design & Restaurant Sofia   |   Page ' . $this->PageNo() . ' / {nb}', 0, 0, 'C');
+        $this->SetFont('Arial', 'I', 7.5);
+        $this->SetTextColor(...$this->grisTexte);
+        $this->Cell(0, 5, 'Awa Ka Sugu  —  Boutique IBA Design & Restaurant Sofia   |   Page ' . $this->PageNo() . ' / {nb}', 0, 0, 'C');
     }
 
-    // ── Rectangle à coins arrondis (fond premium des blocs d'information) ──
+    // ── Cercle ──
+    function Circle($x, $y, $r, $style = '') {
+        $this->Ellipse($x, $y, $r, $r, $style);
+    }
+
+    // ── Ellipse ──
+    function Ellipse($x, $y, $rx, $ry, $style = '') {
+        if ($style == 'F') $op = 'f';
+        elseif ($style == 'FD' || $style == 'DF') $op = 'B';
+        else $op = 'S';
+        $lx = 4/3 * (M_SQRT2 - 1);
+        $k = $this->k;
+        $h = $this->h;
+        $this->_out(sprintf('%.2F %.2F m', ($x + $rx) * $k, ($h - $y) * $k));
+        $this->_out(sprintf('%.2F %.2F %.2F %.2F %.2F %.2F c',
+            ($x + $rx) * $k, ($h - ($y - $ry * $lx)) * $k,
+            ($x + $rx * $lx) * $k, ($h - ($y - $ry)) * $k,
+            $x * $k, ($h - ($y - $ry)) * $k));
+        $this->_out(sprintf('%.2F %.2F %.2F %.2F %.2F %.2F c',
+            ($x - $rx * $lx) * $k, ($h - ($y - $ry)) * $k,
+            ($x - $rx) * $k, ($h - ($y - $ry * $lx)) * $k,
+            ($x - $rx) * $k, ($h - $y) * $k));
+        $this->_out(sprintf('%.2F %.2F %.2F %.2F %.2F %.2F c',
+            ($x - $rx) * $k, ($h - ($y + $ry * $lx)) * $k,
+            ($x - $rx * $lx) * $k, ($h - ($y + $ry)) * $k,
+            $x * $k, ($h - ($y + $ry)) * $k));
+        $this->_out(sprintf('%.2F %.2F %.2F %.2F %.2F %.2F c',
+            ($x + $rx * $lx) * $k, ($h - ($y + $ry)) * $k,
+            ($x + $rx) * $k, ($h - ($y + $ry * $lx)) * $k,
+            ($x + $rx) * $k, ($h - $y) * $k));
+        $this->_out($op);
+    }
+
+    // ── Rectangle arrondi ──
     function RoundedRect($x, $y, $w, $h, $r, $style = '') {
         $k = $this->k; $hp = $this->h;
         if ($style == 'F') $op = 'f';
         elseif ($style == 'FD' || $style == 'DF') $op = 'B';
         else $op = 'S';
         $MyArc = 4/3 * (sqrt(2) - 1);
-        $this->_out(sprintf('%.2F %.2F m', ($x+$r)*$k, ($hp-$y)*$k));
-        $xc = $x+$w-$r; $yc = $y+$r;
-        $this->_out(sprintf('%.2F %.2F l', $xc*$k, ($hp-$y)*$k));
-        $this->_Arc($xc + $r*$MyArc, $yc - $r, $xc + $r, $yc - $r*$MyArc, $xc + $r, $yc);
-        $xc = $x+$w-$r; $yc = $y+$h-$r;
-        $this->_out(sprintf('%.2F %.2F l', ($x+$w)*$k, ($hp-$yc)*$k));
-        $this->_Arc($xc + $r, $yc + $r*$MyArc, $xc + $r*$MyArc, $yc + $r, $xc, $yc + $r);
-        $xc = $x+$r; $yc = $y+$h-$r;
-        $this->_out(sprintf('%.2F %.2F l', $xc*$k, ($hp-($y+$h))*$k));
-        $this->_Arc($xc - $r*$MyArc, $yc + $r, $xc - $r, $yc + $r*$MyArc, $xc - $r, $yc);
-        $xc = $x+$r; $yc = $y+$r;
-        $this->_out(sprintf('%.2F %.2F l', ($x)*$k, ($hp-$yc)*$k));
-        $this->_Arc($xc - $r, $yc - $r*$MyArc, $xc - $r*$MyArc, $yc - $r, $xc, $yc - $r);
+        $this->_out(sprintf('%.2F %.2F m', ($x + $r) * $k, ($hp - $y) * $k));
+        $xc = $x + $w - $r; $yc = $y + $r;
+        $this->_out(sprintf('%.2F %.2F l', $xc * $k, ($hp - $y) * $k));
+        $this->_Arc($xc + $r * $MyArc, $yc - $r, $xc + $r, $yc - $r * $MyArc, $xc + $r, $yc);
+        $xc = $x + $w - $r; $yc = $y + $h - $r;
+        $this->_out(sprintf('%.2F %.2F l', ($x + $w) * $k, ($hp - $yc) * $k));
+        $this->_Arc($xc + $r, $yc + $r * $MyArc, $xc + $r * $MyArc, $yc + $r, $xc, $yc + $r);
+        $xc = $x + $r; $yc = $y + $h - $r;
+        $this->_out(sprintf('%.2F %.2F l', $xc * $k, ($hp - ($y + $h)) * $k));
+        $this->_Arc($xc - $r * $MyArc, $yc + $r, $xc - $r, $yc + $r * $MyArc, $xc - $r, $yc);
+        $xc = $x + $r; $yc = $y + $r;
+        $this->_out(sprintf('%.2F %.2F l', ($x) * $k, ($hp - $yc) * $k));
+        $this->_Arc($xc - $r, $yc - $r * $MyArc, $xc - $r * $MyArc, $yc - $r, $xc, $yc - $r);
         $this->_out($op);
     }
+
     function _Arc($x1, $y1, $x2, $y2, $x3, $y3) {
         $h = $this->h;
-        $this->_out(sprintf('%.2F %.2F %.2F %.2F %.2F %.2F c ', $x1*$this->k, ($h-$y1)*$this->k, $x2*$this->k, ($h-$y2)*$this->k, $x3*$this->k, ($h-$y3)*$this->k));
+        $this->_out(sprintf('%.2F %.2F %.2F %.2F %.2F %.2F c ',
+            $x1 * $this->k, ($h - $y1) * $this->k,
+            $x2 * $this->k, ($h - $y2) * $this->k,
+            $x3 * $this->k, ($h - $y3) * $this->k));
     }
 }
 
@@ -180,55 +239,47 @@ $pdf = new FacturePDF('P', 'mm', 'A4');
 $pdf->AliasNbPages();
 $pdf->AddPage();
 $pdf->SetAutoPageBreak(true, 28);
-$pdf->SetMargins(15, 54, 15);
+$pdf->SetMargins(15, 60, 15);
 
-// ── TITRE + NUMÉRO ──
-$pdf->SetFont('Times', 'B', 30);
-$pdf->SetTextColor(13, 13, 13);
-$pdf->Cell(0, 14, 'FACTURE', 0, 1, 'C');
+// ── TITRE ──
+$pdf->SetFont('Times', 'B', 34);
+$pdf->SetTextColor(15, 15, 15);
+$pdf->Cell(0, 16, 'FACTURE', 0, 1, 'C');
 
-$pdf->SetFont('Arial', '', 10);
+$pdf->SetFont('Arial', '', 9);
 $pdf->SetTextColor(160, 140, 90);
-$pdf->Cell(0, 6, 'N' . chr(176) . ' ' . $numero_facture, 0, 1, 'C');
-$pdf->Ln(8);
+$pdf->Cell(0, 6, 'N° ' . $numero_facture, 0, 1, 'C');
+$pdf->Ln(10);
 
-// ── BLOC CLIENT : layout 2 colonnes, cartes arrondies ──
+// ── BLOCS CLIENT / COMMANDE ──
 $colLeft  = 15;
 $colRight = 110;
 $colW1    = 88;
 $colW2    = 85;
 $blockY   = $pdf->GetY();
 $rowH     = 8;
-$cardR    = 3; // rayon des coins arrondis
+$cardR    = 4;
 
-// Carte gauche (client)
-$pdf->SetFillColor(249, 249, 251);
-$pdf->SetDrawColor(200, 146, 42);
-$pdf->SetLineWidth(0.3);
-$pdf->RoundedRect($colLeft, $blockY, $colW1, 58, $cardR, 'DF');
+$pdf->SetFillColor(255, 255, 255);
+$pdf->SetDrawColor(198, 146, 42);
+$pdf->SetLineWidth(0.35);
+$pdf->RoundedRect($colLeft, $blockY, $colW1, 60, $cardR, 'DF');
+$pdf->RoundedRect($colRight, $blockY, $colW2, 60, $cardR, 'DF');
 
-// Carte droite (détails commande) — même style, pour une paire cohérente
-$pdf->RoundedRect($colRight, $blockY, $colW2, 58, $cardR, 'DF');
+// Bandeaux de titre
+$pdf->SetFillColor(15, 15, 15);
+$pdf->RoundedRect($colLeft, $blockY, $colW1, 12, $cardR, 'F');
+$pdf->RoundedRect($colRight, $blockY, $colW2, 12, $cardR, 'F');
 
-// Filet or sous chaque titre de carte
-$pdf->SetDrawColor(200, 146, 42);
-$pdf->SetLineWidth(0.25);
-$pdf->Line($colLeft + 4, $blockY + 9.5, $colLeft + colW1 - 4, $blockY + 9.5);
-$pdf->Line($colRight + 4, $blockY + 9.5, $colRight + colW2 - 4, $blockY + 9.5);
-
-// Titre colonne gauche
-$pdf->SetXY($colLeft + 4, $blockY + 3.5);
+$pdf->SetXY($colLeft + 5, $blockY + 3);
 $pdf->SetFont('Arial', 'B', 7.5);
-$pdf->SetTextColor(200, 146, 42);
-$pdf->Cell($colW1 - 8, 6, 'INFORMATIONS CLIENT', 0, 1, 'L');
+$pdf->SetTextColor(198, 146, 42);
+$pdf->Cell($colW1 - 10, 6, 'INFORMATIONS CLIENT', 0, 1, 'L');
 
-// Titre colonne droite
-$pdf->SetXY($colRight + 4, $blockY + 3.5);
-$pdf->SetFont('Arial', 'B', 7.5);
-$pdf->SetTextColor(200, 146, 42);
-$pdf->Cell($colW2 - 8, 6, 'DETAILS DE LA COMMANDE', 0, 1, 'L');
+$pdf->SetXY($colRight + 5, $blockY + 3);
+$pdf->Cell($colW2 - 10, 6, 'DETAILS DE LA COMMANDE', 0, 1, 'L');
 
-// Données gauche
+// Données client
 $modes = [
     'livraison'    => 'Paiement a la livraison',
     'orange_money' => 'Orange Money',
@@ -239,105 +290,103 @@ $modes = [
 ];
 
 $info_client = [
-    'Nom'      => $commande['nom_client'],
-    'Tel'      => $commande['telephone'],
-    'Adresse'  => $commande['adresse_livraison'],
+    'Nom'     => $commande['nom_client'],
+    'Tel'     => $commande['telephone'],
+    'Adresse' => $commande['adresse_livraison'],
 ];
 if (!empty($email_client)) {
     $info_client['Email'] = $email_client;
 }
 
-$yy = $blockY + 14;
+$yy = $blockY + 16;
 foreach ($info_client as $lbl => $val) {
-    $pdf->SetXY($colLeft + 4, $yy);
+    $pdf->SetXY($colLeft + 5, $yy);
     $pdf->SetFont('Arial', 'B', 8);
-    $pdf->SetTextColor(140, 120, 80);
+    $pdf->SetTextColor(150, 125, 70);
     $pdf->Cell(22, $rowH, $lbl . ' :', 0, 0, 'L');
     $pdf->SetFont('Arial', '', 8);
     $pdf->SetTextColor(30, 30, 30);
-    $pdf->MultiCell($colW1 - 30, $rowH, $val, 0, 'L');
+    $pdf->MultiCell($colW1 - 32, $rowH, $val, 0, 'L');
     $yy = $pdf->GetY();
-    if ($yy - $blockY > 52) break; // sécurité anti-débordement de la carte
+    if ($yy - $blockY > 54) break;
 }
 
-// Données droite
+// Données commande
 $info_cmd = [
-    'Date'      => date('d/m/Y a H:i', strtotime($commande['created_at'])),
-    'Paiement'  => ($modes[$commande['mode_paiement']] ?? $commande['mode_paiement']),
-    'N. Cmd'    => '#' . ($commande['numero_commande'] ?? $commande['id']),
+    'Date'     => date('d/m/Y a H:i', strtotime($commande['created_at'])),
+    'Paiement' => ($modes[$commande['mode_paiement']] ?? $commande['mode_paiement']),
+    'N. Cmd'   => '#' . ($commande['numero_commande'] ?? $commande['id']),
 ];
 
-$yy2 = $blockY + 14;
+$yy2 = $blockY + 16;
 foreach ($info_cmd as $lbl => $val) {
-    $pdf->SetXY($colRight + 4, $yy2);
+    $pdf->SetXY($colRight + 5, $yy2);
     $pdf->SetFont('Arial', 'B', 8);
-    $pdf->SetTextColor(140, 120, 80);
+    $pdf->SetTextColor(150, 125, 70);
     $pdf->Cell(22, $rowH, $lbl . ' :', 0, 0, 'L');
     $pdf->SetFont('Arial', '', 8);
     $pdf->SetTextColor(30, 30, 30);
-    $pdf->Cell($colW2 - 30, $rowH, $val, 0, 1, 'L');
+    $pdf->Cell($colW2 - 32, $rowH, $val, 0, 1, 'L');
     $yy2 += $rowH;
 }
 
-$pdf->SetY($blockY + 66);
+$pdf->SetY($blockY + 68);
 
-// ── TABLEAU DES PRODUITS ──
+// ── TABLEAU ARTICLES ──
 $pdf->Ln(2);
 
-// En-tête tableau (fond plein, sans grille — plus épuré)
-$pdf->SetFillColor(13, 13, 13);
-$pdf->SetTextColor(200, 146, 42);
+$pdf->SetFillColor(15, 15, 15);
+$pdf->SetTextColor(198, 146, 42);
 $pdf->SetFont('Arial', 'B', 9);
-$pdf->Cell(90, 11, '  PRODUIT', 0, 0, 'L', true);
-$pdf->Cell(22, 11, 'QTE', 0, 0, 'C', true);
-$pdf->Cell(36, 11, 'PRIX UNIT.', 0, 0, 'R', true);
-$pdf->Cell(32, 11, 'TOTAL  ', 0, 1, 'R', true);
+$pdf->Cell(90, 12, '  PRODUIT', 0, 0, 'L', true);
+$pdf->Cell(22, 12, 'QTE', 0, 0, 'C', true);
+$pdf->Cell(36, 12, 'PRIX UNIT.', 0, 0, 'R', true);
+$pdf->Cell(32, 12, 'TOTAL  ', 0, 1, 'R', true);
 
-// Lignes produits — séparateur discret sous chaque ligne, pas de grille verticale
-$pdf->SetDrawColor(232, 233, 237);
+$pdf->SetDrawColor(235, 232, 225);
 $pdf->SetLineWidth(0.15);
 $pdf->SetFont('Arial', '', 9);
-$total_lignes = 0;
 $fill = false;
 
 foreach ($details as $d) {
     $total_ligne = $d['quantite'] * $d['prix_unitaire'];
-    $total_lignes += $total_ligne;
 
     $nom_produit = $d['nom_produit'];
     if (strlen($nom_produit) > 44) $nom_produit = substr($nom_produit, 0, 42) . '..';
 
-    $bg = $fill ? 248 : 255;
-    $pdf->SetFillColor($bg, $bg, $fill ? 252 : 255);
+    $bg = $fill ? 250 : 255;
+    $pdf->SetFillColor($bg, $bg, $bg);
     $pdf->SetTextColor(30, 30, 30);
-    $pdf->Cell(90, 9.5, '  ' . $nom_produit, 'B', 0, 'L', $fill);
-    $pdf->Cell(22, 9.5, $d['quantite'], 'B', 0, 'C', $fill);
+    $pdf->Cell(90, 10, '  ' . $nom_produit, 'B', 0, 'L', true);
+    $pdf->Cell(22, 10, $d['quantite'], 'B', 0, 'C', true);
     $pdf->SetTextColor(120, 108, 80);
-    $pdf->Cell(36, 9.5, number_format($d['prix_unitaire'], 0, ',', ' ') . ' FCFA', 'B', 0, 'R', $fill);
-    $pdf->SetTextColor(200, 146, 42);
+    $pdf->Cell(36, 10, number_format($d['prix_unitaire'], 0, ',', ' ') . ' FCFA', 'B', 0, 'R', true);
+    $pdf->SetTextColor(198, 146, 42);
     $pdf->SetFont('Arial', 'B', 9);
-    $pdf->Cell(32, 9.5, number_format($total_ligne, 0, ',', ' ') . ' FCFA  ', 'B', 1, 'R', $fill);
+    $pdf->Cell(32, 10, number_format($total_ligne, 0, ',', ' ') . ' FCFA  ', 'B', 1, 'R', true);
     $pdf->SetFont('Arial', '', 9);
     $fill = !$fill;
 }
 
-// ── TOTAL ── (bandeau or, coins arrondis)
-$pdf->Ln(5);
+// ── TOTAL ──
+$pdf->Ln(6);
 $totalY = $pdf->GetY();
-$pdf->SetFillColor(200, 146, 42);
-$pdf->RoundedRect(15, $totalY, 180, 15, 3, 'F');
-$pdf->SetXY(15, $totalY + 3.2);
+$pdf->SetFillColor(198, 146, 42);
+$pdf->RoundedRect(15, $totalY, 180, 16, 4, 'F');
+
+$pdf->SetXY(20, $totalY + 4);
 $pdf->SetFont('Arial', 'B', 12);
 $pdf->SetTextColor(42, 31, 12);
-$pdf->Cell(120, 8, '   MONTANT TOTAL', 0, 0, 'L');
-$pdf->SetFont('Times', 'B', 15);
+$pdf->Cell(110, 8, 'MONTANT TOTAL', 0, 0, 'L');
+$pdf->SetFont('Times', 'B', 16);
 $pdf->SetTextColor(26, 18, 0);
-$pdf->Cell(60, 8, number_format($commande['total'], 0, ',', ' ') . ' FCFA   ', 0, 1, 'R');
-$pdf->SetY($totalY + 15);
+$pdf->Cell(65, 8, number_format($commande['total'], 0, ',', ' ') . ' FCFA', 0, 1, 'R');
+
+$pdf->SetY($totalY + 18);
 
 // ── NOTES ──
 if (!empty($commande['notes'])) {
-    $pdf->Ln(6);
+    $pdf->Ln(4);
     $pdf->SetFont('Arial', 'B', 9);
     $pdf->SetTextColor(80, 70, 50);
     $pdf->Cell(0, 7, 'Notes :', 0, 1, 'L');
@@ -347,9 +396,9 @@ if (!empty($commande['notes'])) {
 }
 
 // ── MESSAGE FINAL ──
-$pdf->Ln(10);
-$pdf->SetFont('Times', 'B', 13);
-$pdf->SetTextColor(200, 146, 42);
+$pdf->Ln(12);
+$pdf->SetFont('Times', 'B', 14);
+$pdf->SetTextColor(198, 146, 42);
 $pdf->Cell(0, 8, 'Merci pour votre confiance !', 0, 1, 'C');
 $pdf->SetFont('Arial', 'I', 9);
 $pdf->SetTextColor(130, 110, 70);

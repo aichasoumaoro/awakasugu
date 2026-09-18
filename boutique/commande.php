@@ -170,14 +170,14 @@ $commande_id = 0;
 // ============================================
 function genererFacturePDF($commande_id, $commande, $details, $pdo) {
     require_once dirname(__DIR__) . '/includes/fpdf.php';
-    
+
     $numero_facture = 'FACT-' . date('Ymd') . '-' . str_pad($commande_id, 4, '0', STR_PAD_LEFT);
-    
+
     // Vérifier si la facture existe déjà
     $stmt = $pdo->prepare("SELECT * FROM factures WHERE commande_id = ?");
     $stmt->execute([$commande_id]);
     $facture = $stmt->fetch();
-    
+
     if (!$facture) {
         $stmt = $pdo->prepare("
             INSERT INTO factures (numero_facture, type, commande_id, client_nom, client_telephone, montant_total, statut_paiement, created_at)
@@ -189,173 +189,251 @@ function genererFacturePDF($commande_id, $commande, $details, $pdo) {
         $numero_facture = $facture['numero_facture'];
         $facture_id = $facture['id'];
     }
-    
-    // Créer le PDF
-    $pdf = new FPDF('P', 'mm', 'A4');
-    $pdf->AddPage();
-    $pdf->SetAutoPageBreak(true, 25);
-    
-    // En-tête
-    $pdf->SetFont('Arial', 'B', 20);
-    $pdf->SetTextColor(200, 146, 42);
-    $pdf->Cell(0, 10, 'AWA KA SUGU', 0, 1, 'C');
-    
-    $pdf->SetFont('Arial', 'I', 10);
-    $pdf->SetTextColor(100, 100, 100);
-    $pdf->Cell(0, 6, 'Boutique IBA Design - Restaurant Sofia', 0, 1, 'C');
-    $pdf->Cell(0, 6, 'Sebenikoro Koro, Bamako - Mali', 0, 1, 'C');
-    $pdf->Cell(0, 6, 'Tel: +223 77 77 43 43', 0, 1, 'C');
-    $pdf->Ln(6);
-    
-    $pdf->SetDrawColor(200, 146, 42);
-    $pdf->SetLineWidth(0.5);
-    $pdf->Line(20, $pdf->GetY(), 190, $pdf->GetY());
-    $pdf->Ln(8);
-    
-    // Titre
-    $pdf->SetFont('Arial', 'B', 22);
-    $pdf->SetTextColor(0, 0, 0);
-    $pdf->Cell(0, 12, 'FACTURE', 0, 1, 'C');
-    
-    $pdf->SetFont('Arial', '', 10);
-    $pdf->SetTextColor(100, 100, 100);
-    $pdf->Cell(0, 6, 'N° ' . $numero_facture, 0, 1, 'C');
-    $pdf->Ln(6);
-    
-    // Informations client
-    $pdf->SetFillColor(248, 249, 250);
-    $pdf->SetDrawColor(200, 146, 42);
-    $pdf->SetLineWidth(0.3);
-    $pdf->Rect(20, $pdf->GetY(), 170, 75, 'DF');
-    
-    $startY = $pdf->GetY() + 5;
-    $pdf->SetY($startY);
-    
-    $pdf->SetFont('Arial', 'B', 10);
-    $pdf->SetTextColor(200, 146, 42);
-    $pdf->SetX(30);
-    $pdf->Cell(40, 8, 'CLIENT', 0, 0);
-    $pdf->SetTextColor(0, 0, 0);
-    $pdf->SetFont('Arial', '', 10);
-    $pdf->Cell(0, 8, ': ' . $commande['nom_client'], 0, 1);
-    
-    $pdf->SetX(30);
-    $pdf->SetFont('Arial', 'B', 10);
-    $pdf->SetTextColor(200, 146, 42);
-    $pdf->Cell(40, 8, 'TELEPHONE', 0, 0);
-    $pdf->SetTextColor(0, 0, 0);
-    $pdf->SetFont('Arial', '', 10);
-    $pdf->Cell(0, 8, ': ' . $commande['telephone'], 0, 1);
-    
-    $pdf->SetX(30);
-    $pdf->SetFont('Arial', 'B', 10);
-    $pdf->SetTextColor(200, 146, 42);
-    $pdf->Cell(40, 8, 'ADRESSE', 0, 0);
-    $pdf->SetTextColor(0, 0, 0);
-    $pdf->SetFont('Arial', '', 10);
-    $pdf->MultiCell(0, 8, ': ' . $commande['adresse_livraison'], 0, 1);
-    
-    $pdf->SetX(30);
-    $pdf->SetFont('Arial', 'B', 10);
-    $pdf->SetTextColor(200, 146, 42);
-    $pdf->Cell(40, 8, 'DATE', 0, 0);
-    $pdf->SetTextColor(0, 0, 0);
-    $pdf->SetFont('Arial', '', 10);
-    $pdf->Cell(0, 8, ': ' . date('d/m/Y à H:i', strtotime($commande['created_at'])), 0, 1);
-    
-    $pdf->SetX(30);
-    $pdf->SetFont('Arial', 'B', 10);
-    $pdf->SetTextColor(200, 146, 42);
-    $pdf->Cell(40, 8, 'PAIEMENT', 0, 0);
-    $pdf->SetTextColor(0, 0, 0);
-    $pdf->SetFont('Arial', '', 10);
-    $modes = ['livraison' => 'Paiement à la livraison', 'orange_money' => 'Orange Money', 'wave' => 'Wave', 'moov_money' => 'Moov Money'];
-    $mode_label = $modes[$commande['mode_paiement']] ?? $commande['mode_paiement'];
-    $pdf->Cell(0, 8, ': ' . $mode_label, 0, 1);
-    
-    $pdf->Ln(10);
-    
-    // Tableau des produits
-    $pdf->SetFont('Arial', 'B', 11);
-    $pdf->SetTextColor(255, 255, 255);
-    $pdf->SetFillColor(13, 13, 13);
-    
-    $pdf->Cell(85, 12, 'PRODUIT', 1, 0, 'C', true);
-    $pdf->Cell(30, 12, 'QUANTITE', 1, 0, 'C', true);
-    $pdf->Cell(35, 12, 'PRIX UNITAIRE', 1, 0, 'C', true);
-    $pdf->Cell(35, 12, 'TOTAL', 1, 1, 'C', true);
-    
-    $pdf->SetTextColor(0, 0, 0);
-    $pdf->SetFillColor(255, 255, 255);
-    $pdf->SetFont('Arial', '', 10);
-    $fill = false;
-    
-    foreach($details as $d) {
-        $total_ligne = $d['quantite'] * $d['prix_unitaire'];
-        $nom_produit = $d['nom_produit'];
-        if(strlen($nom_produit) > 40) {
-            $nom_produit = substr($nom_produit, 0, 38) . '...';
+
+    // Helper UTF-8 → ISO-8859-1 (FPDF natif)
+    $u = function($txt) { return utf8_decode($txt); };
+
+    // Classe locale avec Header/Footer premium
+    $pdf = new class('P', 'mm', 'A4') extends FPDF {
+        function Header() {
+            // Bandeau noir
+            $this->SetFillColor(15, 15, 15);
+            $this->Rect(0, 0, 210, 45, 'F');
+
+            // Barre dorée verticale gauche
+            $this->SetFillColor(198, 146, 42);
+            $this->Rect(0, 0, 5, 45, 'F');
+
+            // Nom boutique
+            $this->SetXY(15, 8);
+            $this->SetFont('Times', 'B', 26);
+            $this->SetTextColor(198, 146, 42);
+            $this->Cell(140, 12, 'AWA KA SUGU', 0, 1, 'L');
+
+            // Sous-titre
+            $this->SetX(15);
+            $this->SetFont('Arial', '', 9);
+            $this->SetTextColor(220, 200, 150);
+            $this->Cell(140, 5, 'Boutique IBA Design  |  Restaurant Sofia', 0, 1, 'L');
+
+            // Coordonnées
+            $this->SetX(15);
+            $this->SetFont('Arial', '', 7.5);
+            $this->SetTextColor(170, 160, 140);
+            $this->Cell(140, 5, 'Sebenikoro Koro, Bamako - Mali  |  +223 77 77 43 43  |  contact@awakasugu.com', 0, 1, 'L');
+
+            // Badge ID carré doré
+            $this->SetFillColor(198, 146, 42);
+            $this->Rect(178, 11, 20, 20, 'F');
+            $this->SetXY(178, 15);
+            $this->SetFont('Times', 'B', 14);
+            $this->SetTextColor(15, 15, 15);
+            $this->Cell(20, 12, 'ID', 0, 0, 'C');
+
+            // Ligne dorée sous bandeau
+            $this->SetDrawColor(198, 146, 42);
+            $this->SetLineWidth(0.8);
+            $this->Line(0, 45, 210, 45);
+
+            $this->SetY(52);
         }
-        $pdf->SetFillColor($fill ? 248 : 255);
-        $pdf->Cell(85, 9, $nom_produit, 1, 0, 'L', $fill);
-        $pdf->Cell(30, 9, $d['quantite'], 1, 0, 'C', $fill);
-        $pdf->Cell(35, 9, number_format($d['prix_unitaire'], 0, ',', ' ') . ' F', 1, 0, 'R', $fill);
-        $pdf->Cell(35, 9, number_format($total_ligne, 0, ',', ' ') . ' F', 1, 1, 'R', $fill);
+
+        function Footer() {
+            $this->SetY(-18);
+            $this->SetDrawColor(198, 146, 42);
+            $this->SetLineWidth(0.3);
+            $this->Line(15, $this->GetY(), 195, $this->GetY());
+            $this->Ln(3);
+            $this->SetFont('Arial', 'I', 8);
+            $this->SetTextColor(140, 120, 75);
+            $this->Cell(0, 5, 'Awa Ka Sugu  -  Boutique IBA Design & Restaurant Sofia  |  Page ' . $this->PageNo() . ' / {nb}', 0, 0, 'C');
+        }
+    };
+
+    $pdf->AliasNbPages();
+    $pdf->AddPage();
+    $pdf->SetAutoPageBreak(true, 28);
+    $pdf->SetMargins(15, 52, 15);
+
+    // ── TITRE ──
+    $pdf->SetFont('Times', 'B', 30);
+    $pdf->SetTextColor(15, 15, 15);
+    $pdf->Cell(0, 14, $u('FACTURE'), 0, 1, 'C');
+
+    $pdf->SetFont('Arial', '', 10);
+    $pdf->SetTextColor(160, 140, 90);
+    $pdf->Cell(0, 6, $u('N° ') . $numero_facture, 0, 1, 'C');
+    $pdf->Ln(8);
+
+    // ── BLOCS CLIENT / COMMANDE ──
+    $colLeft  = 15;
+    $colRight = 110;
+    $colW1    = 88;
+    $colW2    = 85;
+    $blockY   = $pdf->GetY();
+    $rowH     = 8;
+
+    // Cadre gauche
+    $pdf->SetFillColor(249, 249, 251);
+    $pdf->SetDrawColor(198, 146, 42);
+    $pdf->SetLineWidth(0.3);
+    $pdf->Rect($colLeft, $blockY, $colW1, 58, 'DF');
+
+    // Cadre droit
+    $pdf->Rect($colRight, $blockY, $colW2, 58, 'DF');
+
+    // Titres
+    $pdf->SetXY($colLeft + 4, $blockY + 3);
+    $pdf->SetFont('Arial', 'B', 8);
+    $pdf->SetTextColor(198, 146, 42);
+    $pdf->Cell($colW1 - 8, 6, $u('INFORMATIONS CLIENT'), 0, 1, 'L');
+
+    $pdf->SetXY($colRight + 4, $blockY + 3);
+    $pdf->Cell($colW2 - 8, 6, $u('DETAILS DE LA COMMANDE'), 0, 1, 'L');
+
+    // Lignes dorées sous titres
+    $pdf->SetDrawColor(198, 146, 42);
+    $pdf->SetLineWidth(0.25);
+    $pdf->Line($colLeft + 4, $blockY + 10, $colLeft + $colW1 - 4, $blockY + 10);
+    $pdf->Line($colRight + 4, $blockY + 10, $colRight + $colW2 - 4, $blockY + 10);
+
+    // Données client
+    $modes = [
+        'livraison'    => 'Paiement a la livraison',
+        'orange_money' => 'Orange Money',
+        'wave'         => 'Wave',
+        'moov_money'   => 'Moov Money',
+        'carte'        => 'Carte bancaire',
+        'especes'      => 'Especes'
+    ];
+
+    $info_client = [
+        'Nom'     => $commande['nom_client'],
+        'Tel'     => $commande['telephone'],
+        'Adresse' => $commande['adresse_livraison'],
+    ];
+    if (!empty($commande['email'])) {
+        $info_client['Email'] = $commande['email'];
+    }
+
+    $yy = $blockY + 14;
+    foreach ($info_client as $lbl => $val) {
+        $pdf->SetXY($colLeft + 4, $yy);
+        $pdf->SetFont('Arial', 'B', 8);
+        $pdf->SetTextColor(140, 120, 80);
+        $pdf->Cell(22, $rowH, $u($lbl . ' :'), 0, 0, 'L');
+        $pdf->SetFont('Arial', '', 8);
+        $pdf->SetTextColor(30, 30, 30);
+        $pdf->MultiCell($colW1 - 30, $rowH, $u($val), 0, 'L');
+        $yy = $pdf->GetY();
+        if ($yy - $blockY > 52) break;
+    }
+
+    // Données commande
+    $info_cmd = [
+        'Date'     => date('d/m/Y a H:i', strtotime($commande['created_at'])),
+        'Paiement' => ($modes[$commande['mode_paiement']] ?? $commande['mode_paiement']),
+        'N. Cmd'   => '#' . ($commande['numero_commande'] ?? $commande['id']),
+    ];
+
+    $yy2 = $blockY + 14;
+    foreach ($info_cmd as $lbl => $val) {
+        $pdf->SetXY($colRight + 4, $yy2);
+        $pdf->SetFont('Arial', 'B', 8);
+        $pdf->SetTextColor(140, 120, 80);
+        $pdf->Cell(22, $rowH, $u($lbl . ' :'), 0, 0, 'L');
+        $pdf->SetFont('Arial', '', 8);
+        $pdf->SetTextColor(30, 30, 30);
+        $pdf->Cell($colW2 - 30, $rowH, $u($val), 0, 1, 'L');
+        $yy2 += $rowH;
+    }
+
+    $pdf->SetY($blockY + 66);
+
+    // ── TABLEAU PRODUITS ──
+    $pdf->Ln(2);
+
+    $pdf->SetFillColor(15, 15, 15);
+    $pdf->SetTextColor(198, 146, 42);
+    $pdf->SetFont('Arial', 'B', 9);
+    $pdf->Cell(90, 11, $u('  PRODUIT'), 0, 0, 'L', true);
+    $pdf->Cell(22, 11, $u('QTE'), 0, 0, 'C', true);
+    $pdf->Cell(36, 11, $u('PRIX UNIT.'), 0, 0, 'R', true);
+    $pdf->Cell(32, 11, $u('TOTAL  '), 0, 1, 'R', true);
+
+    $pdf->SetDrawColor(232, 233, 237);
+    $pdf->SetLineWidth(0.15);
+    $pdf->SetFont('Arial', '', 9);
+    $fill = false;
+
+    foreach ($details as $d) {
+        $total_ligne = $d['quantite'] * $d['prix_unitaire'];
+
+        $nom_produit = $d['nom_produit'];
+        if (strlen($nom_produit) > 44) $nom_produit = substr($nom_produit, 0, 42) . '..';
+
+        $bg = $fill ? 248 : 255;
+        $pdf->SetFillColor($bg, $bg, $bg);
+        $pdf->SetTextColor(30, 30, 30);
+        $pdf->Cell(90, 9.5, $u('  ' . $nom_produit), 'B', 0, 'L', true);
+        $pdf->Cell(22, 9.5, $d['quantite'], 'B', 0, 'C', true);
+        $pdf->SetTextColor(120, 108, 80);
+        $pdf->Cell(36, 9.5, number_format($d['prix_unitaire'], 0, ',', ' ') . $u(' FCFA'), 'B', 0, 'R', true);
+        $pdf->SetTextColor(198, 146, 42);
+        $pdf->SetFont('Arial', 'B', 9);
+        $pdf->Cell(32, 9.5, number_format($total_ligne, 0, ',', ' ') . $u(' FCFA  '), 'B', 1, 'R', true);
+        $pdf->SetFont('Arial', '', 9);
         $fill = !$fill;
     }
-    
-    // Total
-    $pdf->SetFont('Arial', 'B', 13);
-    $pdf->SetTextColor(200, 146, 42);
-    $pdf->SetFillColor(255, 248, 240);
-    $pdf->SetDrawColor(200, 146, 42);
-    $pdf->SetLineWidth(0.5);
-    $pdf->Cell(150, 13, 'TOTAL', 1, 0, 'R', true);
-    $pdf->Cell(35, 13, number_format($commande['total'], 0, ',', ' ') . ' FCFA', 1, 1, 'C', true);
-    
-    // Notes
+
+    // ── TOTAL ──
+    $pdf->Ln(5);
+    $totalY = $pdf->GetY();
+    $pdf->SetFillColor(198, 146, 42);
+    $pdf->Rect(15, $totalY, 180, 15, 'F');
+
+    $pdf->SetXY(15, $totalY + 3);
+    $pdf->SetFont('Arial', 'B', 12);
+    $pdf->SetTextColor(42, 31, 12);
+    $pdf->Cell(120, 8, $u('   MONTANT TOTAL'), 0, 0, 'L');
+    $pdf->SetFont('Times', 'B', 15);
+    $pdf->SetTextColor(26, 18, 0);
+    $pdf->Cell(60, 8, number_format($commande['total'], 0, ',', ' ') . $u(' FCFA   '), 0, 1, 'R');
+    $pdf->SetY($totalY + 15);
+
+    // ── NOTES ──
     if (!empty($commande['notes'])) {
         $pdf->Ln(6);
-        $pdf->SetFont('Arial', 'B', 10);
-        $pdf->SetTextColor(0, 0, 0);
-        $pdf->Cell(0, 8, '📝 Notes :', 0, 1, 'L');
-        $pdf->SetFont('Arial', '', 9);
-        $pdf->SetTextColor(80, 80, 80);
-        $pdf->MultiCell(0, 6, $commande['notes'], 0, 'L');
+        $pdf->SetFont('Arial', 'B', 9);
+        $pdf->SetTextColor(80, 70, 50);
+        $pdf->Cell(0, 7, $u('Notes :'), 0, 1, 'L');
+        $pdf->SetFont('Arial', '', 8);
+        $pdf->SetTextColor(100, 90, 70);
+        $pdf->MultiCell(0, 5, $u($commande['notes']), 0, 'L');
     }
-    
-    // Message de remerciement
-    $pdf->Ln(8);
-    $pdf->SetFont('Arial', 'I', 11);
-    $pdf->SetTextColor(200, 146, 42);
-    $pdf->Cell(0, 8, '✨ Merci de votre confiance ! ✨', 0, 1, 'C');
+
+    // ── MESSAGE FINAL ──
+    $pdf->Ln(10);
+    $pdf->SetFont('Times', 'B', 13);
+    $pdf->SetTextColor(198, 146, 42);
+    $pdf->Cell(0, 8, $u('Merci pour votre confiance !'), 0, 1, 'C');
     $pdf->SetFont('Arial', 'I', 9);
-    $pdf->SetTextColor(100, 100, 100);
-    $pdf->Cell(0, 6, 'Nous espérons vous revoir bientôt chez Awa Ka Sugu.', 0, 1, 'C');
-    
-    // Pied de page
-    $pdf->SetY(-35);
-    $pdf->SetDrawColor(200, 146, 42);
-    $pdf->Line(20, $pdf->GetY(), 190, $pdf->GetY());
-    $pdf->Ln(4);
-    $pdf->SetFont('Arial', 'I', 9);
-    $pdf->SetTextColor(100, 100, 100);
-    $pdf->Cell(0, 5, 'Merci de votre confiance !', 0, 1, 'C');
-    $pdf->Cell(0, 5, 'Livraison sous 24h-48h a Bamako.', 0, 1, 'C');
-    
+    $pdf->SetTextColor(130, 110, 70);
+    $pdf->Cell(0, 6, $u('Nous esperons vous revoir bientot chez Awa Ka Sugu.'), 0, 1, 'C');
+
     // Sauvegarde du PDF
     $pdf_dir = dirname(__DIR__) . '/uploads/factures/';
     if (!is_dir($pdf_dir)) {
         mkdir($pdf_dir, 0777, true);
     }
-    
+
     $pdf_file = 'facture_' . $numero_facture . '.pdf';
     $pdf_path = $pdf_dir . $pdf_file;
     $pdf->Output($pdf_path, 'F');
-    
+
     // Mettre à jour la base
     $pdo->prepare("UPDATE factures SET fichier_pdf = ? WHERE id = ?")->execute([$pdf_file, $facture_id]);
-    
+
     return ['pdf_path' => $pdf_path, 'pdf_file' => $pdf_file, 'numero_facture' => $numero_facture];
 }
 
@@ -473,7 +551,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             if ($points_gagnes > 0) {
                 try {
-                    // Vérifier si le client a déjà un compte de points
                     $stmt = $pdo->prepare("SELECT id FROM points_fidelite WHERE client_id = ?");
                     $stmt->execute([$client_id]);
                     $existing = $stmt->fetch();
@@ -486,7 +563,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             ->execute([$client_id, $points_gagnes, $points_gagnes]);
                     }
                     
-                    // Enregistrer dans l'historique
                     $description = "Commande #" . $numero_commande . " - " . $points_gagnes . " points gagnés";
                     $pdo->prepare("INSERT INTO historique_points (client_id, points, type, reference_id, description) VALUES (?, ?, 'gain', ?, ?)")
                         ->execute([$client_id, $points_gagnes, $commande_id, $description]);
@@ -505,15 +581,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // ============================================
         // VIDER LE PANIER (APRÈS COMMANDE)
         // ============================================
-        // Sauvegarder le panier pour la construction des emails (il sera vidé juste après)
         $panier_pour_email = $_SESSION['panier'];
 
-        // Vider le panier de la session
         unset($_SESSION['panier']);
         unset($_SESSION['code_promo']);
         unset($_SESSION['reduction_points']);
         
-        // Vider le panier en BDD si client connecté
         if (isset($_SESSION['client_id'])) {
             try {
                 viderPanierBDD($_SESSION['client_id'], $pdo);
@@ -527,7 +600,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // ============================================
         $sujet = "Confirmation de votre commande Awa Ka Sugu — N° $numero_commande";
 
-        // ── Bannière de points de fidélité (affichée seulement si des points ont été gagnés) ──
         $bloc_points_html = '';
         if ($client_id && $fidelite_actif == 1 && $points_gagnes > 0) {
             $bloc_points_html = '
@@ -544,7 +616,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </table>';
         }
 
-        // ── Lignes d'articles (couleur/taille affichées si présentes) ──
         $lignes_articles_client = '';
         foreach ($panier_pour_email as $item) {
             $options = [];
@@ -562,7 +633,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               </tr>';
         }
 
-        // Construire le message HTML pour le client
         $message_html = '
         <!DOCTYPE html>
         <html lang="fr">
@@ -681,14 +751,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </body>
         </html>';
         
-        // Envoyer l'email de confirmation au client avec Brevo et la facture PDF en pièce jointe
         $email_client_envoye = envoyerEmail($email, $sujet, $message_html, $facture_info['pdf_path']);
         
         // ============================================
-        // ENVOI DE NOTIFICATION AUX ADMINISTRATEURS ET VENDEURS (VERSION SIMPLIFIÉE ET FIABLE)
+        // ENVOI DE NOTIFICATION AUX ADMINISTRATEURS ET VENDEURS
         // ============================================
-        
-        // Récupérer TOUS les emails des admins/vendeurs actifs depuis la BDD
         try {
             $stmt = $pdo->query("
                 SELECT email FROM admin 
@@ -701,20 +768,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $destinataires = [];
         }
         
-        // Si aucun email trouvé, utiliser un email de fallback pour tester
         if (empty($destinataires)) {
-            // Envoyer à l'admin principal pour test
             $destinataires = ['awakasugu@gmail.com'];
-            error_log("⚠️ Aucun admin trouvé en BDD, envoi à awakasugu@gmail.com (fallback)");
+            error_log("Aucun admin trouvé en BDD, envoi à awakasugu@gmail.com (fallback)");
         }
         
-        error_log("📧 Destinataires pour la notification: " . implode(', ', $destinataires));
+        error_log("Destinataires pour la notification: " . implode(', ', $destinataires));
         
         if (!empty($destinataires)) {
-            // Construire le sujet
             $sujet_notification = "Nouvelle commande #" . $numero_commande . " sur Awa Ka Sugu";
 
-            // ── Lignes d'articles pour l'email admin ──
             $lignes_articles_admin = '';
             foreach ($panier_pour_email as $item) {
                 $lignes_articles_admin .= '
@@ -724,7 +787,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   </tr>';
             }
             
-            // Construire le message HTML pour les admins
             $message_admin = '
             <!DOCTYPE html>
             <html lang="fr">
@@ -836,16 +898,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </body>
             </html>';
             
-            // Envoyer l'email à tous les destinataires
             $notification_envoyee = envoyerEmailMultiples($destinataires, $sujet_notification, $message_admin);
             
             if ($notification_envoyee) {
-                error_log("✅ Notification email envoyée pour la commande #" . $numero_commande);
+                error_log("Notification email envoyée pour la commande #" . $numero_commande);
             } else {
-                error_log("❌ Erreur lors de l'envoi de la notification");
+                error_log("Erreur lors de l'envoi de la notification");
             }
         } else {
-            error_log("⚠️ Aucun destinataire configuré pour les notifications de commande");
+            error_log("Aucun destinataire configuré pour les notifications de commande");
         }
         
         // ============================================
@@ -943,6 +1004,13 @@ if (isset($_GET['produit_id'])) {
     font-size: 1.2rem;
     color: #0D0D0D;
     margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.formulaire-card .section-title i {
+    color: #C8922A;
+    font-size: 1.3rem;
 }
 .form-group {
     margin-bottom: 18px;
@@ -975,16 +1043,31 @@ if (isset($_GET['produit_id'])) {
     color: #B0B0B0;
 }
 .form-check {
-    padding: 8px 12px;
+    padding: 10px 14px;
     border-radius: 10px;
     transition: background 0.3s;
+    border: 1.5px solid #F0F2F5;
+    margin-bottom: 8px;
 }
 .form-check:hover {
     background: #FEFBF5;
+    border-color: rgba(200,146,42,0.2);
 }
 .form-check-input:checked {
     background-color: #C8922A;
     border-color: #C8922A;
+}
+.form-check-label {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    color: #0D0D0D;
+}
+.form-check-label i {
+    color: #C8922A;
+    font-size: 1rem;
 }
 .btn-valider {
     width: 100%;
@@ -1006,6 +1089,9 @@ if (isset($_GET['produit_id'])) {
     background: linear-gradient(135deg, #9A6E1A, #C8922A);
     transform: translateY(-2px);
     box-shadow: 0 5px 20px rgba(200,146,42,0.3);
+}
+.btn-valider i {
+    font-size: 1.1rem;
 }
 .alert-error {
     background: #FEF3F2;
@@ -1037,6 +1123,13 @@ if (isset($_GET['produit_id'])) {
     font-family: 'Playfair Display', serif;
     color: #0D0D0D;
     margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.resume-card h4 i {
+    color: #C8922A;
+    font-size: 1.2rem;
 }
 .resume-item {
     display: flex;
@@ -1108,7 +1201,7 @@ if (isset($_GET['produit_id'])) {
 <!-- Header -->
 <div class="commande-header">
     <div class="container-custom" style="padding-bottom:0;">
-        <h1>📦 Finaliser ma commande</h1>
+        <h1>Finaliser ma commande</h1>
         <p>Remplissez vos informations pour valider votre commande</p>
     </div>
 </div>
@@ -1121,11 +1214,14 @@ if (isset($_GET['produit_id'])) {
                 <i class="bi bi-arrow-left"></i> Retour
             </a>
             
-            <div class="section-title">📍 Informations de livraison</div>
+            <div class="section-title">
+                <i class="bi bi-geo-alt-fill"></i>
+                Informations de livraison
+            </div>
             
             <?php if($commande_directe_message): ?>
                 <div class="alert-info-commande">
-                    <i class="bi bi-bag-check"></i>
+                    <i class="bi bi-bag-check-fill"></i>
                     <span><?= $commande_directe_message ?></span>
                 </div>
             <?php endif; ?>
@@ -1171,34 +1267,50 @@ if (isset($_GET['produit_id'])) {
                 <div class="form-group" style="margin-top:25px;">
                     <label><strong>Mode de paiement</strong></label>
                     <div class="mt-2">
-                        <div class="form-check mb-2">
+                        <div class="form-check">
                             <input class="form-check-input" type="radio" name="mode_paiement" value="livraison" id="livraison" checked>
-                            <label class="form-check-label" for="livraison">💵 Paiement à la livraison</label>
+                            <label class="form-check-label" for="livraison">
+                                <i class="bi bi-cash-coin"></i>
+                                Paiement à la livraison
+                            </label>
                         </div>
-                        <div class="form-check mb-2">
+                        <div class="form-check">
                             <input class="form-check-input" type="radio" name="mode_paiement" value="orange_money" id="orange">
-                            <label class="form-check-label" for="orange">🟠 Orange Money</label>
+                            <label class="form-check-label" for="orange">
+                                <i class="bi bi-phone"></i>
+                                Orange Money
+                            </label>
                         </div>
-                        <div class="form-check mb-2">
+                        <div class="form-check">
                             <input class="form-check-input" type="radio" name="mode_paiement" value="wave" id="wave">
-                            <label class="form-check-label" for="wave">🌊 Wave</label>
+                            <label class="form-check-label" for="wave">
+                                <i class="bi bi-water"></i>
+                                Wave
+                            </label>
                         </div>
-                        <div class="form-check mb-2">
+                        <div class="form-check">
                             <input class="form-check-input" type="radio" name="mode_paiement" value="moov_money" id="moov">
-                            <label class="form-check-label" for="moov">📱 Moov Money</label>
+                            <label class="form-check-label" for="moov">
+                                <i class="bi bi-phone-vibrate"></i>
+                                Moov Money
+                            </label>
                         </div>
                     </div>
                 </div>
                 
                 <button type="submit" class="btn-valider">
-                    <i class="bi bi-check-circle"></i> Confirmer ma commande
+                    <i class="bi bi-check-circle-fill"></i>
+                    Confirmer ma commande
                 </button>
             </form>
         </div>
         
         <!-- Résumé -->
         <div class="resume-card">
-            <h4>🛒 Récapitulatif</h4>
+            <h4>
+                <i class="bi bi-bag-fill"></i>
+                Récapitulatif
+            </h4>
             <?php foreach($_SESSION['panier'] as $item): ?>
             <div class="resume-item">
                 <span class="item-name">
@@ -1244,7 +1356,7 @@ if (isset($_GET['produit_id'])) {
                 <span class="total-amount"><?= number_format($total_apres_reductions, 0, ',', ' ') ?> FCFA</span>
             </div>
             <div class="paiement-info">
-                <i class="bi bi-info-circle"></i>
+                <i class="bi bi-info-circle-fill"></i>
                 <small>Pour Orange Money/Wave, vous serez redirigé vers la page de paiement sécurisé.</small>
             </div>
             <div style="margin-top:15px;padding-top:15px;border-top:1px solid #F0F2F5;">

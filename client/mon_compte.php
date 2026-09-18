@@ -218,7 +218,7 @@ $params_fidelite = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
 $seuil_points = $params_fidelite['fidelite_seuil_points'] ?? 50000;
 $points_par_seuil = $params_fidelite['fidelite_points_par_seuil'] ?? 1;
 $reduction_points = $params_fidelite['fidelite_reduction_points'] ?? 10;
-$reduction_montant = $params_fidelite['fidelite_reduction_montant'] ?? 1000;
+$reduction_montant = $params_fidelite['fidelite_montant_reduction'] ?? 1000;
 $fidelite_actif = $params_fidelite['fidelite_actif'] ?? 1;
 
 // Calculer la réduction disponible
@@ -951,6 +951,11 @@ body {
                 </a>
             </div>
             <div class="menu-item">
+                <a href="menu.php">
+                    <i class="bi bi-cup-hot"></i> Menu Restaurant
+                </a>
+            </div>
+            <div class="menu-item">
                 <a href="mes_commandes.php">
                     <i class="bi bi-receipt"></i> Mes commandes
                 </a>
@@ -1075,8 +1080,8 @@ body {
                 <div class="empty-state">
                     <i class="bi bi-inbox"></i>
                     <p>Vous n'avez pas encore passé de commande.</p>
-                    <a href="menu.php" class="btn-boutique" style="margin-right:10px;">
-                        <i class="bi bi-bag"></i> Commander un repas
+                    <a href="../restaurant/menu.php" class="btn-boutique" style="margin-right:10px;">
+                        <i class="bi bi-cup-hot"></i> Voir le menu du Restaurant
                     </a>
                     <a href="../boutique/catalogue.php" class="btn-boutique">
                         <i class="bi bi-shop"></i> Voir la boutique
