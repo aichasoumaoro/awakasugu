@@ -2215,7 +2215,7 @@ if ($action === "add") {
         </div>
         <?php endif; ?>
 
-        <!-- NOS VIDÉOS (sans nombre de vues) -->
+        <!-- NOS VIDÉOS -->
         <div class="section-head reveal" style="margin-top: 10px;">
             <div>
                 <h2 class="section-title">Nos <em>vidéos</em></h2>
@@ -2270,27 +2270,30 @@ if ($action === "add") {
         </div>
 
         <div class="shop-layout">
-            <div class="sidebar" id="shopSidebar">
-                <div class="sidebar-title">
-                    <i class="bi bi-grid-3x3-gap"></i> 
-                    <?= htmlspecialchars($categorie_nom) ?>
+            <!-- ✅ CONTENEUR IDENTIFIÉ POUR L'AJAX (SIDEBAR) -->
+            <div id="shop-sidebar-container">
+                <div class="sidebar" id="shopSidebar">
+                    <div class="sidebar-title">
+                        <i class="bi bi-grid-3x3-gap"></i> 
+                        <?= htmlspecialchars($categorie_nom) ?>
+                    </div>
+                    <ul class="sidebar-list">
+                        <li>
+                            <a href="?categorie=<?= $categorie_id ?>" class="<?= ($sous_categorie_id == 0) ? 'active' : '' ?>" data-url="?categorie=<?= $categorie_id ?>">
+                                <i class="bi bi-grid"></i> Tous les produits
+                            </a>
+                        </li>
+                        <?php if (isset($subcategories_data[$categorie_id])): ?>
+                            <?php foreach ($subcategories_data[$categorie_id] as $sub): ?>
+                                <li>
+                                    <a href="?categorie=<?= $categorie_id ?>&sous_categorie=<?= $sub['id'] ?>" class="<?= ($sous_categorie_id == $sub['id']) ? 'active' : '' ?>" data-url="?categorie=<?= $categorie_id ?>&sous_categorie=<?= $sub['id'] ?>">
+                                        <i class="bi bi-tag"></i> <?= htmlspecialchars($sub['nom']) ?>
+                                    </a>
+                                </li>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </ul>
                 </div>
-                <ul class="sidebar-list">
-                    <li>
-                        <a href="?categorie=<?= $categorie_id ?>" class="<?= ($sous_categorie_id == 0) ? 'active' : '' ?>" data-url="?categorie=<?= $categorie_id ?>">
-                            <i class="bi bi-grid"></i> Tous les produits
-                        </a>
-                    </li>
-                    <?php if (isset($subcategories_data[$categorie_id])): ?>
-                        <?php foreach ($subcategories_data[$categorie_id] as $sub): ?>
-                            <li>
-                                <a href="?categorie=<?= $categorie_id ?>&sous_categorie=<?= $sub['id'] ?>" class="<?= ($sous_categorie_id == $sub['id']) ? 'active' : '' ?>" data-url="?categorie=<?= $categorie_id ?>&sous_categorie=<?= $sub['id'] ?>">
-                                    <i class="bi bi-tag"></i> <?= htmlspecialchars($sub['nom']) ?>
-                                </a>
-                            </li>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </ul>
             </div>
 
             <div class="content" id="shop-content">
@@ -2464,32 +2467,61 @@ if ($action === "add") {
 <script>
 // ============================================
 // AJAX CATÉGORIES - CHARGEMENT SANS RELOAD
+// ✅ Fonctionne uniquement si on est déjà sur une page catégorie
+// ✅ Sinon : redirection normale (rechargement complet)
 // ============================================
 document.addEventListener('click', function(e) {
     const link = e.target.closest('[data-url]');
     if (!link) return;
     
-    e.preventDefault();
     const url = link.getAttribute('data-url');
     if (!url) return;
     
+    e.preventDefault();
+    
+    // ✅ VÉRIFIER SI ON EST DÉJÀ SUR UNE PAGE CATÉGORIE
+    const currentSidebar = document.getElementById('shop-sidebar-container');
+    const currentContent = document.getElementById('shop-content');
+    
+    // ❌ Si on est sur la PAGE D'ACCUEIL (pas de sidebar ni de contenu)
+    // → rechargement complet classique
+    if (!currentSidebar || !currentContent) {
+        window.location.href = url;
+        return;
+    }
+    
+    // ✅ Sinon, on est sur une page catégorie → AJAX
     fetch(url)
         .then(response => response.text())
         .then(html => {
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
             
-            const newContent = doc.getElementById('shop-content');
-            const currentContent = document.getElementById('shop-content');
-            
-            if (newContent && currentContent) {
-                currentContent.innerHTML = newContent.innerHTML;
-                history.pushState({}, '', url);
-                window.scrollTo({ top: 200, behavior: 'smooth' });
-                initRevealObserver();
-            } else {
-                window.location.href = url;
+            // 1. Remplacer la SIDEBAR (sous-catégories)
+            const newSidebar = doc.getElementById('shop-sidebar-container');
+            if (newSidebar) {
+                currentSidebar.innerHTML = newSidebar.innerHTML;
             }
+            
+            // 2. Remplacer le CONTENU (produits)
+            const newContent = doc.getElementById('shop-content');
+            if (newContent) {
+                currentContent.innerHTML = newContent.innerHTML;
+            }
+            
+            // 3. Mettre à jour l'URL et l'historique
+            history.pushState({}, '', url);
+            
+            // 4. Réinitialiser les observers et animations
+            if (typeof initRevealObserver === 'function') {
+                initRevealObserver();
+            }
+            if (typeof initStickySidebarShadow === 'function') {
+                initStickySidebarShadow();
+            }
+            
+            // 5. Scroll doux vers le haut
+            window.scrollTo({ top: 200, behavior: 'smooth' });
         })
         .catch(error => {
             console.error('Erreur AJAX:', error);
