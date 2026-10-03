@@ -294,6 +294,7 @@ function generer_email_identifiants($nom, $email, $password, $role_label, $admin
 $success = '';
 $error = '';
 $email_envoye = false;
+$success_details = []; // Pour le joli message structuré
 
 // AJOUTER UN ADMIN AVEC PERMISSIONS
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_admin') {
@@ -354,11 +355,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 "Ajout de l'administrateur '$nom' avec le rôle '$role' et " . count($permissions) . " permissions" . ($email_envoye ? " - Email envoyé" : " - Email NON envoyé")
             );
             
-            if ($email_envoye) {
-                $success = "✅ L'administrateur <strong>$nom</strong> a été créé avec succès.<br>📧 Un email de confirmation a été envoyé à <strong>$email</strong>.<br>📋 Tâches assignées : " . (empty($permissions_noms) ? 'Aucune' : implode(', ', $permissions_noms));
-            } else {
-                $success = "⚠️ L'administrateur <strong>$nom</strong> a été créé.<br>❌ Mais l'email de confirmation n'a pas pu être envoyé.";
-            }
+            // ===== PRÉPARATION DU JOLI MESSAGE =====
+            $success = "L'administrateur a été créé avec succès.";
+            $success_details = [
+                'nom' => $nom,
+                'email' => $email,
+                'role' => $role_label,
+                'email_envoye' => $email_envoye,
+                'permissions' => $permissions_noms
+            ];
         }
     }
 }
@@ -471,6 +476,135 @@ foreach ($admins as $a) {
 include 'includes/header.php';
 include 'includes/sidebar.php';
 ?>
+
+<!-- ============================================
+     STYLES DU MESSAGE DE SUCCÈS AMÉLIORÉ
+     ============================================ -->
+<style>
+.success-card {
+    background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+    border: 1.5px solid #86efac;
+    border-radius: 14px;
+    padding: 22px 26px;
+    margin-bottom: 22px;
+    box-shadow: 0 4px 14px rgba(34, 197, 94, 0.08);
+    animation: slideDown 0.4s ease;
+}
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.success-card .success-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 14px;
+    border-bottom: 1px dashed #a7f3d0;
+}
+.success-card .success-head .icon-check {
+    width: 42px; height: 42px;
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: #fff;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.3rem;
+    box-shadow: 0 4px 10px rgba(34, 197, 94, 0.35);
+    flex-shrink: 0;
+}
+.success-card .success-head h4 {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #166534;
+    font-family: 'Jost', sans-serif;
+}
+.success-card .success-head p {
+    margin: 2px 0 0;
+    font-size: 0.78rem;
+    color: #4ade80;
+    font-weight: 500;
+}
+.success-card .info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+}
+.success-card .info-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #ffffff;
+    border: 1px solid #d1fae5;
+    border-radius: 10px;
+    padding: 10px 14px;
+}
+.success-card .info-item .ico {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    background: #f0fdf4;
+    color: #16a34a;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.95rem;
+    flex-shrink: 0;
+}
+.success-card .info-item .lbl {
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: #6b7280;
+    font-weight: 600;
+}
+.success-card .info-item .val {
+    font-size: 0.85rem;
+    color: #111827;
+    font-weight: 600;
+    word-break: break-word;
+}
+.success-card .perm-tags {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px dashed #a7f3d0;
+}
+.success-card .perm-tags .lbl-perm {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: #6b7280;
+    font-weight: 700;
+    margin-bottom: 8px;
+    display: block;
+}
+.success-card .perm-tags .tag {
+    display: inline-block;
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    color: #9a3412;
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    margin: 3px 4px 3px 0;
+}
+.success-card .perm-tags .tag-empty {
+    color: #9ca3af;
+    font-style: italic;
+    font-size: 0.75rem;
+}
+.email-status-ok {
+    background: #eff6ff !important;
+    border-color: #bfdbfe !important;
+}
+.email-status-ok .ico { background: #dbeafe !important; color: #2563eb !important; }
+.email-status-ok .val { color: #1d4ed8 !important; }
+.email-status-ko {
+    background: #fef2f2 !important;
+    border-color: #fecaca !important;
+}
+.email-status-ko .ico { background: #fee2e2 !important; color: #dc2626 !important; }
+.email-status-ko .val { color: #b91c1c !important; }
+</style>
+
 <!-- ============================================
      MAIN CONTENT
      ============================================ -->
@@ -493,11 +627,64 @@ include 'includes/sidebar.php';
 
     <div class="content">
 
-        <?php if($success): ?>
+        <?php if($success && !empty($success_details)): ?>
+            <!-- ===== JOLI MESSAGE DE SUCCÈS STRUCTURÉ ===== -->
+            <div class="success-card">
+                <div class="success-head">
+                    <div class="icon-check"><i class="bi bi-check-lg"></i></div>
+                    <div>
+                        <h4>Administrateur créé avec succès</h4>
+                        <p>Le compte a bien été enregistré dans le système</p>
+                    </div>
+                </div>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <div class="ico"><i class="bi bi-person-fill"></i></div>
+                        <div>
+                            <div class="lbl">Nom complet</div>
+                            <div class="val"><?= htmlspecialchars($success_details['nom']) ?></div>
+                        </div>
+                    </div>
+                    <div class="info-item">
+                        <div class="ico"><i class="bi bi-envelope-fill"></i></div>
+                        <div>
+                            <div class="lbl">Adresse email</div>
+                            <div class="val"><?= htmlspecialchars($success_details['email']) ?></div>
+                        </div>
+                    </div>
+                    <div class="info-item">
+                        <div class="ico"><i class="bi bi-person-badge-fill"></i></div>
+                        <div>
+                            <div class="lbl">Rôle attribué</div>
+                            <div class="val"><?= htmlspecialchars($success_details['role']) ?></div>
+                        </div>
+                    </div>
+                    <div class="info-item <?= $success_details['email_envoye'] ? 'email-status-ok' : 'email-status-ko' ?>">
+                        <div class="ico"><i class="bi <?= $success_details['email_envoye'] ? 'bi-envelope-check-fill' : 'bi-envelope-exclamation-fill' ?>"></i></div>
+                        <div>
+                            <div class="lbl">Email de confirmation</div>
+                            <div class="val"><?= $success_details['email_envoye'] ? 'Envoyé avec succès' : 'Échec de l\'envoi' ?></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="perm-tags">
+                    <span class="lbl-perm"><i class="bi bi-list-check"></i> Tâches / Permissions assignées</span>
+                    <?php if(!empty($success_details['permissions'])): ?>
+                        <?php foreach($success_details['permissions'] as $pn): ?>
+                            <span class="tag"><?= htmlspecialchars($pn) ?></span>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <span class="tag-empty">Aucune tâche spécifique assignée (le rôle fournit le socle de base)</span>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php elseif($success): ?>
+            <!-- ===== MESSAGE DE SUCCÈS SIMPLE (pour les autres actions) ===== -->
             <div class="alert-success" style="background:#d4edda;padding:15px 20px;border-radius:8px;color:#155724;border:1px solid #c3e6cb;margin-bottom:20px;">
                 <i class="bi bi-check-circle-fill"></i> <?= $success ?>
             </div>
         <?php endif; ?>
+
         <?php if($error): ?>
             <div class="alert-danger" style="background:#f8d7da;padding:15px 20px;border-radius:8px;color:#721c24;border:1px solid #f5c6cb;margin-bottom:20px;">
                 <i class="bi bi-exclamation-triangle-fill"></i> <?= $error ?>

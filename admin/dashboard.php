@@ -58,6 +58,55 @@ try {
 }
 
 // ============================================
+// FONCTION CAN() - Fusion rôle + permissions
+// ============================================
+if (!function_exists('can')) {
+    function can($permission) {
+        global $admin_role, $pdo, $admin_id;
+        
+        // SUPER ADMIN : tout
+        if ($admin_role === 'super_admin') return true;
+        
+        // DIRECTEUR : tout sauf parametres
+        if ($admin_role === 'directeur') {
+            return $permission !== 'parametres';
+        }
+        
+        // Récupérer les permissions cochées (1 seule fois par requête)
+        static $user_permissions = null;
+        if ($user_permissions === null) {
+            $user_permissions = [];
+            try {
+                $stmt = $pdo->prepare("SELECT permissions FROM admin WHERE id = ?");
+                $stmt->execute([$admin_id]);
+                $row = $stmt->fetch();
+                if ($row && !empty($row['permissions'])) {
+                    $decoded = json_decode($row['permissions'], true);
+                    if (is_array($decoded)) $user_permissions = $decoded;
+                }
+            } catch(PDOException $e) {}
+        }
+        
+        // Socle de base par rôle
+        $taches_par_role = [
+            'admin' => [
+                'dashboard', 'produits', 'commandes', 'clients',
+                'stocks', 'promotions', 'plats', 'commandes_repas',
+                'reservations', 'messagerie', 'point_de_vente',
+                'factures', 'paiements', 'codes_promo', 'avis_admin'
+            ],
+            'admin2' => ['dashboard', 'livraisons', 'commandes'],
+        ];
+        
+        $socle = $taches_par_role[$admin_role] ?? [];
+        $toutes = array_unique(array_merge($socle, $user_permissions));
+        
+        if ($permission === 'dashboard') return true;
+        return in_array($permission, $toutes);
+    }
+}
+
+// ============================================
 // FONCTIONS STATISTIQUES
 // ============================================
 function getTotalProduits($pdo) {
@@ -182,56 +231,71 @@ $marge_moyenne = $stats_marge['marge_moyenne'] ?? 0;
 $nb_produits_avec_marge = $stats_marge['nb_produits_avec_marge'] ?? 0;
 
 $admins_connectes = [];
-if ($admin_role === 'super_admin' || $admin_role === 'directeur') {
+if (can('rapports') || $admin_role === 'super_admin' || $admin_role === 'directeur') {
     $admins_connectes = getAdminsConnectes($pdo);
 }
 
-$reservations_aujourdhui = $pdo->query("SELECT COUNT(*) FROM reservations WHERE date_reservation = CURDATE()")->fetchColumn();
-$reservations_attente = $pdo->query("SELECT COUNT(*) FROM reservations WHERE statut = 'en_attente'")->fetchColumn();
+$reservations_aujourdhui = 0;
+$reservations_attente = 0;
+if (can('reservations')) {
+    $reservations_aujourdhui = $pdo->query("SELECT COUNT(*) FROM reservations WHERE date_reservation = CURDATE()")->fetchColumn();
+    $reservations_attente = $pdo->query("SELECT COUNT(*) FROM reservations WHERE statut = 'en_attente'")->fetchColumn();
+}
 
 // ============================================
-// 3 DERNIERS CLIENTS (au lieu de 5)
+// 3 DERNIERS CLIENTS (uniquement si permission)
 // ============================================
-$nouveaux_clients = $pdo->query("
-    SELECT id, nom, telephone, created_at 
-    FROM clients 
-    ORDER BY created_at DESC 
-    LIMIT 3
-")->fetchAll();
+$nouveaux_clients = [];
+if (can('clients')) {
+    $nouveaux_clients = $pdo->query("
+        SELECT id, nom, telephone, created_at 
+        FROM clients 
+        ORDER BY created_at DESC 
+        LIMIT 3
+    ")->fetchAll();
+}
 
 // ============================================
-// 3 DERNIÈRES COMMANDES EN ATTENTE (au lieu de 20)
+// 3 DERNIÈRES COMMANDES EN ATTENTE (uniquement si permission)
 // ============================================
-$commandes_en_attente = $pdo->query("
-    SELECT c.*, cl.nom as client_nom, cl.telephone as client_telephone 
-    FROM commandes c
-    LEFT JOIN clients cl ON cl.id = c.client_id
-    WHERE c.statut = 'en_attente'
-    ORDER BY c.created_at DESC 
-    LIMIT 3
-")->fetchAll();
+$commandes_en_attente = [];
+if (can('commandes')) {
+    $commandes_en_attente = $pdo->query("
+        SELECT c.*, cl.nom as client_nom, cl.telephone as client_telephone 
+        FROM commandes c
+        LEFT JOIN clients cl ON cl.id = c.client_id
+        WHERE c.statut = 'en_attente'
+        ORDER BY c.created_at DESC 
+        LIMIT 3
+    ")->fetchAll();
+}
 
-// Compteur total de commandes en attente (pour le badge)
 $commandes_attente_total = getNbCommandesAttente($pdo);
 
-$alertes_stock = $pdo->query("
-    SELECT * FROM produits WHERE stock <= seuil_alerte AND stock > 0 ORDER BY stock ASC LIMIT 5
-")->fetchAll();
+$alertes_stock = [];
+if (can('produits') || can('stocks')) {
+    $alertes_stock = $pdo->query("
+        SELECT * FROM produits WHERE stock <= seuil_alerte AND stock > 0 ORDER BY stock ASC LIMIT 5
+    ")->fetchAll();
+}
 
-$top_produits_marge = $pdo->query("
-    SELECT 
-        id, nom, 
-        prix_achat, 
-        prix, 
-        (prix - prix_achat) as marge, 
-        marge_pourcentage,
-        stock,
-        (prix - prix_achat) * stock as marge_potentielle
-    FROM produits 
-    WHERE est_visible = 1 AND prix_achat > 0 
-    ORDER BY marge_potentielle DESC 
-    LIMIT 5
-")->fetchAll();
+$top_produits_marge = [];
+if (can('produits') || can('rapports')) {
+    $top_produits_marge = $pdo->query("
+        SELECT 
+            id, nom, 
+            prix_achat, 
+            prix, 
+            (prix - prix_achat) as marge, 
+            marge_pourcentage,
+            stock,
+            (prix - prix_achat) * stock as marge_potentielle
+        FROM produits 
+        WHERE est_visible = 1 AND prix_achat > 0 
+        ORDER BY marge_potentielle DESC 
+        LIMIT 5
+    ")->fetchAll();
+}
 
 $ventes_mois = [];
 for($i = 1; $i <= 12; $i++) {
@@ -254,18 +318,20 @@ for($i = 1; $i <= 12; $i++) {
 }
 
 $top_categories = [];
-try {
-    $stmt = $pdo->query("
-        SELECT cat.nom, COUNT(p.id) as nb
-        FROM produits p
-        JOIN categories cat ON cat.id = p.categorie_id
-        GROUP BY cat.id, cat.nom
-        ORDER BY nb DESC
-        LIMIT 5
-    ");
-    $top_categories = $stmt->fetchAll();
-} catch(PDOException $e) {
-    $top_categories = [];
+if (can('produits')) {
+    try {
+        $stmt = $pdo->query("
+            SELECT cat.nom, COUNT(p.id) as nb
+            FROM produits p
+            JOIN categories cat ON cat.id = p.categorie_id
+            GROUP BY cat.id, cat.nom
+            ORDER BY nb DESC
+            LIMIT 5
+        ");
+        $top_categories = $stmt->fetchAll();
+    } catch(PDOException $e) {
+        $top_categories = [];
+    }
 }
 $max_cat_nb = 1;
 foreach ($top_categories as $tc) {
@@ -285,7 +351,7 @@ $nb_paiements_attente_count = getNbPaiementsAttente($pdo);
 $delete_message = '';
 $delete_error = '';
 
-if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
+if (isset($_GET['delete']) && is_numeric($_GET['delete']) && can('commandes')) {
     $commande_id = (int)$_GET['delete'];
     try {
         $stmt = $pdo->prepare("SELECT statut FROM commandes WHERE id = ?");
@@ -901,12 +967,14 @@ include 'includes/sidebar.php';
             <div class="topbar-breadcrumb">Administration → Vue d'ensemble</div>
         </div>
         <div class="topbar-right">
+            <?php if(can('commandes')): ?>
             <a href="commandes.php?filtre=en_attente" class="alert-badge <?= $commandes_attente_count > 0 ? 'has-orders' : 'no-orders' ?>">
                 <span class="alert-icon"><i class="bi bi-bell-fill"></i></span>
                 <span class="alert-text"><?= $commandes_attente_count ?> commande(s) en attente</span>
                 <?php if($commandes_attente_count > 0): ?><span class="alert-count">!</span><?php endif; ?>
             </a>
-            <?php if($admin_role === 'super_admin' || $admin_role === 'directeur' || $admin_role === 'admin'): ?>
+            <?php endif; ?>
+            <?php if(can('point_de_vente')): ?>
             <a href="point_de_vente.php" class="btn-admin btn-primary"><i class="bi bi-cash-stack"></i> Nouvelle vente</a>
             <?php endif; ?>
             <a href="maintenance.php" class="btn-admin btn-maintenance">
@@ -960,21 +1028,42 @@ include 'includes/sidebar.php';
                     </span>
                 </h2>
                 <p>
-                    <?php if($admin_role === 'super_admin'): ?>
-                        <i class="bi bi-shield-fill-check" style="color:var(--gold);"></i> Vous avez tous les droits sur la plateforme.
-                    <?php elseif($admin_role === 'directeur'): ?>
-                        <i class="bi bi-crown-fill" style="color:var(--gold);"></i> Vous gérez l'ensemble de la boutique.
-                    <?php elseif($admin_role === 'admin'): ?>
-                        <i class="bi bi-person-badge-fill" style="color:#7fc8ff;"></i> Vous gérez les commandes, les stocks et le restaurant.
-                    <?php else: ?>
-                        <i class="bi bi-truck" style="color:rgba(255,255,255,0.5);"></i> Vous gérez les livraisons et les commandes.
-                    <?php endif; ?>
+                    <?php
+                    // ===== Message dynamique selon permissions réelles =====
+                    $taches_texte = [];
+                    if (can('produits'))       $taches_texte[] = 'les produits';
+                    if (can('commandes'))      $taches_texte[] = 'les commandes';
+                    if (can('clients'))        $taches_texte[] = 'les clients';
+                    if (can('stocks'))         $taches_texte[] = 'les stocks';
+                    if (can('livraisons'))     $taches_texte[] = 'les livraisons';
+                    if (can('paiements'))      $taches_texte[] = 'les paiements';
+                    if (can('factures'))       $taches_texte[] = 'les factures';
+                    if (can('plats'))          $taches_texte[] = 'les plats';
+                    if (can('reservations'))   $taches_texte[] = 'les réservations';
+                    if (can('messagerie'))     $taches_texte[] = 'la messagerie';
+                    if (can('promotions'))     $taches_texte[] = 'les promotions';
+                    if (can('codes_promo'))    $taches_texte[] = 'les codes promo';
+                    if (can('avis_admin'))     $taches_texte[] = 'les avis clients';
+                    if (can('achats'))         $taches_texte[] = 'les achats';
+                    if (can('rapports'))       $taches_texte[] = 'les rapports';
+                    
+                    if ($admin_role === 'super_admin') {
+                        echo '<i class="bi bi-shield-fill-check" style="color:var(--gold);"></i> Vous avez tous les droits sur la plateforme.';
+                    } elseif ($admin_role === 'directeur') {
+                        echo '<i class="bi bi-crown-fill" style="color:var(--gold);"></i> Vous gérez l\'ensemble de la boutique.';
+                    } elseif (!empty($taches_texte)) {
+                        echo '<i class="bi bi-check-circle-fill" style="color:#7fc8ff;"></i> Vous gérez ' . implode(', ', $taches_texte) . '.';
+                    } else {
+                        echo '<i class="bi bi-info-circle" style="color:rgba(255,255,255,0.5);"></i> Bienvenue dans votre espace.';
+                    }
+                    ?>
                     — Voici un résumé de votre activité sur Awa Ka Sugu.
                 </p>
             </div>
             <div class="welcome-icon"><i class="bi <?= $role_icon ?>"></i></div>
         </div>
 
+        <!-- ===== STATS : Super Admin + Directeur ===== -->
         <?php if($admin_role === 'super_admin' || $admin_role === 'directeur'): ?>
         <div class="stats-row">
             <div class="stat-box">
@@ -1082,8 +1171,10 @@ include 'includes/sidebar.php';
         </div>
         <?php endif; ?>
 
+        <!-- ===== STATS : Admin ===== -->
         <?php if($admin_role === 'admin'): ?>
         <div class="stats-row">
+            <?php if(can('produits')): ?>
             <div class="stat-box">
                 <div class="stat-box-top">
                     <span class="stat-box-label">Produits</span>
@@ -1092,6 +1183,8 @@ include 'includes/sidebar.php';
                 <div class="stat-val"><?= $total_produits ?></div>
                 <div class="stat-lbl">En stock</div>
             </div>
+            <?php endif; ?>
+            <?php if(can('commandes')): ?>
             <div class="stat-box">
                 <div class="stat-box-top">
                     <span class="stat-box-label">À traiter</span>
@@ -1108,6 +1201,8 @@ include 'includes/sidebar.php';
                 <div class="stat-val"><?= $total_commandes ?></div>
                 <div class="stat-lbl">Commandes</div>
             </div>
+            <?php endif; ?>
+            <?php if(can('clients')): ?>
             <div class="stat-box">
                 <div class="stat-box-top">
                     <span class="stat-box-label">Clients</span>
@@ -1116,11 +1211,14 @@ include 'includes/sidebar.php';
                 <div class="stat-val"><?= $total_clients ?></div>
                 <div class="stat-lbl">Inscrits</div>
             </div>
+            <?php endif; ?>
         </div>
         <?php endif; ?>
 
+        <!-- ===== STATS : Agent ===== -->
         <?php if($admin_role === 'admin2'): ?>
         <div class="stats-row">
+            <?php if(can('commandes')): ?>
             <div class="stat-box">
                 <div class="stat-box-top">
                     <span class="stat-box-label">À livrer</span>
@@ -1137,6 +1235,8 @@ include 'includes/sidebar.php';
                 <div class="stat-val"><?= $total_commandes ?></div>
                 <div class="stat-lbl">Commandes</div>
             </div>
+            <?php endif; ?>
+            <?php if(can('livraisons')): ?>
             <div class="stat-box">
                 <div class="stat-box-top">
                     <span class="stat-box-label">Livraisons</span>
@@ -1145,6 +1245,7 @@ include 'includes/sidebar.php';
                 <div class="stat-val"><?= $nb_ventes_boutique ?></div>
                 <div class="stat-lbl">Effectuées</div>
             </div>
+            <?php endif; ?>
             <div class="stat-box">
                 <div class="stat-box-top">
                     <span class="stat-box-label">Aujourd'hui</span>
@@ -1156,7 +1257,8 @@ include 'includes/sidebar.php';
         </div>
         <?php endif; ?>
 
-        <?php if(($admin_role === 'super_admin' || $admin_role === 'directeur') && !empty($top_produits_marge)): ?>
+        <!-- ===== TOP 5 PRODUITS PAR MARGE ===== -->
+        <?php if(can('produits') && !empty($top_produits_marge)): ?>
         <div class="card-white">
             <div class="card-header">
                 <div class="card-title"><i class="bi bi-trophy"></i> Top 5 produits par marge potentielle</div>
@@ -1187,9 +1289,8 @@ include 'includes/sidebar.php';
         </div>
         <?php endif; ?>
 
-        <!-- ============================================
-             3 DERNIÈRES COMMANDES EN ATTENTE
-             ============================================ -->
+        <!-- ===== DERNIÈRES COMMANDES ===== -->
+        <?php if(can('commandes')): ?>
         <div class="card-white">
             <div class="card-header">
                 <div class="card-title">
@@ -1256,9 +1357,12 @@ include 'includes/sidebar.php';
                 </div>
             </div>
         </div>
+        <?php endif; ?>
 
-        <?php if($admin_role === 'super_admin' || $admin_role === 'directeur'): ?>
+        <!-- ===== RÉSERVATIONS + DERNIERS CLIENTS ===== -->
+        <?php if(($admin_role === 'super_admin' || $admin_role === 'directeur') || can('reservations') || can('clients')): ?>
         <div class="dashboard-grid">
+            <?php if(can('reservations')): ?>
             <div class="card-white">
                 <div class="card-header">
                     <div class="card-title"><i class="bi bi-calendar-check"></i> Réservations</div>
@@ -1277,10 +1381,9 @@ include 'includes/sidebar.php';
                     </div>
                 </div>
             </div>
+            <?php endif; ?>
 
-            <!-- ============================================
-                 3 DERNIERS CLIENTS
-                 ============================================ -->
+            <?php if(can('clients')): ?>
             <div class="card-white">
                 <div class="card-header">
                     <div class="card-title"><i class="bi bi-people"></i> Derniers clients</div>
@@ -1315,8 +1418,12 @@ include 'includes/sidebar.php';
                     <?php endif; ?>
                 </div>
             </div>
+            <?php endif; ?>
         </div>
+        <?php endif; ?>
 
+        <!-- ===== DONUT CA + TOP CATÉGORIES ===== -->
+        <?php if(can('rapports') || can('produits')): ?>
         <div class="dashboard-grid">
             <div class="card-white">
                 <div class="card-header">
@@ -1345,6 +1452,7 @@ include 'includes/sidebar.php';
                 </div>
             </div>
 
+            <?php if(can('produits')): ?>
             <div class="card-white">
                 <div class="card-header">
                     <div class="card-title"><i class="bi bi-tags-fill"></i> Top catégories</div>
@@ -1368,10 +1476,12 @@ include 'includes/sidebar.php';
                     <?php endif; ?>
                 </div>
             </div>
+            <?php endif; ?>
         </div>
         <?php endif; ?>
 
-        <?php if(!empty($alertes_stock) && ($admin_role === 'super_admin' || $admin_role === 'directeur' || $admin_role === 'admin')): ?>
+        <!-- ===== STOCK FAIBLE ===== -->
+        <?php if(!empty($alertes_stock) && can('produits')): ?>
         <div class="card-white">
             <div class="card-header">
                 <div class="card-title"><i class="bi bi-exclamation-triangle-fill" style="color:#E67E22;"></i> Stock faible</div>
@@ -1386,7 +1496,7 @@ include 'includes/sidebar.php';
                             <span style="font-size:0.7rem;color:var(--text-secondary);">| Achat: <?= number_format($p['prix_achat'], 0, ',', ' ') ?> F | Vente: <?= number_format($p['prix'], 0, ',', ' ') ?> F</span>
                         <?php endif; ?>
                     </span>
-                    <?php if($admin_role === 'super_admin' || $admin_role === 'directeur'): ?>
+                    <?php if(can('achats')): ?>
                     <a href="achats.php" class="btn-small or">Réapprovisionner</a>
                     <?php endif; ?>
                 </div>
@@ -1403,7 +1513,7 @@ function confirmDelete(message) {
     return confirm(message || 'Êtes-vous sûr de vouloir effectuer cette action ?');
 }
 
-<?php if($admin_role === 'super_admin' || $admin_role === 'directeur'): ?>
+<?php if(can('rapports') || can('produits')): ?>
 const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
 const gridColor = isDark ? 'rgba(255,255,255,0.06)' : '#F0F2F5';
 const tickColor = isDark ? 'rgba(255,255,255,0.5)' : '#8A99AA';

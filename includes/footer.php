@@ -336,7 +336,7 @@ if (session_status() === PHP_SESSION_NONE) {
                     <li><a href="<?= SITE_URL ?>/boutique/videos.php">Vidéos Awa Doumbia</a></li>
                 </ul>
                 <div class="footer-contact">
-                    <i class="bi bi-geo-alt"></i> Sebenikoro Koro, Bamako
+                    <i class="bi bi-geo-alt"></i> Aci 2000, Bamako
                 </div>
                 <div class="footer-contact">
                     <i class="bi bi-telephone"></i> +223 77 77 43 43
@@ -351,7 +351,7 @@ if (session_status() === PHP_SESSION_NONE) {
                     <li><a href="<?= SITE_URL ?>/restaurant/reservation.php">Réservation</a></li>
                 </ul>
                 <div class="footer-contact">
-                    <i class="bi bi-geo-alt"></i> Sebenikoro, face mosquée
+                <i class="bi bi-geo-alt"></i> Sebenikoro, face mosquée
                 </div>
                 <div class="footer-contact">
                     <i class="bi bi-telephone"></i> +223 74 74 03 03
@@ -362,7 +362,7 @@ if (session_status() === PHP_SESSION_NONE) {
             <div>
                 <h4 class="footer-title">CONTACT</h4>
                 <div class="footer-contact">
-                    <i class="bi bi-envelope"></i> contact@awakasugu.com
+                    <i class="bi bi-envelope"></i>awakasugu@gmail.com
                 </div>
                 <div class="footer-contact">
                     <i class="bi bi-whatsapp"></i> +223 66 74 69 85

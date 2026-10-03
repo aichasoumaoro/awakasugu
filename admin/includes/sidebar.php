@@ -16,17 +16,18 @@ if (isset($_SESSION['admin_id'])) {
         $dbname = 'awakasugu_db';
         $user = 'root';
         $pass = '';
-        $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $user, $pass);
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $pdo_sidebar = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $user, $pass);
+        $pdo_sidebar->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         
-        $stmt = $pdo->prepare("SELECT permissions, role FROM admin WHERE id = ? AND is_active = 1");
+        $stmt = $pdo_sidebar->prepare("SELECT permissions, role FROM admin WHERE id = ? AND is_active = 1");
         $stmt->execute([$_SESSION['admin_id']]);
         $admin_data = $stmt->fetch();
         
         if ($admin_data) {
             $user_role = $admin_data['role'] ?? null;
             if (!empty($admin_data['permissions'])) {
-                $user_permissions = json_decode($admin_data['permissions'], true);
+                $decoded = json_decode($admin_data['permissions'], true);
+                if (is_array($decoded)) $user_permissions = $decoded;
             }
         }
     } catch(PDOException $e) {
@@ -36,24 +37,42 @@ if (isset($_SESSION['admin_id'])) {
 
 // ============================================
 // FONCTION POUR VERIFIER L'ACCES
+// Fusion : socle du rôle + permissions cochées
 // ============================================
 function a_acces($permission, $user_role, $user_permissions) {
+    
+    // SUPER ADMIN : tout
     if ($user_role === 'super_admin') return true;
     
+    // DIRECTEUR : tout sauf parametres
     if ($user_role === 'directeur') {
         return $permission !== 'parametres';
     }
     
-    if ($user_role === 'admin' || $user_role === 'admin2') {
-        if ($permission === 'dashboard') return true;
-        return in_array($permission, $user_permissions);
-    }
+    // TÂCHES PRÉDÉFINIES PAR RÔLE (socle de base)
+    $taches_par_role = [
+        'admin' => [
+            'dashboard', 'produits', 'commandes', 'clients',
+            'stocks', 'promotions', 'plats', 'commandes_repas',
+            'reservations', 'messagerie', 'point_de_vente',
+            'factures', 'paiements', 'codes_promo', 'avis_admin'
+        ],
+        'admin2' => [
+            'dashboard', 'livraisons', 'commandes'
+        ],
+    ];
     
-    if ($user_role === null || $user_role === '') {
-        return in_array($permission, $user_permissions);
-    }
+    // Récupérer le socle de base du rôle
+    $socle = $taches_par_role[$user_role] ?? [];
     
-    return false;
+    // Fusionner : socle du rôle + permissions cochées
+    $toutes_les_taches = array_unique(array_merge($socle, $user_permissions));
+    
+    // Toujours autoriser le dashboard
+    if ($permission === 'dashboard') return true;
+    
+    // Vérifier si la permission est dans la liste fusionnée
+    return in_array($permission, $toutes_les_taches);
 }
 
 // ============================================
@@ -164,7 +183,7 @@ $admin_initial = strtoupper(substr($admin_nom, 0, 1));
             <span>Messagerie</span>
             <?php
             try {
-                $stmt = $pdo->query("
+                $stmt = $pdo_sidebar->query("
                     SELECT COUNT(*) FROM messages m 
                     JOIN conversations c ON m.conversation_id = c.id
                     WHERE m.lu = 0 AND m.expediteur_type = 'client'
@@ -295,7 +314,7 @@ $admin_initial = strtoupper(substr($admin_nom, 0, 1));
             <span>Notifications</span>
             <?php
             try {
-                $stmt = $pdo->query("SELECT COUNT(*) FROM notifications WHERE est_lue = 0");
+                $stmt = $pdo_sidebar->query("SELECT COUNT(*) FROM notifications WHERE est_lue = 0");
                 $nb = $stmt->fetchColumn();
                 if ($nb > 0) echo '<span class="badge-blue">' . $nb . '</span>';
             } catch(Exception $e) {}
@@ -706,9 +725,6 @@ $admin_initial = strtoupper(substr($admin_nom, 0, 1));
     opacity: 1;
 }
 
-/* ============================================
-   MODE CLAIR (sidebar reste sombre mais s'adapte)
-   ============================================ */
 [data-theme="light"] .sidebar,
 :root:not([data-theme="dark"]) .sidebar {
     background: #0D0D0D;
@@ -731,9 +747,6 @@ $admin_initial = strtoupper(substr($admin_nom, 0, 1));
     }
 }
 
-/* ============================================
-   RESPONSIVE - TABLETTE
-   ============================================ */
 @media (min-width: 769px) and (max-width: 1024px) {
     .sidebar {
         width: 220px;

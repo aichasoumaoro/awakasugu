@@ -156,7 +156,7 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
         }
 
         /* ═══════════════════════════════════════════
-           HEADER PREMIUM — LOGO À CÔTÉ (monogramme + texte)
+           HEADER PREMIUM
            ═══════════════════════════════════════════ */
         .tiktok-header {
             position: fixed;
@@ -172,7 +172,6 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
         }
         .tiktok-header > * { pointer-events: auto; }
 
-        /* Bloc logo — monogramme + texte côte à côte */
         .header-logo-group {
             display: flex;
             align-items: center;
@@ -180,7 +179,6 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
             text-decoration: none;
         }
 
-        /* Monogramme rond doré */
         .logo-monogram {
             position: relative;
             width: 42px;
@@ -224,7 +222,6 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
             padding-bottom: 2px;
         }
 
-        /* Texte du logo à côté du monogramme */
         .logo-text-group {
             display: flex;
             flex-direction: column;
@@ -265,7 +262,6 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
             background: linear-gradient(90deg, var(--gold), transparent);
         }
 
-        /* Actions header */
         .tiktok-header .actions { display: flex; align-items: center; gap: 8px; }
 
         .tiktok-header .btn-nav {
@@ -283,6 +279,7 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
             color: #fff;
             background: rgba(0,0,0,0.35);
             transition: all 0.3s var(--ease);
+            cursor: pointer;
         }
         .tiktok-header .btn-nav:hover {
             background: rgba(0,0,0,0.6);
@@ -298,6 +295,62 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
         .tiktok-header .btn-nav.btn-shop:hover {
             color: #fff;
             box-shadow: 0 8px 26px rgba(200,146,42,0.55);
+        }
+
+        /* ===== BOUTON SON (haut-parleur) ===== */
+        #soundToggle {
+            position: relative;
+            background: rgba(200,146,42,0.9) !important;
+            border-color: rgba(200,146,42,0.9) !important;
+            animation: soundPulse 2s ease-in-out infinite;
+        }
+        #soundToggle.sound-on {
+            background: rgba(0,0,0,0.5) !important;
+            border-color: rgba(255,255,255,0.25) !important;
+            animation: none;
+        }
+        #soundToggle.sound-on i {
+            color: #fff;
+        }
+        @keyframes soundPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(200,146,42,0.5); }
+            50% { box-shadow: 0 0 0 10px rgba(200,146,42,0); }
+        }
+
+        /* ===== BANNIÈRE "ACTIVER LE SON" ===== */
+        #soundHint {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 90;
+            background: rgba(0,0,0,0.75);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 14px 24px;
+            border-radius: 30px;
+            border: 1.5px solid rgba(200,146,42,0.5);
+            color: #fff;
+            font-size: 0.85rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            pointer-events: none;
+            opacity: 1;
+            transition: opacity 0.4s ease;
+            animation: hintFade 2s ease-in-out infinite;
+        }
+        #soundHint i {
+            color: var(--gold);
+            font-size: 1.1rem;
+        }
+        #soundHint.hidden {
+            opacity: 0;
+        }
+        @keyframes hintFade {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.03); }
         }
 
         /* ═══════════════════════════════════════════
@@ -352,7 +405,6 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
         }
         .video-overlay > * { pointer-events: auto; }
 
-        /* Bloc auteur */
         .user-info { 
             display: flex; 
             align-items: center; 
@@ -397,7 +449,6 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
             margin-top: 2px;
         }
 
-        /* Titre & description */
         .video-title { 
             font-family: 'Playfair Display', serif;
             font-size: 1rem; 
@@ -415,7 +466,6 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
             text-shadow: 0 1px 3px rgba(0,0,0,0.5);
         }
 
-        /* Carte produit premium */
         .product-tag-card {
             display: inline-flex;
             align-items: center;
@@ -467,7 +517,6 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
             letter-spacing: -0.3px;
         }
 
-        /* Bouton unique "Acheter" */
         .btn-buy-now {
             background: linear-gradient(135deg, var(--gold), var(--gold-deep));
             color: #fff;
@@ -551,7 +600,6 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
             letter-spacing: 0.3px;
         }
 
-        /* Barre de progression fine */
         .video-progress {
             position: absolute;
             bottom: 0; left: 0; right: 0;
@@ -770,7 +818,6 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
             transform: translateY(0) scale(0.98);
         }
 
-        /* Toast */
         #toastNotif {
             position: fixed;
             top: calc(20px + env(safe-area-inset-top));
@@ -792,9 +839,6 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
         }
         #toastNotif.show { transform: translateX(-50%) translateY(0); }
 
-        /* ═══════════════════════════════════════════
-           RESPONSIVE
-           ═══════════════════════════════════════════ */
         @media (max-width: 480px) {
             .tiktok-header { padding: 12px 14px; padding-top: calc(12px + env(safe-area-inset-top)); }
             .logo-monogram { width: 38px; height: 38px; }
@@ -835,7 +879,6 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
             .btn-buy-now span { display: none; }
         }
 
-        /* Écrans larges : recentrer le flux façon mobile */
         @media (min-width: 768px) {
             .video-item { display: flex; justify-content: center; background: #000; }
             .video-player {
@@ -868,8 +911,14 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
     <span>Produit ajouté au panier !</span>
 </div>
 
+<!-- ===== INDICATEUR SON ===== -->
+<div id="soundHint">
+    <i class="bi bi-volume-mute-fill"></i>
+    <span>Touchez pour activer le son</span>
+</div>
+
 <!-- ═══════════════════════════════════════════
-     HEADER PREMIUM — Logo à côté du monogramme
+     HEADER PREMIUM
      ═══════════════════════════════════════════ -->
 <header class="tiktok-header">
     <a href="../index.php" class="header-logo-group">
@@ -882,6 +931,9 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
         </div>
     </a>
     <div class="actions">
+        <button id="soundToggle" class="btn-nav" title="Activer le son" onclick="toggleSound()">
+            <i class="bi bi-volume-mute-fill"></i>
+        </button>
         <a href="../index.php" class="btn-nav" title="Accueil">
             <i class="bi bi-house-door-fill"></i>
         </a>
@@ -919,7 +971,7 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
         <div class="video-item" data-index="<?= $index ?>" data-video-id="<?= (int)$video['id'] ?>">
             <div class="video-player">
                 <?php if($isLocal): ?>
-                    <video playsinline loop preload="metadata" id="video-<?= $index ?>" data-index="<?= $index ?>">
+                    <video playsinline loop preload="metadata" id="video-<?= $index ?>" data-index="<?= $index ?>" muted>
                         <source src="<?= $videoUrl ?>" type="video/mp4">
                     </video>
                 <?php else: ?>
@@ -1077,7 +1129,7 @@ videoItems.forEach((item, index) => {
 });
 
 // ═══════════════════════════════════════════
-// OBSERVER : lecture auto à l'entrée dans le viewport
+// OBSERVER
 // ═══════════════════════════════════════════
 const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
@@ -1098,21 +1150,27 @@ const observer = new IntersectionObserver((entries) => {
 videoItems.forEach(item => observer.observe(item));
 
 // ═══════════════════════════════════════════
-// FONCTIONS DE LECTURE
+// LECTURE
 // ═══════════════════════════════════════════
 function playVideo(index) {
     const vid = videoElements[index];
     if (!vid) return;
 
+    // Si le son est débloqué → son actif
+    // Sinon → muet (règle navigateur)
     if (audioUnlocked) {
         vid.muted = false;
+        vid.volume = 1;
     } else {
         vid.muted = true;
     }
 
     vid.play().then(() => {
         updatePlayState(index, true);
-        if (vid.muted && audioUnlocked) vid.muted = false;
+        // Si on est en muet alors qu'on veut du son, on retente
+        if (!audioUnlocked && vid.muted) {
+            // On ne force pas : on attend l'interaction
+        }
     }).catch(() => {
         updatePlayState(index, false);
     });
@@ -1124,7 +1182,6 @@ function togglePlayPause(index) {
 
     if (vid.paused) {
         unlockAudio();
-        vid.muted = false;
         vid.play().then(() => {
             updatePlayState(index, true);
         }).catch(() => {});
@@ -1149,24 +1206,70 @@ function updatePlayState(index, isPlaying) {
 }
 
 // ═══════════════════════════════════════════
-// DÉBLOCAGE AUDIO
+// DÉBLOCAGE AUDIO (le cœur du système)
 // ═══════════════════════════════════════════
 function unlockAudio() {
     if (audioUnlocked) return;
     audioUnlocked = true;
+    
+    // Met à jour le bouton haut-parleur
+    const toggle = document.getElementById('soundToggle');
+    if (toggle) {
+        toggle.classList.add('sound-on');
+        toggle.querySelector('i').className = 'bi bi-volume-up-fill';
+    }
+    
+    // Cache l'indicateur "Touchez pour activer le son"
+    const hint = document.getElementById('soundHint');
+    if (hint) hint.classList.add('hidden');
+    
+    // Active le son sur la vidéo courante
     const vid = videoElements[currentIndex];
     if (vid) {
         vid.muted = false;
+        vid.volume = 1;
         if (vid.paused) {
             vid.play().then(() => {
                 updatePlayState(currentIndex, true);
             }).catch(() => {});
         }
     }
+    
+    // Active le son sur TOUTES les vidéos déjà chargées
+    videoElements.forEach(v => {
+        if (v) {
+            v.muted = false;
+            v.volume = 1;
+        }
+    });
 }
 
+// ===== DÉBLOCAGE AU PREMIER SCROLL =====
+container.addEventListener('scroll', unlockAudio, { once: true, passive: true });
+
+// ===== DÉBLOCAGE AU PREMIER TOUCH/CLIC =====
+document.addEventListener('touchstart', unlockAudio, { once: true, passive: true });
 document.addEventListener('click', unlockAudio, { once: true });
-document.addEventListener('touchstart', unlockAudio, { once: true });
+document.addEventListener('keydown', unlockAudio, { once: true });
+document.addEventListener('wheel', unlockAudio, { once: true, passive: true });
+
+// ===== BOUTON HAUT-PARLEUR =====
+function toggleSound() {
+    const toggle = document.getElementById('soundToggle');
+    const vid = videoElements[currentIndex];
+    const hint = document.getElementById('soundHint');
+    
+    if (audioUnlocked) {
+        // On coupe le son
+        audioUnlocked = false;
+        toggle.classList.remove('sound-on');
+        toggle.querySelector('i').className = 'bi bi-volume-mute-fill';
+        videoElements.forEach(v => { if (v) v.muted = true; });
+    } else {
+        // On active
+        unlockAudio();
+    }
+}
 
 // ═══════════════════════════════════════════
 // BOTTOM SHEET
