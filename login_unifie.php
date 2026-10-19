@@ -1,8 +1,4 @@
 <?php
-// ============================================
-// LOGIN UNIFIÉ (Client + Admin) - Awa Ka Sugu
-// ============================================
-
 // Démarrer les sessions
 session_name('PUBLIC_SESSION');
 session_start();
