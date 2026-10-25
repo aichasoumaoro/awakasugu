@@ -13,7 +13,14 @@ require_once '../includes/panier_fonctions.php';
 require_once '../includes/functions_securite.php';
 
 if (isset($_SESSION['client_id']) && isset($_SESSION['client_logged_in']) && $_SESSION['client_logged_in'] === true) {
-    header('Location: mon_compte.php');
+    // ✅ Si le client est déjà connecté, on le redirige vers l'URL demandée
+    if (isset($_GET['redirect'])) {
+        // Si le redirect vient de commande.php, on ajoute ../boutique/
+        $redir = strpos($_GET['redirect'], 'commande.php') !== false ? '../boutique/' . $_GET['redirect'] : $_GET['redirect'];
+        header('Location: ' . $redir);
+    } else {
+        header('Location: mon_compte.php');
+    }
     exit;
 }
 
@@ -38,6 +45,9 @@ $email = '';
 $error = '';
 $formulaire_bloque = false;
 $message_blocage = '';
+
+// ✅ Récupération de l'URL de redirection
+$redirect_url = isset($_GET['redirect']) ? '../boutique/' . $_GET['redirect'] : 'mon_compte.php';
 
 if (is_ip_bloquee($pdo, $ip)) {
     $formulaire_bloque = true;
@@ -86,8 +96,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$formulaire_bloque) {
                     unset($_SESSION['panier_temp']);
                 }
                 
-                $redirect = $_GET['redirect'] ?? 'mon_compte.php';
-                header("Location: $redirect");
+                // ✅ Redirection vers l'URL demandée (ex: commande.php)
+                header("Location: $redirect_url");
                 exit;
             } else {
                 enregistrer_tentative($pdo, $email, false);
@@ -620,6 +630,13 @@ require_once '../includes/navbar.php';
             
             <h2>Connex<span>ion</span></h2>
             
+            <?php if(isset($_GET['message']) && $_GET['message'] == 'connectez_vous_pour_commander'): ?>
+                <div class="neon-alert warning" style="background: rgba(200,146,42,0.1); border: 1px solid rgba(200,146,42,0.4); color: #E8C070;">
+                    <i class="bi bi-info-circle-fill" style="color: #C8922A; margin-top: 2px;"></i>
+                    <span>Veuillez vous connecter pour finaliser votre commande et retrouver votre historique.</span>
+                </div>
+            <?php endif; ?>
+            
             <?php if($message_blocage): ?>
                 <div class="neon-alert blocked">
                     <i class="bi bi-lock-fill"></i>
@@ -635,6 +652,8 @@ require_once '../includes/navbar.php';
             <?php endif; ?>
             
             <form method="POST">
+                <!-- On garde l'URL de redirection dans le formulaire pour ne pas la perdre -->
+                <input type="hidden" name="redirect" value="<?= htmlspecialchars($redirect_url) ?>">
                 
                 <div class="neon-field">
                     <label>Email <span class="required">*</span></label>

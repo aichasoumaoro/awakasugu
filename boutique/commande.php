@@ -1,7 +1,6 @@
 <?php
 // ============================================
 // FORMULAIRE DE COMMANDE - Awa Ka Sugu
-// Version avec paiements Orange Money et Wave
 // ============================================
 
 // ============================================
@@ -9,6 +8,41 @@
 // ============================================
 session_name('PUBLIC_SESSION');
 session_start();
+
+// ============================================
+// ✅ SAUVEGARDE DU PRODUIT DIRECT (AVANT VERIFICATION)
+// ============================================
+if (isset($_GET['produit_id']) && !empty($_GET['produit_id'])) {
+    $_SESSION['produit_direct_sauvegarde'] = [
+        'produit_id' => (int)$_GET['produit_id'],
+        'quantite' => isset($_GET['quantite']) ? (int)$_GET['quantite'] : 1,
+        'couleur_id' => isset($_GET['couleur_id']) ? (int)$_GET['couleur_id'] : null,
+        'taille_id' => isset($_GET['taille_id']) ? (int)$_GET['taille_id'] : null
+    ];
+}
+
+// ============================================
+// ✅ VÉRIFICATION DE CONNEXION CLIENT
+// ============================================
+if (!isset($_SESSION['client_id'])) {
+    // On sauvegarde l'URL complète pour y revenir après connexion
+    $_SESSION['redirect_apres_connexion'] = $_SERVER['REQUEST_URI'];
+    
+    // On redirige vers la page de connexion avec le message
+    header('Location: ../client/connexion.php?redirect=commande.php&message=connectez_vous_pour_commander');
+    exit;
+}
+
+// ============================================
+// ✅ RESTAURATION DU PRODUIT DIRECT (APRÈS CONNEXION)
+// ============================================
+if (isset($_SESSION['produit_direct_sauvegarde']) && empty($_SESSION['panier'])) {
+    $_GET['produit_id'] = $_SESSION['produit_direct_sauvegarde']['produit_id'];
+    $_GET['quantite'] = $_SESSION['produit_direct_sauvegarde']['quantite'];
+    $_GET['couleur_id'] = $_SESSION['produit_direct_sauvegarde']['couleur_id'];
+    $_GET['taille_id'] = $_SESSION['produit_direct_sauvegarde']['taille_id'];
+    unset($_SESSION['produit_direct_sauvegarde']);
+}
 
 // ============================================
 // ✅ INCLURE LA CONFIGURATION (SITE_URL, etc.)
@@ -33,7 +67,6 @@ require_once '../includes/panier_fonctions.php';
 // ============================================
 // ✅ PRISE EN CHARGE DU BOUTON "COMMANDER" DIRECT
 // ============================================
-// Si un produit_id est passé en GET (commande directe)
 $produit_direct = null;
 $quantite_directe = 1;
 $couleur_id_direct = null;
@@ -45,7 +78,6 @@ if (isset($_GET['produit_id']) && !empty($_GET['produit_id'])) {
     $couleur_id_direct = isset($_GET['couleur_id']) ? (int)$_GET['couleur_id'] : null;
     $taille_id_direct = isset($_GET['taille_id']) ? (int)$_GET['taille_id'] : null;
     
-    // Connexion pour récupérer le produit
     $host = 'localhost';
     $dbname = 'awakasugu_db';
     $user = 'root';
@@ -67,7 +99,6 @@ if (isset($_GET['produit_id']) && !empty($_GET['produit_id'])) {
                     ? $produit_direct['prix_promo'] 
                     : $produit_direct['prix'];
             
-            // Récupérer les noms de couleur et taille
             $couleur_nom = '';
             $taille_nom = '';
             $couleur_hex = '';
@@ -87,7 +118,6 @@ if (isset($_GET['produit_id']) && !empty($_GET['produit_id'])) {
                 $taille_nom = $t['nom'] ?? '';
             }
             
-            // Ajouter le produit directement dans le panier
             $_SESSION['panier'][] = [
                 'id' => $produit_direct['id'],
                 'nom' => $produit_direct['nom'],
@@ -101,9 +131,7 @@ if (isset($_GET['produit_id']) && !empty($_GET['produit_id'])) {
                 'image' => $produit_direct['image_principale']
             ];
         }
-    } catch(PDOException $e) {
-        // Ignorer l'erreur
-    }
+    } catch(PDOException $e) {}
 }
 
 // Vérifier que le panier n'est pas vide
@@ -112,7 +140,6 @@ if (empty($_SESSION['panier'])) {
     exit;
 }
 
-// Connexion à la base de données
 $host = 'localhost';
 $dbname = 'awakasugu_db';
 $user = 'root';
@@ -135,15 +162,11 @@ $seuil_points = $params_fidelite['fidelite_seuil_points'] ?? 50000;
 $points_par_seuil = $params_fidelite['fidelite_points_par_seuil'] ?? 1;
 $fidelite_actif = $params_fidelite['fidelite_actif'] ?? 1;
 
-// Calcul du total
 $total = 0;
 foreach ($_SESSION['panier'] as $item) {
     $total += $item['prix'] * $item['quantite'];
 }
 
-// ============================================
-// APPLIQUER LES RÉDUCTIONS (CODE PROMO + POINTS)
-// ============================================
 $reduction_appliquee = 0;
 $code_promo_info = $_SESSION['code_promo'] ?? null;
 if ($code_promo_info) {
@@ -173,7 +196,6 @@ function genererFacturePDF($commande_id, $commande, $details, $pdo) {
 
     $numero_facture = 'FACT-' . date('Ymd') . '-' . str_pad($commande_id, 4, '0', STR_PAD_LEFT);
 
-    // Vérifier si la facture existe déjà
     $stmt = $pdo->prepare("SELECT * FROM factures WHERE commande_id = ?");
     $stmt->execute([$commande_id]);
     $facture = $stmt->fetch();
@@ -190,54 +212,37 @@ function genererFacturePDF($commande_id, $commande, $details, $pdo) {
         $facture_id = $facture['id'];
     }
 
-    // Helper UTF-8 → ISO-8859-1 (FPDF natif)
     $u = function($txt) { return utf8_decode($txt); };
 
-    // Classe locale avec Header/Footer premium
     $pdf = new class('P', 'mm', 'A4') extends FPDF {
         function Header() {
-            // Bandeau noir
             $this->SetFillColor(15, 15, 15);
             $this->Rect(0, 0, 210, 45, 'F');
-
-            // Barre dorée verticale gauche
             $this->SetFillColor(198, 146, 42);
             $this->Rect(0, 0, 5, 45, 'F');
-
-            // Nom boutique
             $this->SetXY(15, 8);
             $this->SetFont('Times', 'B', 26);
             $this->SetTextColor(198, 146, 42);
             $this->Cell(140, 12, 'AWA KA SUGU', 0, 1, 'L');
-
-            // Sous-titre
             $this->SetX(15);
             $this->SetFont('Arial', '', 9);
             $this->SetTextColor(220, 200, 150);
             $this->Cell(140, 5, 'Boutique IBA Design  |  Restaurant Sofia', 0, 1, 'L');
-
-            // Coordonnées
             $this->SetX(15);
             $this->SetFont('Arial', '', 7.5);
             $this->SetTextColor(170, 160, 140);
             $this->Cell(140, 5, 'Sebenikoro Koro, Bamako - Mali  |  +223 77 77 43 43  |  contact@awakasugu.com', 0, 1, 'L');
-
-            // Badge ID carré doré
             $this->SetFillColor(198, 146, 42);
             $this->Rect(178, 11, 20, 20, 'F');
             $this->SetXY(178, 15);
             $this->SetFont('Times', 'B', 14);
             $this->SetTextColor(15, 15, 15);
             $this->Cell(20, 12, 'ID', 0, 0, 'C');
-
-            // Ligne dorée sous bandeau
             $this->SetDrawColor(198, 146, 42);
             $this->SetLineWidth(0.8);
             $this->Line(0, 45, 210, 45);
-
             $this->SetY(52);
         }
-
         function Footer() {
             $this->SetY(-18);
             $this->SetDrawColor(198, 146, 42);
@@ -254,67 +259,39 @@ function genererFacturePDF($commande_id, $commande, $details, $pdo) {
     $pdf->AddPage();
     $pdf->SetAutoPageBreak(true, 28);
     $pdf->SetMargins(15, 52, 15);
-
-    // ── TITRE ──
     $pdf->SetFont('Times', 'B', 30);
     $pdf->SetTextColor(15, 15, 15);
     $pdf->Cell(0, 14, $u('FACTURE'), 0, 1, 'C');
-
     $pdf->SetFont('Arial', '', 10);
     $pdf->SetTextColor(160, 140, 90);
     $pdf->Cell(0, 6, $u('N° ') . $numero_facture, 0, 1, 'C');
     $pdf->Ln(8);
 
-    // ── BLOCS CLIENT / COMMANDE ──
     $colLeft  = 15;
     $colRight = 110;
     $colW1    = 88;
     $colW2    = 85;
     $blockY   = $pdf->GetY();
     $rowH     = 8;
-
-    // Cadre gauche
     $pdf->SetFillColor(249, 249, 251);
     $pdf->SetDrawColor(198, 146, 42);
     $pdf->SetLineWidth(0.3);
     $pdf->Rect($colLeft, $blockY, $colW1, 58, 'DF');
-
-    // Cadre droit
     $pdf->Rect($colRight, $blockY, $colW2, 58, 'DF');
-
-    // Titres
     $pdf->SetXY($colLeft + 4, $blockY + 3);
     $pdf->SetFont('Arial', 'B', 8);
     $pdf->SetTextColor(198, 146, 42);
     $pdf->Cell($colW1 - 8, 6, $u('INFORMATIONS CLIENT'), 0, 1, 'L');
-
     $pdf->SetXY($colRight + 4, $blockY + 3);
     $pdf->Cell($colW2 - 8, 6, $u('DETAILS DE LA COMMANDE'), 0, 1, 'L');
-
-    // Lignes dorées sous titres
     $pdf->SetDrawColor(198, 146, 42);
     $pdf->SetLineWidth(0.25);
     $pdf->Line($colLeft + 4, $blockY + 10, $colLeft + $colW1 - 4, $blockY + 10);
     $pdf->Line($colRight + 4, $blockY + 10, $colRight + $colW2 - 4, $blockY + 10);
 
-    // Données client
-    $modes = [
-        'livraison'    => 'Paiement a la livraison',
-        'orange_money' => 'Orange Money',
-        'wave'         => 'Wave',
-        'moov_money'   => 'Moov Money',
-        'carte'        => 'Carte bancaire',
-        'especes'      => 'Especes'
-    ];
-
-    $info_client = [
-        'Nom'     => $commande['nom_client'],
-        'Tel'     => $commande['telephone'],
-        'Adresse' => $commande['adresse_livraison'],
-    ];
-    if (!empty($commande['email'])) {
-        $info_client['Email'] = $commande['email'];
-    }
+    $modes = ['livraison'=>'Paiement a la livraison','orange_money'=>'Orange Money','wave'=>'Wave','moov_money'=>'Moov Money','carte'=>'Carte bancaire','especes'=>'Especes'];
+    $info_client = ['Nom'=>$commande['nom_client'],'Tel'=>$commande['telephone'],'Adresse'=>$commande['adresse_livraison']];
+    if (!empty($commande['email'])) $info_client['Email'] = $commande['email'];
 
     $yy = $blockY + 14;
     foreach ($info_client as $lbl => $val) {
@@ -329,13 +306,7 @@ function genererFacturePDF($commande_id, $commande, $details, $pdo) {
         if ($yy - $blockY > 52) break;
     }
 
-    // Données commande
-    $info_cmd = [
-        'Date'     => date('d/m/Y a H:i', strtotime($commande['created_at'])),
-        'Paiement' => ($modes[$commande['mode_paiement']] ?? $commande['mode_paiement']),
-        'N. Cmd'   => '#' . ($commande['numero_commande'] ?? $commande['id']),
-    ];
-
+    $info_cmd = ['Date'=>date('d/m/Y a H:i', strtotime($commande['created_at'])),'Paiement'=>($modes[$commande['mode_paiement']] ?? $commande['mode_paiement']),'N. Cmd'=>'#' . ($commande['numero_commande'] ?? $commande['id'])];
     $yy2 = $blockY + 14;
     foreach ($info_cmd as $lbl => $val) {
         $pdf->SetXY($colRight + 4, $yy2);
@@ -349,10 +320,7 @@ function genererFacturePDF($commande_id, $commande, $details, $pdo) {
     }
 
     $pdf->SetY($blockY + 66);
-
-    // ── TABLEAU PRODUITS ──
     $pdf->Ln(2);
-
     $pdf->SetFillColor(15, 15, 15);
     $pdf->SetTextColor(198, 146, 42);
     $pdf->SetFont('Arial', 'B', 9);
@@ -368,10 +336,8 @@ function genererFacturePDF($commande_id, $commande, $details, $pdo) {
 
     foreach ($details as $d) {
         $total_ligne = $d['quantite'] * $d['prix_unitaire'];
-
         $nom_produit = $d['nom_produit'];
         if (strlen($nom_produit) > 44) $nom_produit = substr($nom_produit, 0, 42) . '..';
-
         $bg = $fill ? 248 : 255;
         $pdf->SetFillColor($bg, $bg, $bg);
         $pdf->SetTextColor(30, 30, 30);
@@ -386,12 +352,10 @@ function genererFacturePDF($commande_id, $commande, $details, $pdo) {
         $fill = !$fill;
     }
 
-    // ── TOTAL ──
     $pdf->Ln(5);
     $totalY = $pdf->GetY();
     $pdf->SetFillColor(198, 146, 42);
     $pdf->Rect(15, $totalY, 180, 15, 'F');
-
     $pdf->SetXY(15, $totalY + 3);
     $pdf->SetFont('Arial', 'B', 12);
     $pdf->SetTextColor(42, 31, 12);
@@ -401,7 +365,6 @@ function genererFacturePDF($commande_id, $commande, $details, $pdo) {
     $pdf->Cell(60, 8, number_format($commande['total'], 0, ',', ' ') . $u(' FCFA   '), 0, 1, 'R');
     $pdf->SetY($totalY + 15);
 
-    // ── NOTES ──
     if (!empty($commande['notes'])) {
         $pdf->Ln(6);
         $pdf->SetFont('Arial', 'B', 9);
@@ -412,7 +375,6 @@ function genererFacturePDF($commande_id, $commande, $details, $pdo) {
         $pdf->MultiCell(0, 5, $u($commande['notes']), 0, 'L');
     }
 
-    // ── MESSAGE FINAL ──
     $pdf->Ln(10);
     $pdf->SetFont('Times', 'B', 13);
     $pdf->SetTextColor(198, 146, 42);
@@ -421,7 +383,6 @@ function genererFacturePDF($commande_id, $commande, $details, $pdo) {
     $pdf->SetTextColor(130, 110, 70);
     $pdf->Cell(0, 6, $u('Nous esperons vous revoir bientot chez Awa Ka Sugu.'), 0, 1, 'C');
 
-    // Sauvegarde du PDF
     $pdf_dir = dirname(__DIR__) . '/uploads/factures/';
     if (!is_dir($pdf_dir)) {
         mkdir($pdf_dir, 0777, true);
@@ -431,7 +392,6 @@ function genererFacturePDF($commande_id, $commande, $details, $pdo) {
     $pdf_path = $pdf_dir . $pdf_file;
     $pdf->Output($pdf_path, 'F');
 
-    // Mettre à jour la base
     $pdo->prepare("UPDATE factures SET fichier_pdf = ? WHERE id = ?")->execute([$pdf_file, $facture_id]);
 
     return ['pdf_path' => $pdf_path, 'pdf_file' => $pdf_file, 'numero_facture' => $numero_facture];
@@ -454,13 +414,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = 'Veuillez entrer un email valide.';
     } else {
-        // Générer un numéro de commande unique
         $numero_commande = 'AWA-' . date('Ymd') . '-' . str_pad(rand(1000, 9999), 4, '0', STR_PAD_LEFT);
         
-        // Récupérer le client_id si le client est connecté
-        $client_id = isset($_SESSION['client_id']) ? $_SESSION['client_id'] : null;
+        $client_id = $_SESSION['client_id'];
         
-        // Insérer la commande
         $stmt = $pdo->prepare("
             INSERT INTO commandes (
                 numero_commande, 
@@ -489,9 +446,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ]);
         $commande_id = $pdo->lastInsertId();
         
-        // ============================================
-        // INSÉRER LES DÉTAILS DE LA COMMANDE AVEC COULEURS ET TAILLES
-        // ============================================
         foreach ($_SESSION['panier'] as $item) {
             $sous_total = $item['prix'] * $item['quantite'];
             
@@ -532,19 +486,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
         }
         
-        // Récupérer la commande complète pour la facture
         $stmt = $pdo->prepare("SELECT * FROM commandes WHERE id = ?");
         $stmt->execute([$commande_id]);
         $commande_complete = $stmt->fetch();
         
-        // Récupérer les détails pour la facture
         $stmt = $pdo->prepare("SELECT * FROM details_commande WHERE commande_id = ?");
         $stmt->execute([$commande_id]);
         $details_commande = $stmt->fetchAll();
         
-        // ============================================
-        // AJOUTER LES POINTS DE FIDÉLITÉ
-        // ============================================
         $points_gagnes = 0;
         if ($client_id && $fidelite_actif == 1) {
             $points_gagnes = floor($total_apres_reductions / $seuil_points) * $points_par_seuil;
@@ -573,16 +522,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         
-        // ============================================
-        // GÉNÉRER LA FACTURE PDF
-        // ============================================
         $facture_info = genererFacturePDF($commande_id, $commande_complete, $details_commande, $pdo);
         
-        // ============================================
-        // VIDER LE PANIER (APRÈS COMMANDE)
-        // ============================================
         $panier_pour_email = $_SESSION['panier'];
-
         unset($_SESSION['panier']);
         unset($_SESSION['code_promo']);
         unset($_SESSION['reduction_points']);
@@ -590,14 +532,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($_SESSION['client_id'])) {
             try {
                 viderPanierBDD($_SESSION['client_id'], $pdo);
-            } catch(PDOException $e) {
-                // Ignorer
-            }
+            } catch(PDOException $e) {}
         }
         
-        // ============================================
-        // ENVOI DE L'EMAIL DE CONFIRMATION AU CLIENT AVEC FACTURE
-        // ============================================
         $sujet = "Confirmation de votre commande Awa Ka Sugu — N° $numero_commande";
 
         $bloc_points_html = '';
@@ -753,9 +690,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         $email_client_envoye = envoyerEmail($email, $sujet, $message_html, $facture_info['pdf_path']);
         
-        // ============================================
-        // ENVOI DE NOTIFICATION AUX ADMINISTRATEURS ET VENDEURS
-        // ============================================
         try {
             $stmt = $pdo->query("
                 SELECT email FROM admin 
@@ -909,9 +843,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             error_log("Aucun destinataire configuré pour les notifications de commande");
         }
         
-        // ============================================
-        // REDIRECTION AVEC MESSAGE DE SUCCÈS
-        // ============================================
         $_SESSION['commande_success'] = [
             'numero' => $numero_commande,
             'total' => $total_apres_reductions,
@@ -932,15 +863,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// ============================================
-// INCLUSION DU HEADER
-// ============================================
 $titre_page = 'Finaliser ma commande - IBA Design';
 $meta_desc = 'Finalisez votre commande et choisissez votre mode de paiement.';
 require_once '../includes/header.php';
 require_once '../includes/navbar.php';
 
-// Récupérer les infos client si connecté
 $client_nom = '';
 $client_email = '';
 $client_telephone = '';
@@ -957,7 +884,6 @@ if (isset($_SESSION['client_id'])) {
     }
 }
 
-// Afficher un message si la commande vient du bouton "Commander"
 $commande_directe_message = '';
 if (isset($_GET['produit_id'])) {
     $commande_directe_message = 'Vous commandez directement : ' . htmlspecialchars($produit_direct['nom'] ?? '') . ' (x' . $quantite_directe . ')';
@@ -965,240 +891,48 @@ if (isset($_GET['produit_id'])) {
 ?>
 
 <style>
-/* ========== PAGE COMMANDE ========== */
-.commande-header {
-    background: linear-gradient(135deg, #0D0D0D 0%, #1A1A1A 50%, #0D0D0D 100%);
-    padding: 40px 0 30px;
-    text-align: center;
-    margin-bottom: 40px;
-}
-.commande-header h1 {
-    font-family: 'Playfair Display', serif;
-    font-size: 2.2rem;
-    color: #C8922A;
-    margin-bottom: 8px;
-}
-.commande-header p {
-    color: rgba(255,255,255,0.5);
-    font-size: 0.9rem;
-}
-.container-custom {
-    max-width: 1100px;
-    margin: 0 auto;
-    padding: 0 20px 60px;
-}
-.commande-grid {
-    display: grid;
-    grid-template-columns: 1fr 360px;
-    gap: 30px;
-}
-.formulaire-card, .resume-card {
-    background: white;
-    border-radius: 20px;
-    padding: 30px;
-    box-shadow: 0 5px 25px rgba(0,0,0,0.06);
-    border: 1px solid rgba(200,146,42,0.08);
-}
-.formulaire-card .section-title {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.2rem;
-    color: #0D0D0D;
-    margin-bottom: 20px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-.formulaire-card .section-title i {
-    color: #C8922A;
-    font-size: 1.3rem;
-}
-.form-group {
-    margin-bottom: 18px;
-}
-.form-group label {
-    display: block;
-    margin-bottom: 6px;
-    font-weight: 600;
-    font-size: 0.8rem;
-    color: #0D0D0D;
-}
-.form-group label .required {
-    color: #E74C3C;
-}
-.form-control {
-    width: 100%;
-    padding: 12px 16px;
-    border: 1.5px solid #E0E6ED;
-    border-radius: 10px;
-    font-family: 'Jost', sans-serif;
-    font-size: 0.9rem;
-    transition: all 0.3s;
-}
-.form-control:focus {
-    outline: none;
-    border-color: #C8922A;
-    box-shadow: 0 0 0 3px rgba(200,146,42,0.08);
-}
-.form-control::placeholder {
-    color: #B0B0B0;
-}
-.form-check {
-    padding: 10px 14px;
-    border-radius: 10px;
-    transition: background 0.3s;
-    border: 1.5px solid #F0F2F5;
-    margin-bottom: 8px;
-}
-.form-check:hover {
-    background: #FEFBF5;
-    border-color: rgba(200,146,42,0.2);
-}
-.form-check-input:checked {
-    background-color: #C8922A;
-    border-color: #C8922A;
-}
-.form-check-label {
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 0.9rem;
-    color: #0D0D0D;
-}
-.form-check-label i {
-    color: #C8922A;
-    font-size: 1rem;
-}
-.btn-valider {
-    width: 100%;
-    background: linear-gradient(135deg, #C8922A, #E8B55A);
-    color: white;
-    padding: 15px;
-    border: none;
-    border-radius: 12px;
-    font-weight: 700;
-    font-size: 1rem;
-    cursor: pointer;
-    transition: all 0.3s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-}
-.btn-valider:hover {
-    background: linear-gradient(135deg, #9A6E1A, #C8922A);
-    transform: translateY(-2px);
-    box-shadow: 0 5px 20px rgba(200,146,42,0.3);
-}
-.btn-valider i {
-    font-size: 1.1rem;
-}
-.alert-error {
-    background: #FEF3F2;
-    border-left: 4px solid #E74C3C;
-    color: #721C24;
-    padding: 12px 16px;
-    border-radius: 10px;
-    margin-bottom: 20px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-.alert-info-commande {
-    background: #FFF8E1;
-    border-left: 4px solid #C8922A;
-    color: #5D4E37;
-    padding: 12px 16px;
-    border-radius: 10px;
-    margin-bottom: 20px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-.alert-info-commande i {
-    color: #C8922A;
-    font-size: 1.2rem;
-}
-.resume-card h4 {
-    font-family: 'Playfair Display', serif;
-    color: #0D0D0D;
-    margin-bottom: 20px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.resume-card h4 i {
-    color: #C8922A;
-    font-size: 1.2rem;
-}
-.resume-item {
-    display: flex;
-    justify-content: space-between;
-    padding: 10px 0;
-    border-bottom: 1px solid #F0F2F5;
-    font-size: 0.9rem;
-}
-.resume-item .item-name {
-    color: #0D0D0D;
-}
-.resume-item .item-price {
-    font-weight: 600;
-    color: #C8922A;
-}
-.resume-total {
-    display: flex;
-    justify-content: space-between;
-    padding-top: 15px;
-    margin-top: 15px;
-    border-top: 2px solid #C8922A;
-    font-size: 1.2rem;
-    font-weight: 700;
-}
-.resume-total .total-label {
-    color: #0D0D0D;
-}
-.resume-total .total-amount {
-    color: #C8922A;
-}
-.paiement-info {
-    background: #FEFBF5;
-    padding: 15px 18px;
-    border-radius: 12px;
-    margin-top: 20px;
-    border: 1px solid rgba(200,146,42,0.08);
-}
-.paiement-info i {
-    color: #C8922A;
-    margin-right: 8px;
-}
-.paiement-info small {
-    color: #8A99AA;
-    font-size: 0.8rem;
-}
-.btn-retour {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    color: #8A99AA;
-    text-decoration: none;
-    font-size: 0.9rem;
-    margin-bottom: 15px;
-    transition: color 0.3s;
-}
-.btn-retour:hover {
-    color: #C8922A;
-}
-@media (max-width: 850px) {
-    .commande-grid { grid-template-columns: 1fr; }
-    .formulaire-card, .resume-card { padding: 20px; }
-}
-@media (max-width: 600px) {
-    .commande-header h1 { font-size: 1.8rem; }
-    .commande-header { padding: 30px 0 20px; }
-}
+.commande-header { background: linear-gradient(135deg, #0D0D0D 0%, #1A1A1A 50%, #0D0D0D 100%); padding: 40px 0 30px; text-align: center; margin-bottom: 40px; }
+.commande-header h1 { font-family: 'Playfair Display', serif; font-size: 2.2rem; color: #C8922A; margin-bottom: 8px; }
+.commande-header p { color: rgba(255,255,255,0.5); font-size: 0.9rem; }
+.container-custom { max-width: 1100px; margin: 0 auto; padding: 0 20px 60px; }
+.commande-grid { display: grid; grid-template-columns: 1fr 360px; gap: 30px; }
+.formulaire-card, .resume-card { background: white; border-radius: 20px; padding: 30px; box-shadow: 0 5px 25px rgba(0,0,0,0.06); border: 1px solid rgba(200,146,42,0.08); }
+.formulaire-card .section-title { font-family: 'Playfair Display', serif; font-size: 1.2rem; color: #0D0D0D; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+.formulaire-card .section-title i { color: #C8922A; font-size: 1.3rem; }
+.form-group { margin-bottom: 18px; }
+.form-group label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.8rem; color: #0D0D0D; }
+.form-group label .required { color: #E74C3C; }
+.form-control { width: 100%; padding: 12px 16px; border: 1.5px solid #E0E6ED; border-radius: 10px; font-family: 'Jost', sans-serif; font-size: 0.9rem; transition: all 0.3s; }
+.form-control:focus { outline: none; border-color: #C8922A; box-shadow: 0 0 0 3px rgba(200,146,42,0.08); }
+.form-control::placeholder { color: #B0B0B0; }
+.form-check { padding: 10px 14px; border-radius: 10px; transition: background 0.3s; border: 1.5px solid #F0F2F5; margin-bottom: 8px; }
+.form-check:hover { background: #FEFBF5; border-color: rgba(200,146,42,0.2); }
+.form-check-input:checked { background-color: #C8922A; border-color: #C8922A; }
+.form-check-label { cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 0.9rem; color: #0D0D0D; }
+.form-check-label i { color: #C8922A; font-size: 1rem; }
+.btn-valider { width: 100%; background: linear-gradient(135deg, #C8922A, #E8B55A); color: white; padding: 15px; border: none; border-radius: 12px; font-weight: 700; font-size: 1rem; cursor: pointer; transition: all 0.3s; display: flex; align-items: center; justify-content: center; gap: 10px; }
+.btn-valider:hover { background: linear-gradient(135deg, #9A6E1A, #C8922A); transform: translateY(-2px); box-shadow: 0 5px 20px rgba(200,146,42,0.3); }
+.btn-valider i { font-size: 1.1rem; }
+.alert-error { background: #FEF3F2; border-left: 4px solid #E74C3C; color: #721C24; padding: 12px 16px; border-radius: 10px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+.alert-info-commande { background: #FFF8E1; border-left: 4px solid #C8922A; color: #5D4E37; padding: 12px 16px; border-radius: 10px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+.alert-info-commande i { color: #C8922A; font-size: 1.2rem; }
+.resume-card h4 { font-family: 'Playfair Display', serif; color: #0D0D0D; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+.resume-card h4 i { color: #C8922A; font-size: 1.2rem; }
+.resume-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #F0F2F5; font-size: 0.9rem; }
+.resume-item .item-name { color: #0D0D0D; }
+.resume-item .item-price { font-weight: 600; color: #C8922A; }
+.resume-total { display: flex; justify-content: space-between; padding-top: 15px; margin-top: 15px; border-top: 2px solid #C8922A; font-size: 1.2rem; font-weight: 700; }
+.resume-total .total-label { color: #0D0D0D; }
+.resume-total .total-amount { color: #C8922A; }
+.paiement-info { background: #FEFBF5; padding: 15px 18px; border-radius: 12px; margin-top: 20px; border: 1px solid rgba(200,146,42,0.08); }
+.paiement-info i { color: #C8922A; margin-right: 8px; }
+.paiement-info small { color: #8A99AA; font-size: 0.8rem; }
+.btn-retour { display: inline-flex; align-items: center; gap: 8px; color: #8A99AA; text-decoration: none; font-size: 0.9rem; margin-bottom: 15px; transition: color 0.3s; }
+.btn-retour:hover { color: #C8922A; }
+@media (max-width: 850px) { .commande-grid { grid-template-columns: 1fr; } .formulaire-card, .resume-card { padding: 20px; } }
+@media (max-width: 600px) { .commande-header h1 { font-size: 1.8rem; } .commande-header { padding: 30px 0 20px; } }
 </style>
 
-<!-- Header -->
 <div class="commande-header">
     <div class="container-custom" style="padding-bottom:0;">
         <h1>Finaliser ma commande</h1>
@@ -1208,29 +942,15 @@ if (isset($_GET['produit_id'])) {
 
 <div class="container-custom">
     <div class="commande-grid">
-        <!-- Formulaire -->
         <div class="formulaire-card">
-            <a href="javascript:history.back()" class="btn-retour">
-                <i class="bi bi-arrow-left"></i> Retour
-            </a>
-            
-            <div class="section-title">
-                <i class="bi bi-geo-alt-fill"></i>
-                Informations de livraison
-            </div>
+            <a href="javascript:history.back()" class="btn-retour"><i class="bi bi-arrow-left"></i> Retour</a>
+            <div class="section-title"><i class="bi bi-geo-alt-fill"></i> Informations de livraison</div>
             
             <?php if($commande_directe_message): ?>
-                <div class="alert-info-commande">
-                    <i class="bi bi-bag-check-fill"></i>
-                    <span><?= $commande_directe_message ?></span>
-                </div>
+                <div class="alert-info-commande"><i class="bi bi-bag-check-fill"></i> <span><?= $commande_directe_message ?></span></div>
             <?php endif; ?>
-            
             <?php if($error): ?>
-                <div class="alert-error">
-                    <i class="bi bi-exclamation-triangle-fill"></i>
-                    <span><?= htmlspecialchars($error) ?></span>
-                </div>
+                <div class="alert-error"><i class="bi bi-exclamation-triangle-fill"></i> <span><?= htmlspecialchars($error) ?></span></div>
             <?php endif; ?>
             
             <form method="POST">
@@ -1238,79 +958,53 @@ if (isset($_GET['produit_id'])) {
                     <label>Nom complet <span class="required">*</span></label>
                     <input type="text" name="nom" class="form-control" value="<?= htmlspecialchars($client_nom) ?>" placeholder="Votre nom complet" required>
                 </div>
-                
                 <div class="form-group">
                     <label>Email <span class="required">*</span></label>
                     <input type="email" name="email" class="form-control" value="<?= htmlspecialchars($client_email) ?>" placeholder="votre@email.com" required>
                 </div>
-                
                 <div class="form-group">
                     <label>Téléphone <span class="required">*</span></label>
                     <input type="tel" name="telephone" class="form-control" value="<?= htmlspecialchars($client_telephone) ?>" placeholder="77 00 00 00" required>
                 </div>
-                
                 <div class="form-group">
                     <label>Commune</label>
                     <input type="text" name="commune" class="form-control" placeholder="Ex: Commune I, II, III, IV, V, VI">
                 </div>
-                
                 <div class="form-group">
                     <label>Adresse de livraison <span class="required">*</span></label>
                     <textarea name="adresse" class="form-control" rows="3" placeholder="Rue, quartier, porte..." required><?= htmlspecialchars($client_adresse) ?></textarea>
                 </div>
-                
                 <div class="form-group">
                     <label>Notes (optionnel)</label>
                     <textarea name="notes" class="form-control" rows="2" placeholder="Instructions particulières..."></textarea>
                 </div>
-                
                 <div class="form-group" style="margin-top:25px;">
                     <label><strong>Mode de paiement</strong></label>
                     <div class="mt-2">
                         <div class="form-check">
                             <input class="form-check-input" type="radio" name="mode_paiement" value="livraison" id="livraison" checked>
-                            <label class="form-check-label" for="livraison">
-                                <i class="bi bi-cash-coin"></i>
-                                Paiement à la livraison
-                            </label>
+                            <label class="form-check-label" for="livraison"><i class="bi bi-cash-coin"></i> Paiement à la livraison</label>
                         </div>
                         <div class="form-check">
                             <input class="form-check-input" type="radio" name="mode_paiement" value="orange_money" id="orange">
-                            <label class="form-check-label" for="orange">
-                                <i class="bi bi-phone"></i>
-                                Orange Money
-                            </label>
+                            <label class="form-check-label" for="orange"><i class="bi bi-phone"></i> Orange Money</label>
                         </div>
                         <div class="form-check">
                             <input class="form-check-input" type="radio" name="mode_paiement" value="wave" id="wave">
-                            <label class="form-check-label" for="wave">
-                                <i class="bi bi-water"></i>
-                                Wave
-                            </label>
+                            <label class="form-check-label" for="wave"><i class="bi bi-water"></i> Wave</label>
                         </div>
                         <div class="form-check">
                             <input class="form-check-input" type="radio" name="mode_paiement" value="moov_money" id="moov">
-                            <label class="form-check-label" for="moov">
-                                <i class="bi bi-phone-vibrate"></i>
-                                Moov Money
-                            </label>
+                            <label class="form-check-label" for="moov"><i class="bi bi-phone-vibrate"></i> Moov Money</label>
                         </div>
                     </div>
                 </div>
-                
-                <button type="submit" class="btn-valider">
-                    <i class="bi bi-check-circle-fill"></i>
-                    Confirmer ma commande
-                </button>
+                <button type="submit" class="btn-valider"><i class="bi bi-check-circle-fill"></i> Confirmer ma commande</button>
             </form>
         </div>
         
-        <!-- Résumé -->
         <div class="resume-card">
-            <h4>
-                <i class="bi bi-bag-fill"></i>
-                Récapitulatif
-            </h4>
+            <h4><i class="bi bi-bag-fill"></i> Récapitulatif</h4>
             <?php foreach($_SESSION['panier'] as $item): ?>
             <div class="resume-item">
                 <span class="item-name">
@@ -1325,9 +1019,7 @@ if (isset($_GET['produit_id'])) {
                                 </span>
                             <?php endif; ?>
                             <?php if(!empty($item['taille_nom'])): ?>
-                                <span class="badge bg-light text-dark" style="font-weight:400;padding:1px 8px;border:1px solid #ddd;">
-                                    <?= htmlspecialchars($item['taille_nom']) ?>
-                                </span>
+                                <span class="badge bg-light text-dark" style="font-weight:400;padding:1px 8px;border:1px solid #ddd;"><?= htmlspecialchars($item['taille_nom']) ?></span>
                             <?php endif; ?>
                         </small>
                     <?php endif; ?>
@@ -1338,32 +1030,16 @@ if (isset($_GET['produit_id'])) {
             <?php endforeach; ?>
             
             <?php if($reduction_appliquee > 0): ?>
-            <div class="resume-item" style="color:#E74C3C;">
-                <span class="item-name">Code promo</span>
-                <span class="item-price">- <?= number_format($reduction_appliquee, 0, ',', ' ') ?> F</span>
-            </div>
+            <div class="resume-item" style="color:#E74C3C;"><span class="item-name">Code promo</span><span class="item-price">- <?= number_format($reduction_appliquee, 0, ',', ' ') ?> F</span></div>
             <?php endif; ?>
-            
             <?php if($reduction_points_montant > 0): ?>
-            <div class="resume-item" style="color:#C8922A;">
-                <span class="item-name">Points fidélité (<?= $points_utilises ?> pts)</span>
-                <span class="item-price">- <?= number_format($reduction_points_montant, 0, ',', ' ') ?> F</span>
-            </div>
+            <div class="resume-item" style="color:#C8922A;"><span class="item-name">Points fidélité (<?= $points_utilises ?> pts)</span><span class="item-price">- <?= number_format($reduction_points_montant, 0, ',', ' ') ?> F</span></div>
             <?php endif; ?>
             
-            <div class="resume-total">
-                <span class="total-label">Total</span>
-                <span class="total-amount"><?= number_format($total_apres_reductions, 0, ',', ' ') ?> FCFA</span>
-            </div>
-            <div class="paiement-info">
-                <i class="bi bi-info-circle-fill"></i>
-                <small>Pour Orange Money/Wave, vous serez redirigé vers la page de paiement sécurisé.</small>
-            </div>
+            <div class="resume-total"><span class="total-label">Total</span><span class="total-amount"><?= number_format($total_apres_reductions, 0, ',', ' ') ?> FCFA</span></div>
+            <div class="paiement-info"><i class="bi bi-info-circle-fill"></i> <small>Pour Orange Money/Wave, vous serez redirigé vers la page de paiement sécurisé.</small></div>
             <div style="margin-top:15px;padding-top:15px;border-top:1px solid #F0F2F5;">
-                <small style="color:#8A99AA;display:flex;align-items:center;gap:6px;">
-                    <i class="bi bi-shield-check" style="color:#27AE60;"></i>
-                    Paiement sécurisé
-                </small>
+                <small style="color:#8A99AA;display:flex;align-items:center;gap:6px;"><i class="bi bi-shield-check" style="color:#27AE60;"></i> Paiement sécurisé</small>
             </div>
         </div>
     </div>

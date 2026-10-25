@@ -11,6 +11,85 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once '../includes/maintenance_check.php';
 
+// ============================================
+// TRAITEMENT AJAX : RÉCUPÉRER LES VRAIES INFOS DU PRODUIT
+// ============================================
+if (isset($_POST['action']) && $_POST['action'] == 'get_produit_detail_video') {
+    header('Content-Type: application/json');
+    
+    $host = 'localhost';
+    $dbname = 'awakasugu_db';
+    $user = 'root';
+    $pass = '';
+    
+    try {
+        $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $user, $pass);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    } catch(PDOException $e) {
+        echo json_encode(['success' => false, 'message' => 'Erreur BDD']);
+        exit;
+    }
+    
+    $produit_id = isset($_POST['produit_id']) ? (int)$_POST['produit_id'] : 0;
+    if ($produit_id <= 0) {
+        echo json_encode(['success' => false, 'message' => 'Produit invalide']);
+        exit;
+    }
+    
+    $stmt = $pdo->prepare("SELECT * FROM produits WHERE id = ? AND est_visible = 1");
+    $stmt->execute([$produit_id]);
+    $p = $stmt->fetch();
+    
+    if (!$p) {
+        echo json_encode(['success' => false, 'message' => 'Produit introuvable']);
+        exit;
+    }
+    
+    // Récupération des vraies couleurs
+    $couleurs = [];
+    try {
+        $stmt = $pdo->prepare("
+            SELECT c.id, c.nom, c.code_hex
+            FROM produit_couleurs pc
+            INNER JOIN couleurs c ON c.id = pc.couleur_id
+            WHERE pc.produit_id = ?
+            ORDER BY c.nom ASC
+        ");
+        $stmt->execute([$produit_id]);
+        $couleurs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {}
+    
+    // Récupération des vraies tailles
+    $tailles = [];
+    try {
+        $stmt = $pdo->prepare("
+            SELECT t.id, t.nom
+            FROM produit_tailles pt
+            INNER JOIN tailles t ON t.id = pt.taille_id
+            WHERE pt.produit_id = ?
+            ORDER BY t.id ASC
+        ");
+        $stmt->execute([$produit_id]);
+        $tailles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {}
+    
+    $est_promo = (isset($p['est_promo']) && $p['est_promo'] == 1 && isset($p['prix_promo']) && $p['prix_promo'] > 0 && $p['prix_promo'] < $p['prix']);
+    $prix_affiche = $est_promo ? (float)$p['prix_promo'] : (float)$p['prix'];
+    $prix_ancien = $est_promo ? (float)$p['prix'] : null;
+    
+    echo json_encode([
+        'success' => true,
+        'id' => (int)$p['id'],
+        'nom' => $p['nom'],
+        'prix' => $prix_affiche,
+        'prix_ancien' => $prix_ancien,
+        'stock' => (int)($p['stock'] ?? 0),
+        'couleurs' => $couleurs,
+        'tailles' => $tailles,
+    ]);
+    exit;
+}
+
 $titre_page = 'Vidéos & Tendances - Awa Ka Sugu';
 require_once '../includes/header.php';
 
@@ -132,10 +211,6 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <style>
-        /* ═══════════════════════════════════════════
-           VIDÉOS — DESIGN PREMIUM
-           ═══════════════════════════════════════════ */
-
         :root {
             --gold: #C8922A;
             --gold-light: #E8C482;
@@ -155,689 +230,192 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
             height: 100dvh;
         }
 
-        /* ═══════════════════════════════════════════
-           HEADER PREMIUM
-           ═══════════════════════════════════════════ */
+        /* HEADER */
         .tiktok-header {
-            position: fixed;
-            top: 0; left: 0; right: 0;
-            z-index: 100;
-            padding: 14px 20px;
-            padding-top: calc(14px + env(safe-area-inset-top));
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            padding: 14px 20px; padding-top: calc(14px + env(safe-area-inset-top));
+            display: flex; align-items: center; justify-content: space-between;
             background: linear-gradient(180deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0) 100%);
             pointer-events: none;
         }
         .tiktok-header > * { pointer-events: auto; }
-
-        .header-logo-group {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            text-decoration: none;
-        }
-
+        .header-logo-group { display: flex; align-items: center; gap: 12px; text-decoration: none; }
         .logo-monogram {
-            position: relative;
-            width: 42px;
-            height: 42px;
-            border-radius: 50%;
-            flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #0D0D0D;
-            border: 1.5px solid transparent;
-            background-clip: padding-box;
-            box-shadow: 
-                0 4px 16px rgba(0,0,0,0.5),
-                inset 0 1px 0 rgba(255,255,255,0.06);
+            position: relative; width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            background: #0D0D0D; border: 1.5px solid transparent; background-clip: padding-box;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
         }
         .logo-monogram::before {
-            content: '';
-            position: absolute;
-            inset: -2px;
-            border-radius: 50%;
-            padding: 1.5px;
+            content: ''; position: absolute; inset: -2px; border-radius: 50%; padding: 1.5px;
             background: linear-gradient(135deg, var(--gold-light), var(--gold), var(--gold-deep));
-            -webkit-mask: 
-                linear-gradient(#fff 0 0) content-box, 
-                linear-gradient(#fff 0 0);
-            -webkit-mask-composite: xor;
-                    mask-composite: exclude;
-            pointer-events: none;
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none;
         }
         .logo-monogram span {
-            font-family: 'Playfair Display', serif;
-            font-size: 1.15rem;
-            font-weight: 800;
-            letter-spacing: -0.5px;
+            font-family: 'Playfair Display', serif; font-size: 1.15rem; font-weight: 800; letter-spacing: -0.5px;
             background: linear-gradient(135deg, var(--gold-light), var(--gold), var(--gold-deep));
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            color: transparent;
-            padding-bottom: 2px;
+            -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+            color: transparent; padding-bottom: 2px;
         }
-
-        .logo-text-group {
-            display: flex;
-            flex-direction: column;
-            line-height: 1;
-        }
+        .logo-text-group { display: flex; flex-direction: column; line-height: 1; }
         .logo-main {
-            font-family: 'Playfair Display', serif;
-            font-size: 0.92rem;
-            font-weight: 700;
-            letter-spacing: 2px;
-            color: #FFFFFF;
-            text-shadow: 0 2px 8px rgba(0,0,0,0.7);
-            text-transform: uppercase;
-            margin-bottom: 4px;
+            font-family: 'Playfair Display', serif; font-size: 0.92rem; font-weight: 700; letter-spacing: 2px;
+            color: #FFFFFF; text-shadow: 0 2px 8px rgba(0,0,0,0.7); text-transform: uppercase; margin-bottom: 4px;
         }
         .logo-main .gold {
             background: linear-gradient(135deg, var(--gold-light), var(--gold));
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            color: transparent;
+            -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
         }
         .logo-tagline {
-            font-family: 'Inter', sans-serif;
-            font-size: 0.52rem;
-            font-weight: 500;
-            letter-spacing: 2.4px;
-            color: rgba(255,255,255,0.5);
-            text-transform: uppercase;
-            display: flex;
-            align-items: center;
-            gap: 6px;
+            font-family: 'Inter', sans-serif; font-size: 0.52rem; font-weight: 500; letter-spacing: 2.4px;
+            color: rgba(255,255,255,0.5); text-transform: uppercase; display: flex; align-items: center; gap: 6px;
         }
-        .logo-tagline::before {
-            content: '';
-            width: 12px;
-            height: 1px;
-            background: linear-gradient(90deg, var(--gold), transparent);
-        }
-
+        .logo-tagline::before { content: ''; width: 12px; height: 1px; background: linear-gradient(90deg, var(--gold), transparent); }
         .tiktok-header .actions { display: flex; align-items: center; gap: 8px; }
-
         .tiktok-header .btn-nav {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 38px;
-            height: 38px;
-            border-radius: 50%;
-            font-size: 0.95rem;
-            text-decoration: none;
-            backdrop-filter: blur(14px);
-            -webkit-backdrop-filter: blur(14px);
-            border: 1px solid rgba(255,255,255,0.15);
-            color: #fff;
-            background: rgba(0,0,0,0.35);
-            transition: all 0.3s var(--ease);
-            cursor: pointer;
+            display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px;
+            border-radius: 50%; font-size: 0.95rem; text-decoration: none;
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(255,255,255,0.15); color: #fff; background: rgba(0,0,0,0.35);
+            transition: all 0.3s var(--ease); cursor: pointer;
         }
         .tiktok-header .btn-nav:hover {
-            background: rgba(0,0,0,0.6);
-            border-color: rgba(200,146,42,0.5);
-            color: var(--gold-light);
-            transform: translateY(-1px);
+            background: rgba(0,0,0,0.6); border-color: rgba(200,146,42,0.5); color: var(--gold-light); transform: translateY(-1px);
         }
         .tiktok-header .btn-nav.btn-shop {
-            background: linear-gradient(135deg, var(--gold), var(--gold-deep));
-            border: none;
-            box-shadow: 0 6px 20px rgba(200,146,42,0.4);
-        }
-        .tiktok-header .btn-nav.btn-shop:hover {
-            color: #fff;
-            box-shadow: 0 8px 26px rgba(200,146,42,0.55);
+            background: linear-gradient(135deg, var(--gold), var(--gold-deep)); border: none; box-shadow: 0 6px 20px rgba(200,146,42,0.4);
         }
 
-        /* ===== BOUTON SON (haut-parleur) ===== */
-        #soundToggle {
-            position: relative;
-            background: rgba(200,146,42,0.9) !important;
-            border-color: rgba(200,146,42,0.9) !important;
-            animation: soundPulse 2s ease-in-out infinite;
-        }
-        #soundToggle.sound-on {
-            background: rgba(0,0,0,0.5) !important;
-            border-color: rgba(255,255,255,0.25) !important;
-            animation: none;
-        }
-        #soundToggle.sound-on i {
-            color: #fff;
-        }
-        @keyframes soundPulse {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(200,146,42,0.5); }
-            50% { box-shadow: 0 0 0 10px rgba(200,146,42,0); }
-        }
-
-        /* ===== BANNIÈRE "ACTIVER LE SON" ===== */
+        /* SOUND */
+        #soundToggle { position: relative; background: rgba(200,146,42,0.9) !important; border-color: rgba(200,146,42,0.9) !important; animation: soundPulse 2s ease-in-out infinite; }
+        #soundToggle.sound-on { background: rgba(0,0,0,0.5) !important; border-color: rgba(255,255,255,0.25) !important; animation: none; }
+        #soundToggle.sound-on i { color: #fff; }
+        @keyframes soundPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(200,146,42,0.5); } 50% { box-shadow: 0 0 0 10px rgba(200,146,42,0); } }
         #soundHint {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 90;
-            background: rgba(0,0,0,0.75);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            padding: 14px 24px;
-            border-radius: 30px;
-            border: 1.5px solid rgba(200,146,42,0.5);
-            color: #fff;
-            font-size: 0.85rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            pointer-events: none;
-            opacity: 1;
-            transition: opacity 0.4s ease;
-            animation: hintFade 2s ease-in-out infinite;
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 90;
+            background: rgba(0,0,0,0.75); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            padding: 14px 24px; border-radius: 30px; border: 1.5px solid rgba(200,146,42,0.5);
+            color: #fff; font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; gap: 10px;
+            pointer-events: none; opacity: 1; transition: opacity 0.4s ease; animation: hintFade 2s ease-in-out infinite;
         }
-        #soundHint i {
-            color: var(--gold);
-            font-size: 1.1rem;
-        }
-        #soundHint.hidden {
-            opacity: 0;
-        }
-        @keyframes hintFade {
-            0%, 100% { transform: translate(-50%, -50%) scale(1); }
-            50% { transform: translate(-50%, -50%) scale(1.03); }
-        }
+        #soundHint i { color: var(--gold); font-size: 1.1rem; }
+        #soundHint.hidden { opacity: 0; }
+        @keyframes hintFade { 0%, 100% { transform: translate(-50%, -50%) scale(1); } 50% { transform: translate(-50%, -50%) scale(1.03); } }
 
-        /* ═══════════════════════════════════════════
-           CONTAINER VIDÉOS
-           ═══════════════════════════════════════════ */
-        .video-container {
-            height: 100vh;
-            height: 100dvh;
-            overflow-y: scroll;
-            scroll-snap-type: y mandatory;
-            scroll-behavior: smooth;
-        }
+        /* VIDEOS */
+        .video-container { height: 100vh; height: 100dvh; overflow-y: scroll; scroll-snap-type: y mandatory; scroll-behavior: smooth; }
         .video-container::-webkit-scrollbar { display: none; }
-
         .video-item {
-            position: relative;
-            height: 100vh;
-            height: 100dvh;
-            width: 100%;
-            scroll-snap-align: start;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #000;
-            overflow: hidden;
+            position: relative; height: 100vh; height: 100dvh; width: 100%; scroll-snap-align: start;
+            display: flex; align-items: center; justify-content: center; background: #000; overflow: hidden;
         }
-
         .video-player { width: 100%; height: 100%; }
-        .video-player video,
-        .video-player iframe {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            border: none;
-        }
+        .video-player video, .video-player iframe { width: 100%; height: 100%; object-fit: cover; border: none; }
 
-        /* ═══════════════════════════════════════════
-           OVERLAY VIDÉO
-           ═══════════════════════════════════════════ */
         .video-overlay {
-            position: absolute;
-            bottom: 0; left: 0; right: 0;
-            padding: 24px 82px 28px 20px;
+            position: absolute; bottom: 0; left: 0; right: 0; padding: 24px 82px 28px 20px;
             padding-bottom: calc(28px + env(safe-area-inset-bottom));
-            background: linear-gradient(0deg, 
-                rgba(0,0,0,0.98) 0%, 
-                rgba(0,0,0,0.7) 40%, 
-                rgba(0,0,0,0.2) 75%, 
-                transparent 100%);
-            pointer-events: none;
-            z-index: 10;
+            background: linear-gradient(0deg, rgba(0,0,0,0.98) 0%, rgba(0,0,0,0.7) 40%, rgba(0,0,0,0.2) 75%, transparent 100%);
+            pointer-events: none; z-index: 10;
         }
         .video-overlay > * { pointer-events: auto; }
-
-        .user-info { 
-            display: flex; 
-            align-items: center; 
-            gap: 12px; 
-            margin-bottom: 14px; 
-        }
-
-        .user-avatar {
-            width: 42px;
-            height: 42px;
-            border-radius: 50%;
-            overflow: hidden;
-            border: 2px solid var(--gold);
-            box-shadow: 0 0 0 3px rgba(200,146,42,0.2), 0 4px 15px rgba(0,0,0,0.4);
-            flex-shrink: 0;
-        }
+        .user-info { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+        .user-avatar { width: 42px; height: 42px; border-radius: 50%; overflow: hidden; border: 2px solid var(--gold); box-shadow: 0 0 0 3px rgba(200,146,42,0.2), 0 4px 15px rgba(0,0,0,0.4); flex-shrink: 0; }
         .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
-
         .user-details { min-width: 0; }
-        .user-details .user-name {
-            font-size: 0.92rem;
-            font-weight: 700;
-            color: #fff;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            text-shadow: 0 1px 3px rgba(0,0,0,0.6);
-        }
-        .user-details .user-name i {
-            color: var(--gold);
-            font-size: 0.85rem;
-        }
-        .user-details .user-handle {
-            font-size: 0.7rem;
-            color: rgba(255,255,255,0.6);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            margin-top: 2px;
-        }
-
-        .video-title { 
-            font-family: 'Playfair Display', serif;
-            font-size: 1rem; 
-            font-weight: 600; 
-            color: #fff; 
-            margin-bottom: 4px;
-            text-shadow: 0 2px 6px rgba(0,0,0,0.6);
-            line-height: 1.3;
-        }
-        .video-desc { 
-            font-size: 0.78rem; 
-            color: rgba(255,255,255,0.75); 
-            line-height: 1.5; 
-            margin-bottom: 14px;
-            text-shadow: 0 1px 3px rgba(0,0,0,0.5);
-        }
+        .user-details .user-name { font-size: 0.92rem; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+        .user-details .user-name i { color: var(--gold); font-size: 0.85rem; }
+        .user-details .user-handle { font-size: 0.7rem; color: rgba(255,255,255,0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+        .video-title { font-family: 'Playfair Display', serif; font-size: 1rem; font-weight: 600; color: #fff; margin-bottom: 4px; text-shadow: 0 2px 6px rgba(0,0,0,0.6); line-height: 1.3; }
+        .video-desc { font-size: 0.78rem; color: rgba(255,255,255,0.75); line-height: 1.5; margin-bottom: 14px; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
 
         .product-tag-card {
-            display: inline-flex;
-            align-items: center;
-            gap: 12px;
-            background: rgba(20,20,20,0.85);
-            backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px);
-            border: 1px solid rgba(200,146,42,0.35);
-            padding: 8px 8px 8px 8px;
-            border-radius: 14px;
-            max-width: min(340px, 82vw);
-            box-shadow: 
-                0 12px 32px rgba(0,0,0,0.5),
-                inset 0 1px 0 rgba(255,255,255,0.06);
-            position: relative;
-            overflow: hidden;
+            display: inline-flex; align-items: center; gap: 12px; background: rgba(20,20,20,0.85);
+            backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border: 1px solid rgba(200,146,42,0.35);
+            padding: 8px; border-radius: 14px; max-width: min(340px, 82vw);
+            box-shadow: 0 12px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06); position: relative; overflow: hidden;
         }
-        .product-tag-card::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(200,146,42,0.6), transparent);
-        }
-
-        .product-tag-img {
-            width: 46px;
-            height: 46px;
-            border-radius: 10px;
-            object-fit: cover;
-            flex-shrink: 0;
-            border: 1px solid rgba(255,255,255,0.08);
-        }
+        .product-tag-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(200,146,42,0.6), transparent); }
+        .product-tag-img { width: 46px; height: 46px; border-radius: 10px; object-fit: cover; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.08); }
         .product-tag-info { flex: 1; min-width: 0; }
-        .product-tag-title {
-            font-size: 0.76rem;
-            font-weight: 600;
-            color: #fff;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            margin-bottom: 3px;
-        }
-        .product-tag-price { 
-            font-size: 0.85rem; 
-            color: var(--gold); 
-            font-weight: 700;
-            font-family: 'Playfair Display', serif;
-            letter-spacing: -0.3px;
-        }
-
+        .product-tag-title { font-size: 0.76rem; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
+        .product-tag-price { font-size: 0.85rem; color: var(--gold); font-weight: 700; font-family: 'Playfair Display', serif; letter-spacing: -0.3px; }
         .btn-buy-now {
-            background: linear-gradient(135deg, var(--gold), var(--gold-deep));
-            color: #fff;
-            border: none;
-            padding: 9px 16px;
-            border-radius: 22px;
-            font-size: 0.72rem;
-            font-weight: 700;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            transition: all 0.25s var(--ease);
-            white-space: nowrap;
-            flex-shrink: 0;
-            box-shadow: 0 4px 14px rgba(200,146,42,0.35);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+            background: linear-gradient(135deg, var(--gold), var(--gold-deep)); color: #fff; border: none;
+            padding: 9px 16px; border-radius: 22px; font-size: 0.72rem; font-weight: 700; cursor: pointer;
+            display: flex; align-items: center; gap: 5px; transition: all 0.25s var(--ease); white-space: nowrap; flex-shrink: 0;
+            box-shadow: 0 4px 14px rgba(200,146,42,0.35); text-transform: uppercase; letter-spacing: 0.5px;
         }
-        .btn-buy-now:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 6px 20px rgba(200,146,42,0.5);
-        }
-        .btn-buy-now:active { transform: scale(0.96); }
+        .btn-buy-now:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(200,146,42,0.5); }
 
-        /* ═══════════════════════════════════════════
-           ACTIONS LATÉRALES
-           ═══════════════════════════════════════════ */
-        .side-actions {
-            position: absolute;
-            right: 12px;
-            bottom: calc(100px + env(safe-area-inset-bottom));
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 18px;
-            z-index: 20;
-        }
-
-        .side-btn {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 5px;
-            color: #fff;
-            background: none;
-            border: none;
-            cursor: pointer;
-        }
-
+        .side-actions { position: absolute; right: 12px; bottom: calc(100px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: center; gap: 18px; z-index: 20; }
+        .side-btn { display: flex; flex-direction: column; align-items: center; gap: 5px; color: #fff; background: none; border: none; cursor: pointer; }
         .side-icon-box {
-            width: 46px;
-            height: 46px;
-            border-radius: 50%;
-            background: rgba(15,15,15,0.7);
-            backdrop-filter: blur(14px);
-            -webkit-backdrop-filter: blur(14px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.15rem;
-            border: 1px solid rgba(255,255,255,0.15);
-            box-shadow: 
-                0 6px 20px rgba(0,0,0,0.4),
-                inset 0 1px 0 rgba(255,255,255,0.08);
-            transition: all 0.3s var(--ease);
-            color: #fff;
+            width: 46px; height: 46px; border-radius: 50%; background: rgba(15,15,15,0.7);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); display: flex; align-items: center; justify-content: center;
+            font-size: 1.15rem; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 6px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08);
+            transition: all 0.3s var(--ease); color: #fff;
         }
+        .side-btn:hover .side-icon-box { transform: scale(1.1); border-color: rgba(200,146,42,0.5); color: var(--gold-light); }
+        .side-btn span { font-size: 0.62rem; font-weight: 600; text-shadow: 0 2px 6px rgba(0,0,0,0.9); letter-spacing: 0.3px; }
+        .video-progress { position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: rgba(255,255,255,0.12); z-index: 30; }
+        .video-progress .bar { height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-light)); width: 0%; box-shadow: 0 0 8px rgba(200,146,42,0.6); transition: width 0.1s linear; }
 
-        .side-btn:hover .side-icon-box { 
-            transform: scale(1.1);
-            border-color: rgba(200,146,42,0.5);
-            color: var(--gold-light);
-        }
-        .side-btn:active .side-icon-box { transform: scale(0.95); }
-
-        .side-btn span {
-            font-size: 0.62rem;
-            font-weight: 600;
-            text-shadow: 0 2px 6px rgba(0,0,0,0.9);
-            letter-spacing: 0.3px;
-        }
-
-        .video-progress {
-            position: absolute;
-            bottom: 0; left: 0; right: 0;
-            height: 2px;
-            background: rgba(255,255,255,0.12);
-            z-index: 30;
-        }
-        .video-progress .bar { 
-            height: 100%; 
-            background: linear-gradient(90deg, var(--gold), var(--gold-light)); 
-            width: 0%;
-            box-shadow: 0 0 8px rgba(200,146,42,0.6);
-            transition: width 0.1s linear;
-        }
-
-        /* ═══════════════════════════════════════════
-           BOTTOM SHEET
-           ═══════════════════════════════════════════ */
-        .bottom-sheet-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.75);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            z-index: 200;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.3s var(--ease);
-        }
+        /* BOTTOM SHEET */
+        .bottom-sheet-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 200; opacity: 0; pointer-events: none; transition: opacity 0.3s var(--ease); }
         .bottom-sheet-overlay.active { opacity: 1; pointer-events: auto; }
-
         .bottom-sheet {
-            position: fixed;
-            bottom: -100%;
-            left: 0; right: 0;
-            background: #0F0F0F;
-            border-top-left-radius: 24px;
-            border-top-right-radius: 24px;
-            padding: 22px;
-            padding-bottom: calc(22px + env(safe-area-inset-bottom));
-            z-index: 201;
-            transition: bottom 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.1);
-            color: #fff;
-            border-top: 1px solid rgba(200,146,42,0.35);
-            max-height: 85vh;
-            overflow-y: auto;
-            max-width: 480px;
-            margin: 0 auto;
-            box-shadow: 0 -20px 60px rgba(0,0,0,0.6);
+            position: fixed; bottom: -100%; left: 0; right: 0; background: #0F0F0F; border-top-left-radius: 24px; border-top-right-radius: 24px;
+            padding: 22px; padding-bottom: calc(22px + env(safe-area-inset-bottom)); z-index: 201;
+            transition: bottom 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.1); color: #fff; border-top: 1px solid rgba(200,146,42,0.35);
+            max-height: 85vh; overflow-y: auto; max-width: 480px; margin: 0 auto; box-shadow: 0 -20px 60px rgba(0,0,0,0.6);
         }
-        .bottom-sheet::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 50%;
-            transform: translateX(-50%);
-            width: 40px;
-            height: 4px;
-            background: rgba(255,255,255,0.15);
-            border-radius: 4px;
-            margin-top: 8px;
-        }
+        .bottom-sheet::before { content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 40px; height: 4px; background: rgba(255,255,255,0.15); border-radius: 4px; margin-top: 8px; }
         .bottom-sheet.active { bottom: 0; }
-
-        .sheet-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 22px;
-            margin-top: 12px;
-        }
-        .sheet-product { 
-            display: flex; 
-            gap: 14px; 
-            align-items: center; 
-            flex: 1;
-            min-width: 0;
-        }
-        .sheet-product img { 
-            width: 62px; 
-            height: 62px; 
-            border-radius: 12px; 
-            object-fit: cover;
-            border: 1px solid rgba(255,255,255,0.08);
-        }
+        .sheet-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px; margin-top: 12px; }
+        .sheet-product { display: flex; gap: 14px; align-items: center; flex: 1; min-width: 0; }
+        .sheet-product img { width: 62px; height: 62px; border-radius: 12px; object-fit: cover; border: 1px solid rgba(255,255,255,0.08); }
         .sheet-product-info { flex: 1; min-width: 0; }
-        .sheet-product-title { 
-            font-size: 0.92rem; 
-            font-weight: 700; 
-            color: #fff;
-            margin-bottom: 4px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .sheet-product-price { 
-            color: var(--gold); 
-            font-weight: 700; 
-            font-size: 1rem;
-            font-family: 'Playfair Display', serif;
-            letter-spacing: -0.3px;
-        }
-        .btn-close-sheet { 
-            background: rgba(255,255,255,0.08); 
-            border: none; 
-            color: #fff; 
-            font-size: 1rem; 
-            cursor: pointer;
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            transition: all 0.25s var(--ease);
-        }
-        .btn-close-sheet:hover {
-            background: rgba(255,255,255,0.15);
-            transform: rotate(90deg);
-        }
+        .sheet-product-title { font-size: 0.92rem; font-weight: 700; color: #fff; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .sheet-product-price { color: var(--gold); font-weight: 700; font-size: 1rem; font-family: 'Playfair Display', serif; letter-spacing: -0.3px; }
+        .btn-close-sheet { background: rgba(255,255,255,0.08); border: none; color: #fff; font-size: 1rem; cursor: pointer; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.25s var(--ease); }
+        .btn-close-sheet:hover { background: rgba(255,255,255,0.15); transform: rotate(90deg); }
 
         .option-group { margin-bottom: 18px; }
-        .option-label {
-            font-size: 0.68rem;
-            color: rgba(255,255,255,0.5);
-            margin-bottom: 10px;
-            display: block;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1.5px;
-        }
+        .option-label { font-size: 0.68rem; color: rgba(255,255,255,0.5); margin-bottom: 10px; display: block; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; }
         .options-list { display: flex; gap: 8px; flex-wrap: wrap; }
         .option-chip {
-            padding: 9px 18px;
-            border-radius: 22px;
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.12);
-            font-size: 0.78rem;
-            color: #fff;
-            cursor: pointer;
-            transition: all 0.25s var(--ease);
-            font-weight: 500;
+            padding: 9px 18px; border-radius: 22px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+            font-size: 0.78rem; color: #fff; cursor: pointer; transition: all 0.25s var(--ease); font-weight: 500;
+            display: flex; align-items: center; gap: 8px;
         }
-        .option-chip:hover {
-            background: rgba(255,255,255,0.1);
-            border-color: rgba(200,146,42,0.4);
-        }
-        .option-chip.selected {
-            background: linear-gradient(135deg, var(--gold), var(--gold-deep));
-            color: #fff;
-            border-color: transparent;
-            font-weight: 700;
-            box-shadow: 0 4px 14px rgba(200,146,42,0.4);
-        }
+        .option-chip:hover { background: rgba(255,255,255,0.1); border-color: rgba(200,146,42,0.4); }
+        .option-chip.selected { background: linear-gradient(135deg, var(--gold), var(--gold-deep)); color: #fff; border-color: transparent; font-weight: 700; box-shadow: 0 4px 14px rgba(200,146,42,0.4); }
+        .option-chip .dot { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.15); }
+        .option-chip.selected .dot { box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--ink); }
 
-        .qty-picker {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            background: rgba(255,255,255,0.06);
-            padding: 6px 14px;
-            border-radius: 24px;
-            width: fit-content;
-            border: 1px solid rgba(255,255,255,0.1);
-        }
-        .qty-btn { 
-            background: none; 
-            border: none; 
-            color: #fff; 
-            font-size: 1.2rem; 
-            cursor: pointer;
-            width: 28px;
-            height: 28px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            transition: all 0.2s var(--ease);
-        }
-        .qty-btn:hover {
-            background: rgba(200,146,42,0.2);
-            color: var(--gold-light);
-        }
-        .qty-val { 
-            font-size: 0.9rem; 
-            font-weight: 700; 
-            min-width: 24px;
-            text-align: center;
-        }
-
+        .qty-picker { display: flex; align-items: center; gap: 16px; background: rgba(255,255,255,0.06); padding: 6px 14px; border-radius: 24px; width: fit-content; border: 1px solid rgba(255,255,255,0.1); }
+        .qty-btn { background: none; border: none; color: #fff; font-size: 1.2rem; cursor: pointer; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: all 0.2s var(--ease); }
+        .qty-btn:hover { background: rgba(200,146,42,0.2); color: var(--gold-light); }
+        .qty-val { font-size: 0.9rem; font-weight: 700; min-width: 24px; text-align: center; }
         .btn-add-cart-final {
-            width: 100%;
-            padding: 16px;
-            background: linear-gradient(135deg, var(--gold), var(--gold-light));
-            border: none;
-            border-radius: 32px;
-            color: #0A0804;
-            font-weight: 700;
-            font-size: 0.85rem;
-            margin-top: 20px;
-            cursor: pointer;
-            box-shadow: 0 8px 26px rgba(200,146,42,0.4);
-            transition: all 0.3s var(--ease);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            text-transform: uppercase;
-            letter-spacing: 1.2px;
+            width: 100%; padding: 16px; background: linear-gradient(135deg, var(--gold), var(--gold-light));
+            border: none; border-radius: 32px; color: #0A0804; font-weight: 700; font-size: 0.85rem; margin-top: 20px; cursor: pointer;
+            box-shadow: 0 8px 26px rgba(200,146,42,0.4); transition: all 0.3s var(--ease); display: flex; align-items: center; justify-content: center; gap: 8px;
+            text-transform: uppercase; letter-spacing: 1.2px;
         }
-        .btn-add-cart-final:hover { 
-            transform: translateY(-2px); 
-            box-shadow: 0 12px 34px rgba(200,146,42,0.55); 
-        }
-        .btn-add-cart-final:active {
-            transform: translateY(0) scale(0.98);
-        }
+        .btn-add-cart-final:hover { transform: translateY(-2px); box-shadow: 0 12px 34px rgba(200,146,42,0.55); }
 
         #toastNotif {
-            position: fixed;
-            top: calc(20px + env(safe-area-inset-top));
-            left: 50%;
-            transform: translateX(-50%) translateY(-120px);
-            background: linear-gradient(135deg, var(--gold), var(--gold-light));
-            color: #0A0804;
-            padding: 12px 26px;
-            border-radius: 32px;
-            font-weight: 700;
-            font-size: 0.82rem;
-            z-index: 1000;
-            transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-            white-space: nowrap;
-            box-shadow: 0 8px 30px rgba(200,146,42,0.5);
-            display: flex;
-            align-items: center;
-            gap: 8px;
+            position: fixed; top: calc(20px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%) translateY(-120px);
+            background: linear-gradient(135deg, var(--gold), var(--gold-light)); color: #0A0804; padding: 12px 26px; border-radius: 32px;
+            font-weight: 700; font-size: 0.82rem; z-index: 1000; transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            white-space: nowrap; box-shadow: 0 8px 30px rgba(200,146,42,0.5); display: flex; align-items: center; gap: 8px;
         }
         #toastNotif.show { transform: translateX(-50%) translateY(0); }
+
+        .loading-spinner { text-align: center; padding: 20px; color: var(--gold); font-size: 1.5rem; }
 
         @media (max-width: 480px) {
             .tiktok-header { padding: 12px 14px; padding-top: calc(12px + env(safe-area-inset-top)); }
@@ -847,28 +425,23 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
             .logo-tagline { font-size: 0.48rem; letter-spacing: 2px; }
             .header-logo-group { gap: 10px; }
             .tiktok-header .btn-nav { width: 34px; height: 34px; font-size: 0.9rem; }
-            
             .video-overlay { padding: 20px 72px 24px 16px; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
             .user-avatar { width: 36px; height: 36px; }
             .user-details .user-name { font-size: 0.85rem; }
             .user-details .user-handle { font-size: 0.65rem; }
             .video-title { font-size: 0.92rem; }
             .video-desc { font-size: 0.72rem; }
-            
             .product-tag-card { max-width: 78vw; padding: 6px; gap: 10px; }
             .product-tag-img { width: 40px; height: 40px; }
             .product-tag-title { font-size: 0.7rem; }
             .product-tag-price { font-size: 0.78rem; }
             .btn-buy-now { padding: 8px 12px; font-size: 0.66rem; }
-            
             .side-actions { right: 10px; bottom: calc(90px + env(safe-area-inset-bottom)); gap: 14px; }
             .side-icon-box { width: 42px; height: 42px; font-size: 1.05rem; }
             .side-btn span { font-size: 0.58rem; }
-            
             .bottom-sheet { padding: 18px; }
             .sheet-product img { width: 54px; height: 54px; }
         }
-
         @media (max-width: 360px) {
             .logo-monogram { width: 34px; height: 34px; }
             .logo-monogram span { font-size: 0.95rem; }
@@ -878,21 +451,10 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
             .product-tag-card { max-width: 74vw; }
             .btn-buy-now span { display: none; }
         }
-
         @media (min-width: 768px) {
             .video-item { display: flex; justify-content: center; background: #000; }
-            .video-player {
-                max-width: 480px;
-                margin: 0 auto;
-                height: 100%;
-                box-shadow: 0 0 80px rgba(0,0,0,0.8);
-            }
-            .video-overlay,
-            .side-actions {
-                left: 50%;
-                transform: translateX(-240px);
-                max-width: 480px;
-            }
+            .video-player { max-width: 480px; margin: 0 auto; height: 100%; box-shadow: 0 0 80px rgba(0,0,0,0.8); }
+            .video-overlay, .side-actions { left: 50%; transform: translateX(-240px); max-width: 480px; }
             .side-actions { right: auto; transform: translateX(216px); }
             .video-progress { max-width: 480px; left: 50%; transform: translateX(-50%); }
         }
@@ -911,20 +473,14 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
     <span>Produit ajouté au panier !</span>
 </div>
 
-<!-- ===== INDICATEUR SON ===== -->
 <div id="soundHint">
     <i class="bi bi-volume-mute-fill"></i>
     <span>Touchez pour activer le son</span>
 </div>
 
-<!-- ═══════════════════════════════════════════
-     HEADER PREMIUM
-     ═══════════════════════════════════════════ -->
 <header class="tiktok-header">
     <a href="../index.php" class="header-logo-group">
-        <div class="logo-monogram">
-            <span>AK</span>
-        </div>
+        <div class="logo-monogram"><span>AK</span></div>
         <div class="logo-text-group">
             <div class="logo-main">AWA KA <span class="gold">SUGU</span></div>
             <div class="logo-tagline">Boutique IBA Design</div>
@@ -943,9 +499,6 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
     </div>
 </header>
 
-<!-- ═══════════════════════════════════════════
-     CONTENU VIDÉOS
-     ═══════════════════════════════════════════ -->
 <div class="video-container" id="videoContainer">
     <?php if (empty($videos)): ?>
         <div class="video-item">
@@ -1005,8 +558,7 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
                             <div class="product-tag-title"><?= $produitNom ?></div>
                             <div class="product-tag-price"><?= $produitPrix ?></div>
                         </div>
-                        <button class="btn-buy-now" 
-                                onclick="openBottomSheet(<?= $produitId ?>, '<?= addslashes($produitNom) ?>', '<?= $produitPrix ?>', '<?= $produitImg ?>')">
+                        <button class="btn-buy-now" onclick="openBottomSheet(<?= $produitId ?>, '<?= addslashes($produitNom) ?>', '<?= $produitPrix ?>', '<?= $produitImg ?>')">
                             <i class="bi bi-bag-plus-fill"></i> Acheter
                         </button>
                     </div>
@@ -1018,7 +570,6 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
                     <div class="side-icon-box"><i class="bi bi-pause-fill"></i></div>
                     <span class="state-label">Pause</span>
                 </button>
-
                 <button class="side-btn" onclick="partagerVideo()">
                     <div class="side-icon-box"><i class="bi bi-share-fill"></i></div>
                     <span>Partager</span>
@@ -1033,9 +584,7 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
     <?php endif; ?>
 </div>
 
-<!-- ═══════════════════════════════════════════
-     BOTTOM SHEET
-     ═══════════════════════════════════════════ -->
+<!-- BOTTOM SHEET -->
 <div class="bottom-sheet-overlay" id="sheetOverlay" onclick="closeBottomSheet()"></div>
 <div class="bottom-sheet" id="bottomSheet">
     <div class="sheet-header">
@@ -1051,23 +600,9 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
         </button>
     </div>
 
-    <div class="option-group">
-        <span class="option-label">Couleur</span>
-        <div class="options-list">
-            <div class="option-chip selected" onclick="selectOption(this)">Standard</div>
-            <div class="option-chip" onclick="selectOption(this)">Noir</div>
-            <div class="option-chip" onclick="selectOption(this)">Or</div>
-        </div>
-    </div>
-
-    <div class="option-group">
-        <span class="option-label">Taille</span>
-        <div class="options-list">
-            <div class="option-chip selected" onclick="selectOption(this)">M</div>
-            <div class="option-chip" onclick="selectOption(this)">L</div>
-            <div class="option-chip" onclick="selectOption(this)">XL</div>
-            <div class="option-chip" onclick="selectOption(this)">XXL</div>
-        </div>
+    <!-- Le contenu des couleurs/tailles sera injecté ici par JS -->
+    <div id="optionsContainer">
+        <div class="loading-spinner"><i class="bi bi-hourglass-split"></i></div>
     </div>
 
     <div class="option-group" style="display:flex; justify-content:space-between; align-items:center;">
@@ -1086,9 +621,6 @@ $video_cible = isset($_GET['video']) ? (int)$_GET['video'] : 0;
 </div>
 
 <script>
-// ═══════════════════════════════════════════
-// VARIABLES GLOBALES
-// ═══════════════════════════════════════════
 const container = document.getElementById('videoContainer');
 const videoItems = document.querySelectorAll('.video-item');
 let videoElements = [];
@@ -1097,49 +629,35 @@ let currentSelectedProduct = null;
 let qty = 1;
 let audioUnlocked = false;
 
+// Variables pour stocker les choix actuels
+let selectedCouleurId = 0;
+let selectedTailleId = 0;
+
 const videoCibleId = <?= (int)$video_cible ?>;
 
-// ═══════════════════════════════════════════
-// INITIALISATION DES VIDÉOS
-// ═══════════════════════════════════════════
+// ===== INITIALISATION VIDÉOS =====
 videoItems.forEach((item, index) => {
     const vid = document.getElementById('video-' + index);
     if (vid) {
         videoElements[index] = vid;
-        
         vid.addEventListener('timeupdate', () => {
             const bar = document.getElementById('progressBar-' + index);
-            if (bar && vid.duration) {
-                bar.style.width = (vid.currentTime / vid.duration * 100) + '%';
-            }
+            if (bar && vid.duration) bar.style.width = (vid.currentTime / vid.duration * 100) + '%';
         });
-        
         vid.addEventListener('click', function(e) {
             e.stopPropagation();
-            if (this.paused) {
-                unlockAudio();
-                this.play();
-                updatePlayState(index, true);
-            } else {
-                this.pause();
-                updatePlayState(index, false);
-            }
+            if (this.paused) { unlockAudio(); this.play(); updatePlayState(index, true); }
+            else { this.pause(); updatePlayState(index, false); }
         });
     }
 });
 
-// ═══════════════════════════════════════════
-// OBSERVER
-// ═══════════════════════════════════════════
 const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
         if (entry.isIntersecting) {
             const idx = parseInt(entry.target.getAttribute('data-index'));
             if (idx !== currentIndex) {
-                if (videoElements[currentIndex]) {
-                    videoElements[currentIndex].pause();
-                    updatePlayState(currentIndex, false);
-                }
+                if (videoElements[currentIndex]) { videoElements[currentIndex].pause(); updatePlayState(currentIndex, false); }
                 currentIndex = idx;
                 playVideo(currentIndex);
             }
@@ -1149,46 +667,18 @@ const observer = new IntersectionObserver((entries) => {
 
 videoItems.forEach(item => observer.observe(item));
 
-// ═══════════════════════════════════════════
-// LECTURE
-// ═══════════════════════════════════════════
 function playVideo(index) {
     const vid = videoElements[index];
     if (!vid) return;
-
-    // Si le son est débloqué → son actif
-    // Sinon → muet (règle navigateur)
-    if (audioUnlocked) {
-        vid.muted = false;
-        vid.volume = 1;
-    } else {
-        vid.muted = true;
-    }
-
-    vid.play().then(() => {
-        updatePlayState(index, true);
-        // Si on est en muet alors qu'on veut du son, on retente
-        if (!audioUnlocked && vid.muted) {
-            // On ne force pas : on attend l'interaction
-        }
-    }).catch(() => {
-        updatePlayState(index, false);
-    });
+    if (audioUnlocked) { vid.muted = false; vid.volume = 1; } else { vid.muted = true; }
+    vid.play().then(() => updatePlayState(index, true)).catch(() => updatePlayState(index, false));
 }
 
 function togglePlayPause(index) {
     const vid = videoElements[index];
     if (!vid) return;
-
-    if (vid.paused) {
-        unlockAudio();
-        vid.play().then(() => {
-            updatePlayState(index, true);
-        }).catch(() => {});
-    } else {
-        vid.pause();
-        updatePlayState(index, false);
-    }
+    if (vid.paused) { unlockAudio(); vid.play().then(() => updatePlayState(index, true)).catch(() => {}); }
+    else { vid.pause(); updatePlayState(index, false); }
 }
 
 function updatePlayState(index, isPlaying) {
@@ -1196,117 +686,124 @@ function updatePlayState(index, isPlaying) {
     if (!btn) return;
     const icon = btn.querySelector('i');
     const label = btn.querySelector('.state-label');
-    if (isPlaying) {
-        icon.className = 'bi bi-pause-fill';
-        label.textContent = 'Pause';
-    } else {
-        icon.className = 'bi bi-play-fill';
-        label.textContent = 'Lecture';
-    }
+    if (isPlaying) { icon.className = 'bi bi-pause-fill'; label.textContent = 'Pause'; }
+    else { icon.className = 'bi bi-play-fill'; label.textContent = 'Lecture'; }
 }
 
-// ═══════════════════════════════════════════
-// DÉBLOCAGE AUDIO (le cœur du système)
-// ═══════════════════════════════════════════
+// ===== AUDIO =====
 function unlockAudio() {
     if (audioUnlocked) return;
     audioUnlocked = true;
-    
-    // Met à jour le bouton haut-parleur
     const toggle = document.getElementById('soundToggle');
-    if (toggle) {
-        toggle.classList.add('sound-on');
-        toggle.querySelector('i').className = 'bi bi-volume-up-fill';
-    }
-    
-    // Cache l'indicateur "Touchez pour activer le son"
+    if (toggle) { toggle.classList.add('sound-on'); toggle.querySelector('i').className = 'bi bi-volume-up-fill'; }
     const hint = document.getElementById('soundHint');
     if (hint) hint.classList.add('hidden');
-    
-    // Active le son sur la vidéo courante
     const vid = videoElements[currentIndex];
     if (vid) {
-        vid.muted = false;
-        vid.volume = 1;
-        if (vid.paused) {
-            vid.play().then(() => {
-                updatePlayState(currentIndex, true);
-            }).catch(() => {});
-        }
+        vid.muted = false; vid.volume = 1;
+        if (vid.paused) vid.play().then(() => updatePlayState(currentIndex, true)).catch(() => {});
     }
-    
-    // Active le son sur TOUTES les vidéos déjà chargées
-    videoElements.forEach(v => {
-        if (v) {
-            v.muted = false;
-            v.volume = 1;
-        }
-    });
+    videoElements.forEach(v => { if (v) { v.muted = false; v.volume = 1; } });
 }
 
-// ===== DÉBLOCAGE AU PREMIER SCROLL =====
 container.addEventListener('scroll', unlockAudio, { once: true, passive: true });
-
-// ===== DÉBLOCAGE AU PREMIER TOUCH/CLIC =====
 document.addEventListener('touchstart', unlockAudio, { once: true, passive: true });
 document.addEventListener('click', unlockAudio, { once: true });
 document.addEventListener('keydown', unlockAudio, { once: true });
 document.addEventListener('wheel', unlockAudio, { once: true, passive: true });
 
-// ===== BOUTON HAUT-PARLEUR =====
 function toggleSound() {
     const toggle = document.getElementById('soundToggle');
-    const vid = videoElements[currentIndex];
-    const hint = document.getElementById('soundHint');
-    
     if (audioUnlocked) {
-        // On coupe le son
         audioUnlocked = false;
         toggle.classList.remove('sound-on');
         toggle.querySelector('i').className = 'bi bi-volume-mute-fill';
         videoElements.forEach(v => { if (v) v.muted = true; });
-    } else {
-        // On active
-        unlockAudio();
-    }
+    } else { unlockAudio(); }
 }
 
-// ═══════════════════════════════════════════
-// BOTTOM SHEET
-// ═══════════════════════════════════════════
+// ===== BOTTOM SHEET =====
 function openBottomSheet(id, title, price, img) {
     currentSelectedProduct = id;
     qty = 1;
+    selectedCouleurId = 0;
+    selectedTailleId = 0;
     document.getElementById('sheetQty').textContent = qty;
     document.getElementById('sheetTitle').textContent = title;
     document.getElementById('sheetPrice').textContent = price;
     document.getElementById('sheetImg').src = img;
 
+    // Afficher le spinner
+    document.getElementById('optionsContainer').innerHTML = '<div class="loading-spinner"><i class="bi bi-hourglass-split"></i> Chargement...</div>';
+
     document.getElementById('sheetOverlay').classList.add('active');
     document.getElementById('bottomSheet').classList.add('active');
     
     const vid = videoElements[currentIndex];
-    if (vid) {
-        vid.pause();
-        updatePlayState(currentIndex, false);
-    }
+    if (vid) { vid.pause(); updatePlayState(currentIndex, false); }
+
+    // Charger les vraies couleurs et tailles depuis la BDD
+    fetch(window.location.href, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'action=get_produit_detail_video&produit_id=' + id
+    })
+    .then(r => r.json())
+    .then(data => {
+        let html = '';
+        
+        if (data.couleurs && data.couleurs.length > 0) {
+            html += `<div class="option-group">
+                <span class="option-label">Couleur</span>
+                <div class="options-list">`;
+            data.couleurs.forEach(c => {
+                html += `<div class="option-chip" data-id="${c.id}" onclick="selectColor(this, ${c.id})">
+                    <span class="dot" style="background:${c.code_hex || '#ccc'}"></span>${c.nom}
+                </div>`;
+            });
+            html += `</div></div>`;
+        }
+
+        if (data.tailles && data.tailles.length > 0) {
+            html += `<div class="option-group">
+                <span class="option-label">Taille</span>
+                <div class="options-list">`;
+            data.tailles.forEach(t => {
+                html += `<div class="option-chip" data-id="${t.id}" onclick="selectSize(this, ${t.id})">${t.nom}</div>`;
+            });
+            html += `</div></div>`;
+        }
+
+        if (!html) {
+            html = '<p style="color:#aaa;font-size:0.8rem;text-align:center;margin-bottom:15px;">Aucune option disponible</p>';
+        }
+
+        document.getElementById('optionsContainer').innerHTML = html;
+    })
+    .catch(() => {
+        document.getElementById('optionsContainer').innerHTML = '<p style="color:#E74C3C;font-size:0.8rem;text-align:center;">Erreur de chargement des options</p>';
+    });
 }
 
 function closeBottomSheet() {
     document.getElementById('sheetOverlay').classList.remove('active');
     document.getElementById('bottomSheet').classList.remove('active');
-    
     const vid = videoElements[currentIndex];
-    if (vid && vid.paused) {
-        vid.play().then(() => {
-            updatePlayState(currentIndex, true);
-        }).catch(() => {});
-    }
+    if (vid && vid.paused) vid.play().then(() => updatePlayState(currentIndex, true)).catch(() => {});
 }
 
-function selectOption(chip) {
-    chip.parentElement.querySelectorAll('.option-chip').forEach(c => c.classList.remove('selected'));
+function selectColor(chip, id) {
+    const container = chip.parentElement;
+    container.querySelectorAll('.option-chip').forEach(c => c.classList.remove('selected'));
     chip.classList.add('selected');
+    selectedCouleurId = id;
+}
+
+function selectSize(chip, id) {
+    const container = chip.parentElement;
+    container.querySelectorAll('.option-chip').forEach(c => c.classList.remove('selected'));
+    chip.classList.add('selected');
+    selectedTailleId = id;
 }
 
 function changeQty(delta) {
@@ -1317,26 +814,37 @@ function changeQty(delta) {
 function submitAddToCart() {
     if (!currentSelectedProduct) return;
 
+    // Vérifier qu'on a bien sélectionné si le produit a des options
+    const hasColors = document.querySelector('.option-group .option-chip');
+    if (hasColors && selectedCouleurId === 0 && document.querySelector('.options-list .dot')) {
+        showToast("Veuillez choisir une couleur", 'error');
+        return;
+    }
+    if (hasColors && selectedTailleId === 0 && !document.querySelector('.options-list .dot')) {
+        showToast("Veuillez choisir une taille", 'error');
+        return;
+    }
+
     const formData = new FormData();
     formData.append('action', 'ajouter_panier');
     formData.append('produit_id', currentSelectedProduct);
     formData.append('quantite', qty);
+    formData.append('couleur_id', selectedCouleurId);
+    formData.append('taille_id', selectedTailleId);
 
+    // On envoie vers catalogue.php (qui gère l'ajout au panier)
     fetch('../boutique/catalogue.php', {
         method: 'POST',
         body: formData
     })
     .then(async res => {
         const text = await res.text();
-        try {
-            return JSON.parse(text);
-        } catch (err) {
-            return { success: res.ok, message: "Produit ajouté" };
-        }
+        try { return JSON.parse(text); } 
+        catch (err) { return { success: res.ok, message: "Produit ajouté" }; }
     })
     .then(data => {
-        closeBottomSheet();
         if (data.success || data.status === 'success') {
+            closeBottomSheet();
             showToast("Produit ajouté au panier !");
         } else {
             alert(data.message || "Erreur lors de l'ajout");
@@ -1345,9 +853,6 @@ function submitAddToCart() {
     .catch(() => alert("Erreur lors de la connexion"));
 }
 
-// ═══════════════════════════════════════════
-// TOAST
-// ═══════════════════════════════════════════
 function showToast(msg) {
     const toast = document.getElementById('toastNotif');
     toast.querySelector('span').textContent = msg;
@@ -1355,24 +860,13 @@ function showToast(msg) {
     setTimeout(() => toast.classList.remove('show'), 3000);
 }
 
-// ═══════════════════════════════════════════
-// PARTAGE
-// ═══════════════════════════════════════════
 function partagerVideo() {
-    if (navigator.share) {
-        navigator.share({ title: 'Awa Ka Sugu - Vidéo', url: window.location.href });
-    } else {
-        navigator.clipboard.writeText(window.location.href);
-        showToast("Lien copié !");
-    }
+    if (navigator.share) navigator.share({ title: 'Awa Ka Sugu - Vidéo', url: window.location.href });
+    else { navigator.clipboard.writeText(window.location.href); showToast("Lien copié !"); }
 }
 
-// ═══════════════════════════════════════════
-// DÉMARRAGE
-// ═══════════════════════════════════════════
 window.addEventListener('load', () => {
     let startIndex = 0;
-
     if (videoCibleId > 0) {
         const target = document.querySelector('.video-item[data-video-id="' + videoCibleId + '"]');
         if (target) {
@@ -1380,7 +874,6 @@ window.addEventListener('load', () => {
             startIndex = parseInt(target.getAttribute('data-index'));
         }
     }
-
     currentIndex = startIndex;
     playVideo(startIndex);
 });

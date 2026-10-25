@@ -796,9 +796,11 @@ body.has-hero .site-header.scrolled {
             <span>Compte</span>
         </a>
     <?php endif; ?>
-    <a href="<?= SITE_URL ?>/client/messagerie.php" class="bottom-nav-item <?= $page_actuelle == 'messagerie.php' ? 'active' : '' ?>">
-        <i class="bi bi-chat-dots"></i>
-        <span>Messages</span>
+    
+    <!-- ✅ NOUVEAU : Vidéos remplace Messages -->
+    <a href="<?= SITE_URL ?>/boutique/videos.php" class="bottom-nav-item <?= $page_actuelle == 'videos.php' ? 'active' : '' ?>">
+        <i class="bi bi-camera-reels<?= $page_actuelle == 'videos.php' ? '-fill' : '' ?>"></i>
+        <span>Vidéos</span>
     </a>
 </nav>
 

@@ -586,6 +586,9 @@ try {
     $nouveautes = [];
 }
 
+// ============================================
+// CORRECTION ICI : AVIS CLIENTS (SANS RÉPONSES + LIMITE 6)
+// ============================================
 $avis_clients = [];
 try {
     $stmt = $pdo->prepare("
@@ -594,7 +597,10 @@ try {
                p.image_principale as produit_image
         FROM avis_clients a
         LEFT JOIN produits p ON p.id = a.produit_id
-        WHERE a.est_visible = 1 AND a.est_valide = 1
+        WHERE a.est_visible = 1 
+        AND a.est_valide = 1 
+        AND a.parent_id IS NULL
+        AND a.produit_id IS NOT NULL
         ORDER BY a.created_at DESC
         LIMIT 6
     ");
@@ -610,7 +616,7 @@ try {
     $stmt = $pdo->query("
         SELECT COALESCE(AVG(note), 0) as moyenne, COUNT(*) as total 
         FROM avis_clients 
-        WHERE est_visible = 1 AND est_valide = 1
+        WHERE est_visible = 1 AND est_valide = 1 AND parent_id IS NULL AND produit_id IS NOT NULL
     ");
     $result = $stmt->fetch();
     $note_moyenne = round($result['moyenne'], 1);
